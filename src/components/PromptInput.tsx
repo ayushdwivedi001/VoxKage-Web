@@ -8,6 +8,39 @@ export default function PromptInput() {
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
+  // Auto-resize height based on value
+  const adjustHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      // Reset height to let the browser recalculate the correct scrollHeight
+      textarea.style.height = "auto";
+      
+      const scrollHeight = textarea.scrollHeight;
+      const maxHeight = 220; // Maximum height in pixels before showing scrollbar
+      
+      if (scrollHeight > maxHeight) {
+        textarea.style.height = `${maxHeight}px`;
+        textarea.style.overflowY = "auto";
+      } else {
+        textarea.style.height = `${scrollHeight}px`;
+        textarea.style.overflowY = "hidden";
+      }
+    }
+  };
+
+  // Adjust height on text change
+  useEffect(() => {
+    adjustHeight();
+  }, [value]);
+
+  // Adjust height on window resize to ensure responsiveness
+  useEffect(() => {
+    window.addEventListener("resize", adjustHeight);
+    return () => {
+      window.removeEventListener("resize", adjustHeight);
+    };
+  }, []);
+
   // Auto-focus on load and place cursor at the end of the text
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -46,10 +79,11 @@ export default function PromptInput() {
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           rows={1}
-          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-[17px] text-zinc-100 placeholder-zinc-500 font-sans tracking-wide leading-relaxed resize-none p-0 min-h-[28px] max-h-[200px]"
+          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-[17px] text-zinc-100 placeholder-zinc-500 font-sans tracking-wide leading-relaxed resize-none p-0 custom-scrollbar"
           placeholder="Ask VoxKage, type / for commands"
           style={{
-            caretColor: "#e4e4e7", // Tailwind zinc-200 color for the blinking cursor
+            caretColor: "#e4e4e7", // zinc-200 cursor
+            minHeight: "28px",
           }}
         />
       </div>
@@ -95,6 +129,23 @@ export default function PromptInput() {
           </button>
         </div>
       </div>
+
+      {/* Sleek custom scrollbar style tag */}
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 99px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.28);
+        }
+      `}</style>
     </div>
   );
 }
