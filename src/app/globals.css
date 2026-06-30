@@ -26,3 +26,21 @@ body {
   color: #ffffff;
 }
 
+/* Thinking Glow Animation */
+@keyframes thinkingGlow {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-thinking-glow {
+  background: linear-gradient(90deg, #71717a 20%, #e4e4e7 50%, #71717a 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinkingGlow 2s linear infinite;
+}
+

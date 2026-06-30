@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, ChevronDown, Mic, ArrowUp } from "lucide-react";
+import { Plus, ChevronDown, Mic, ArrowUp, Square } from "lucide-react";
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
@@ -21,6 +21,8 @@ interface PromptInputProps {
   setSelectedVariant: (variant: string) => void;
   modelsList: ModelOption[];
   onOpenMoreModels: () => void;
+  isStreaming?: boolean;
+  onStop?: () => void;
 }
 
 export default function PromptInput({
@@ -31,6 +33,8 @@ export default function PromptInput({
   setSelectedVariant,
   modelsList,
   onOpenMoreModels,
+  isStreaming = false,
+  onStop,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -235,19 +239,30 @@ export default function PromptInput({
             <Mic className="w-5 h-5 opacity-90" />
           </button>
 
-          {/* Submit Button */}
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-300 ml-1 ${
-              hasText
-                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
-                : "bg-zinc-700/50 text-zinc-500 cursor-default"
-            }`}
-            aria-label="Submit prompt"
-          >
-            <ArrowUp className="w-5 h-5 stroke-[2.5]" />
-          </button>
+          {/* Submit / Stop Button */}
+          {isStreaming ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="flex items-center justify-center w-9 h-9 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 active:scale-95 cursor-pointer ml-1 transition-all duration-200"
+              aria-label="Stop generation"
+            >
+              <Square className="w-4 h-4 fill-zinc-300 stroke-none" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-300 ml-1 ${
+                hasText
+                  ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+                  : "bg-zinc-700/50 text-zinc-500 cursor-default"
+              }`}
+              aria-label="Submit prompt"
+            >
+              <ArrowUp className="w-5 h-5 stroke-[2.5]" />
+            </button>
+          )}
         </div>
       </div>
 

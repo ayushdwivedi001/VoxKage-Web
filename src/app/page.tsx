@@ -9,6 +9,17 @@ import {
   RotateCcw,
   ChevronDown,
   Download,
+  ChevronRight,
+  Clock,
+  Check,
+  FileText,
+  Code,
+  Settings,
+  Search,
+  Globe,
+  X,
+  ArrowUpRight,
+  Square,
 } from "lucide-react";
 import GradientBackground from "@/components/GradientBackground";
 import PromptInput from "@/components/PromptInput";
@@ -17,107 +28,33 @@ import FileListItem from "@/components/FileListItem";
 import FileInspectorPanel from "@/components/FileInspectorPanel";
 import MoreModelsModal from "@/components/MoreModelsModal";
 
+import {
+  login,
+  fetchSessions,
+  createSession,
+  fetchSessionMessages,
+  deleteSession,
+  renameSession,
+  fetchFavorites,
+  saveFavorites,
+  fetchSettingsProfile,
+  saveSettingsProfile,
+  fetchModels,
+  getToken,
+  clearToken,
+  WS_BACKEND_URL
+} from "@/lib/api";
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   files?: Array<{ name: string; type: string; code: string }>;
+  status?: "thinking" | "streaming" | "completed";
+  thinkingDuration?: number;
+  thinkingStart?: number;
+  thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed" }>;
 }
-
-const MOCK_TELEGRAM_FILES = [
-  {
-    name: "telegram_watcher.py",
-    type: "py",
-    code: `import os
-import sys
-import time
-import logging
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("telegram_watcher")
-
-class TelegramHandler(FileSystemEventHandler):
-    def on_modified(self, event):
-        if not event.is_directory and event.src_path.endswith("telegram_inbox.json"):
-            logger.info(f"Inbox file updated: {event.src_path}")
-
-if __name__ == "__main__":
-    path = os.path.expanduser("~/.voxkage/telegram_inbox.json")
-    event_handler = TelegramHandler()
-    observer = Observer()
-    observer.schedule(event_handler, path=os.path.dirname(path), recursive=False)
-    observer.start()
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        observer.stop()
-    observer.join()`
-  },
-  {
-    name: "telegram_server.py",
-    type: "py",
-    code: `import os
-import sys
-import json
-import logging
-import time
-from pathlib import Path
-
-# Persistent state
-_VOXKAGE_DIR      = Path(os.path.expanduser("~")) / ".voxkage"
-_OFFSET_FILE      = _VOXKAGE_DIR / "telegram_offset.json"
-_PENDING_REPLY_FILE = _VOXKAGE_DIR / "telegram_pending_reply.json"
-_INBOX_FILE       = _VOXKAGE_DIR / "telegram_inbox.json"
-_DOWNLOAD_DIR     = _VOXKAGE_DIR / "telegram_downloads"
-
-_VOXKAGE_DIR.mkdir(parents=True, exist_ok=True)
-_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-# Path setup
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from _env import load_voxkage_env
-load_voxkage_env()
-
-from mcp.server.fastmcp import FastMCP
-mcp = FastMCP("voxkage-telegram")
-logger = logging.getLogger(__name__)
-
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
-API_BASE = f"https://api.telegram.org/bot{TOKEN}"
-
-_PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp"}`
-  },
-  {
-    name: "watcher_launcher.py",
-    type: "py",
-    code: `import os
-import subprocess
-import sys
-from pathlib import Path
-
-def launch_watcher():
-    watcher_path = Path(__file__).parent / "telegram_watcher.py"
-    if not watcher_path.exists():
-        print("Watcher script not found!")
-        return
-    
-    # Singleton lock check
-    lock_file = Path(os.path.expanduser("~")) / ".voxkage" / "watcher.lock"
-    if lock_file.exists():
-        print("Watcher process already running.")
-        return
-        
-    subprocess.Popen([sys.executable, str(watcher_path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print("Telegram watcher daemon started successfully.")`
-  }
-];
 
 // Max collapsed height in px before showing Show more
 const USER_BUBBLE_MAX_H = 180;
@@ -130,7 +67,6 @@ function UserBubble({ content }: { content: string }) {
   useEffect(() => {
     const el = innerRef.current;
     if (!el) return;
-    // Temporarily remove the maxHeight to measure true scrollHeight
     el.style.maxHeight = "none";
     const natural = el.scrollHeight;
     el.style.maxHeight = "";
@@ -138,13 +74,11 @@ function UserBubble({ content }: { content: string }) {
   }, [content]);
 
   return (
-    <div className="max-w-[85%] flex flex-col items-end">
-      {/* The bubble itself */}
+    <div className="max-w-[85%] flex flex-col items-end text-zinc-300">
       <div
         className="bg-[#202024] text-zinc-100 rounded-2xl px-4 pt-3 text-[15px] leading-relaxed font-sans border border-zinc-800/40 select-text w-full"
         style={{ paddingBottom: needsClamp ? 0 : "10px" }}
       >
-        {/* Text content wrapper — clamped when collapsed */}
         <div
           style={{
             position: "relative",
@@ -154,10 +88,7 @@ function UserBubble({ content }: { content: string }) {
             whiteSpace: "pre-wrap",
           }}
         >
-          {/* Actual text, measured via this ref */}
           <div ref={innerRef}>{content}</div>
-
-          {/* Gradient fade — inside the clamped region so it covers the last lines */}
           {needsClamp && !expanded && (
             <div
               aria-hidden="true"
@@ -172,12 +103,11 @@ function UserBubble({ content }: { content: string }) {
           )}
         </div>
 
-        {/* Show more / Show less row — inside the bubble, below the text */}
         {needsClamp && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
-            className="w-full text-left pt-1.5 pb-2.5 mt-1 border-t border-zinc-800/20 group cursor-pointer focus:outline-none flex items-center"
+            className="w-full text-left pt-1.5 pb-2.5 mt-1 border-t border-zinc-800/20 group cursor-pointer focus:outline-none flex items-center bg-transparent"
           >
             <span className="text-[13px] font-medium text-zinc-400 group-hover:text-white transition-all duration-200 group-hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.65)]">
               {expanded ? "Show less" : "Show more"}
@@ -189,11 +119,503 @@ function UserBubble({ content }: { content: string }) {
   );
 }
 
+interface AssistantResponseBubbleProps {
+  msg: Message;
+  setActiveFile: (file: { name: string; code: string } | null) => void;
+  onScrollToBottom: () => void;
+}
+
+const parseSources = (content: string) => {
+  if (!content) return { cleanContent: "", sources: [] };
+  const sourcesRegex = /<Sources\s+data="([^"]+)"\s*\/>/i;
+  const match = content.match(sourcesRegex);
+  let cleanContent = content.replace(/<Sources[\s\S]*/i, '').trim();
+  let sources: { title: string; url: string; domain: string }[] = [];
+
+  if (match) {
+    const rawData = match[1];
+    const pairs = rawData.split('||');
+    pairs.forEach((p) => {
+      const parts = p.split('|');
+      if (parts.length >= 2) {
+        const title = parts[0];
+        const url = parts[1];
+        let domain = '';
+        try {
+          const matchDomain = url.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
+          domain = matchDomain ? matchDomain[1] : url;
+        } catch {
+          domain = url;
+        }
+        sources.push({ title, url, domain });
+      }
+    });
+  }
+
+  return { cleanContent, sources };
+};
+
+const parseMessageContent = (content: string) => {
+  const { cleanContent: noSourcesContent, sources } = parseSources(content);
+  
+  let thinkingContent = "";
+  let finalContent = noSourcesContent;
+
+  const thinkStartIndex = noSourcesContent.indexOf("<think>");
+  const thinkEndIndex = noSourcesContent.indexOf("</think>");
+
+  if (thinkStartIndex !== -1) {
+    if (thinkEndIndex !== -1) {
+      thinkingContent = noSourcesContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
+      finalContent = (noSourcesContent.substring(0, thinkStartIndex) + noSourcesContent.substring(thinkEndIndex + 8)).trim();
+    } else {
+      thinkingContent = noSourcesContent.substring(thinkStartIndex + 7).trim();
+      finalContent = noSourcesContent.substring(0, thinkStartIndex).trim();
+    }
+  }
+
+  return { thinkingContent, finalContent, sources };
+};
+
+function parseInlineElements(text: string) {
+  const tokens: React.ReactNode[] = [];
+  let remaining = text;
+  let tokenKey = 0;
+
+  // Pattern matches bold (**text**), inline code (`code`), standard filenames (file.ext), or function signatures containing ()
+  const regex = /(\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/g;
+  let match;
+  let lastIndex = 0;
+
+  while ((match = regex.exec(remaining)) !== null) {
+    const matchIndex = match.index;
+    const matchStr = match[0];
+
+    // Add preceding text
+    if (matchIndex > lastIndex) {
+      tokens.push(<React.Fragment key={tokenKey++}>{remaining.substring(lastIndex, matchIndex)}</React.Fragment>);
+    }
+
+    if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
+      const boldText = matchStr.slice(2, -2);
+      // Headings/General bold text remains bold and thick white (never blue)
+      tokens.push(
+        <strong key={tokenKey++} className="font-bold text-zinc-100">
+          {boldText}
+        </strong>
+      );
+    } else if (matchStr.startsWith("`") && matchStr.endsWith("`")) {
+      const codeText = matchStr.slice(1, -1);
+      tokens.push(
+        <code key={tokenKey++} className="bg-zinc-850/60 text-zinc-200 border border-zinc-700/50 px-1.5 py-0.5 rounded font-mono text-[13.5px] mx-0.5">
+          {codeText}
+        </code>
+      );
+    } else {
+      // Filename or function call pops out in high-contrast premium blue!
+      tokens.push(
+        <span key={tokenKey++} className="text-blue-400 font-mono font-medium hover:underline cursor-help">
+          {matchStr}
+        </span>
+      );
+    }
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < remaining.length) {
+    tokens.push(<React.Fragment key={tokenKey++}>{remaining.substring(lastIndex)}</React.Fragment>);
+  }
+
+  return tokens.length > 0 ? tokens : text;
+}
+
+function renderFormattedContent(content: string) {
+  if (!content) return null;
+  const lines = content.split("\n");
+
+  return lines.map((line, lineIdx) => {
+    // Check for markdown headings
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const headingText = headingMatch[2];
+      // Headers remain white and bold, never blue
+      const headingClass = level === 1 
+        ? "text-[22px] font-bold text-zinc-100 mt-4 mb-2 block" 
+        : level === 2 
+          ? "text-[19px] font-bold text-zinc-100 mt-3.5 mb-1.5 block" 
+          : "text-[17px] font-bold text-zinc-100 mt-3 mb-1 block";
+      return (
+        <span key={lineIdx} className={headingClass}>
+          {parseInlineElements(headingText)}
+        </span>
+      );
+    }
+
+    return (
+      <div key={lineIdx} className="min-h-[1.5em] mb-1">
+        {parseInlineElements(line)}
+      </div>
+    );
+  });
+}
+
+function AssistantResponseBubble({
+  msg,
+  setActiveFile,
+  onScrollToBottom,
+}: AssistantResponseBubbleProps) {
+  const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(msg.thinkingDuration || 0);
+  const [dots, setDots] = useState(".");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+
+  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Setup speech synthesis
+  useEffect(() => {
+    synthRef.current = typeof window !== "undefined" ? window.speechSynthesis : null;
+    return () => {
+      if (synthRef.current) {
+        synthRef.current.cancel();
+      }
+    };
+  }, []);
+
+  const handleSpeak = () => {
+    if (!synthRef.current) return;
+
+    if (isSpeaking) {
+      synthRef.current.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    // Strip custom XML tags and markdown chars before speaking
+    const cleanText = msg.content
+      .replace(/<[^>]*>/g, "")
+      .replace(/\*\*|`/g, "")
+      .trim();
+
+    if (!cleanText) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    const voices = synthRef.current.getVoices();
+    const englishVoice = voices.find(v => v.lang.startsWith("en-US") || v.lang.startsWith("en-GB"));
+    if (englishVoice) {
+      utterance.voice = englishVoice;
+    }
+
+    utteranceRef.current = utterance;
+    synthRef.current.speak(utterance);
+    setIsSpeaking(true);
+  };
+
+  // If currently thinking, run a local timer
+  useEffect(() => {
+    if (msg.status !== "thinking") {
+      setElapsedSeconds(msg.thinkingDuration || 0);
+      return;
+    }
+
+    const dotsInterval = setInterval(() => {
+      setDots((prev) => (prev === "..." ? "." : prev + "."));
+    }, 600);
+
+    const start = Date.now();
+    const timerInterval = setInterval(() => {
+      const elapsed = Math.round((Date.now() - start) / 1000);
+      setElapsedSeconds(elapsed);
+    }, 1000);
+
+    return () => {
+      clearInterval(dotsInterval);
+      clearInterval(timerInterval);
+    };
+  }, [msg.status, msg.thinkingDuration]);
+
+  // Parse message content to extract thinking, final output, and consulted web sources
+  const { thinkingContent, finalContent, sources } = parseMessageContent(msg.content);
+
+  // Fallback to logical default steps when no deep <think> reasoning blocks exist
+  const thoughts = thinkingContent
+    ? thinkingContent.split("\n").filter(line => line.trim().length > 0).map((line, idx) => ({
+        id: `think-${idx}`,
+        label: line.replace(/^-\s*/, "").trim(),
+        status: "success" as const
+      }))
+    : msg.thinkingSteps && msg.thinkingSteps.length > 0
+      ? msg.thinkingSteps
+      : [
+          { id: "step-1", label: "Analyzing prompt...", status: "success" as const },
+          { id: "step-2", label: "Retrieving context and profile...", status: "success" as const },
+          { id: "step-3", label: "Formulating response...", status: "success" as const }
+        ];
+
+  const renderStepIcon = (status: "pending" | "success" | "failed") => {
+    if (status === "success") {
+      return <Check className="w-3.5 h-3.5 text-blue-400 stroke-[2.5]" />;
+    } else if (status === "failed") {
+      return <span className="text-red-400 font-bold text-[12px]">X</span>;
+    } else {
+      return <Clock className="w-3.5 h-3.5 text-zinc-500 animate-pulse" />;
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-start w-full">
+      {/* --- Thinking Accordion Header --- */}
+      {msg.status === "thinking" ? (
+        <div className="flex items-center gap-2 py-1.5 text-zinc-500 font-sans select-none mb-1">
+          <span className="text-[13px] font-medium tracking-wide animate-thinking-glow">
+            Thinking{dots}
+          </span>
+          <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
+        </div>
+      ) : (
+        <div className="flex flex-col mb-1.5 w-full">
+          <div
+            onClick={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
+            className="flex items-center gap-1.5 py-1 text-zinc-500 hover:text-zinc-200 transition-colors duration-200 cursor-pointer select-none group/thought"
+          >
+            <ChevronRight
+              className={`w-3.5 h-3.5 opacity-0 group-hover/thought:opacity-100 transition-all duration-200 ${
+                isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
+              }`}
+            />
+            <span className="text-[13px] font-sans tracking-wide">
+              Thought for {msg.thinkingDuration || elapsedSeconds || 3}s
+            </span>
+          </div>
+
+          {/* Expanded Step Timeline */}
+          {isThoughtsExpanded && thoughts.length > 0 && (
+            <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[90%]">
+              {thoughts.map((step, idx) => {
+                const isLast = idx === thoughts.length - 1;
+                return (
+                  <div key={idx} className="relative flex items-start gap-3.5 pb-4 last:pb-1">
+                    {!isLast && (
+                      <div className="absolute left-[11px] top-6 bottom-0 w-[1px] bg-zinc-800" />
+                    )}
+
+                    <div
+                      className={`w-[23px] h-[23px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 ${
+                        step.status === "success"
+                          ? "border-blue-500/80 bg-blue-950/20"
+                          : "border-zinc-800 bg-[#16161a]"
+                      }`}
+                    >
+                      {renderStepIcon(step.status)}
+                    </div>
+
+                    <span className="text-[13px] leading-[22px] text-zinc-400 font-sans truncate block pr-2">
+                      {step.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* --- Assistant Response Text content --- */}
+      {msg.status !== "thinking" && finalContent && (
+        <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
+          {renderFormattedContent(finalContent)}
+        </div>
+      )}
+
+      {/* --- Consulted Web Search Sources Mini Row --- */}
+      {sources.length > 0 && (
+        <div 
+          onClick={() => setIsSourcesOpen(true)}
+          className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:bg-zinc-800/80 transition-colors duration-200 cursor-pointer select-none"
+        >
+          <div className="flex items-center">
+            {sources.slice(0, 3).map((src, srcIdx) => {
+              const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
+              return (
+                <img
+                  key={srcIdx}
+                  src={faviconUrl}
+                  alt=""
+                  className="w-4 h-4 rounded-full border border-zinc-950 bg-zinc-900"
+                  style={{
+                    marginLeft: srcIdx > 0 ? "-6px" : "0px",
+                    zIndex: 10 - srcIdx,
+                  }}
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'/%3E";
+                  }}
+                />
+              );
+            })}
+          </div>
+          <span className="text-[12px] text-zinc-400 font-medium font-sans">
+            {sources.length > 3 ? `+${sources.length - 3} sources` : `${sources.length} sources`}
+          </span>
+        </div>
+      )}
+
+      {/* --- Files cards and Actions section --- */}
+      {msg.status === "completed" && (
+        <>
+          {msg.files && msg.files.length > 0 && (
+            <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4 animate-fadeIn">
+              {msg.files.map((file, idx) => (
+                <FileListItem
+                  key={idx}
+                  name={file.name}
+                  type={file.type}
+                  onClick={() => {
+                    setActiveFile(file);
+                  }}
+                  onDownload={() => alert(`Downloading ${file.name}`)}
+                />
+              ))}
+
+              <div className="mt-1 flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => alert("Downloading all files")}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13px] font-medium transition-all duration-200 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download all</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-4 mt-3 text-zinc-500 select-none mb-2 animate-fadeIn">
+            <button
+              type="button"
+              className="hover:text-zinc-300 transition-colors"
+              aria-label="Copy response"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleSpeak}
+              className={`transition-colors duration-200 ${
+                isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
+              }`}
+              aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
+            >
+              <Volume2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300 transition-colors"
+              aria-label="Thumbs up"
+            >
+              <ThumbsUp className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300 transition-colors"
+              aria-label="Thumbs down"
+            >
+              <ThumbsDown className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              className="hover:text-zinc-300 transition-colors"
+              aria-label="Retry response"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Sources Centric Modal Popup Overlay */}
+      {isSourcesOpen && (
+        <div 
+          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          onClick={() => setIsSourcesOpen(false)}
+        >
+          <div 
+            className="w-full max-w-md bg-[#0e0e11] border border-zinc-850 rounded-2xl p-6 shadow-2xl relative mx-4 max-h-[70vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4 mb-4 select-none">
+              <div className="flex items-center gap-2 text-blue-400">
+                <Globe className="w-4.5 h-4.5" />
+                <h3 className="text-white text-[15px] font-semibold tracking-wide font-sans">Consulted Sources</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setIsSourcesOpen(false)}
+                className="w-6 h-6 rounded-full bg-zinc-900 hover:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors duration-150 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-grow pr-1 custom-scrollbar">
+              <div className="flex flex-col gap-3">
+                {sources.map((src, idx) => {
+                  const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
+                  return (
+                    <a
+                      key={idx}
+                      href={src.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3.5 p-3 rounded-xl border border-zinc-900 hover:border-zinc-800 bg-zinc-900/30 hover:bg-zinc-800/20 transition-all duration-200 group"
+                    >
+                      <img 
+                        src={faviconUrl} 
+                        alt="" 
+                        className="w-6 h-6 rounded bg-zinc-900 p-0.5"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'/%3E";
+                        }}
+                      />
+                      <div className="flex-grow min-w-0">
+                        <div className="text-[13.5px] text-zinc-200 font-medium truncate group-hover:text-blue-400 transition-colors">
+                          {src.title}
+                        </div>
+                        <div className="text-[11.5px] text-zinc-500 font-mono truncate mt-0.5">
+                          {src.domain}
+                        </div>
+                      </div>
+                      <ArrowUpRight className="w-4 h-4 text-zinc-500 group-hover:text-zinc-300 transition-colors flex-shrink-0" />
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("ayushdwivedi001@gmail.com");
+  const [loginMasterKey, setLoginMasterKey] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [isChatActive, setIsChatActive] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatTitle, setChatTitle] = useState("Greeting");
+  const [sessionsList, setSessionsList] = useState<any[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
   // Code inspection split pane states
   const [activeFile, setActiveFile] = useState<{ name: string; code: string } | null>(null);
@@ -204,74 +626,180 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState("DeepSeek V4 Flash");
   const [selectedVariant, setSelectedVariant] = useState("Max");
   const [moreModelsModalOpen, setMoreModelsModalOpen] = useState(false);
-  const [modelsList, setModelsList] = useState([
-    {
-      name: "Fable 5",
-      desc: "For your toughest challenges",
-      unavailable: true,
-      requiresUpgrade: true,
-      isFavourite: true,
-    },
-    {
-      name: "Opus 4.8",
-      desc: "For complex tasks",
-      requiresUpgrade: true,
-      isFavourite: true,
-    },
-    {
-      name: "Sonnet 4.6",
-      desc: "Most efficient for everyday tasks",
-      isFavourite: true,
-    },
-    {
-      name: "DeepSeek V4 Flash",
-      desc: "Fastest performance with intelligence",
-      isFavourite: true,
-    },
-    {
-      name: "Haiku 4.5",
-      desc: "Fastest for quick answers",
-      isFavourite: false,
-    },
-    {
-      name: "Llama 3.3 70B",
-      desc: "High quality open-source model",
-      isFavourite: false,
-    },
-    {
-      name: "Qwen 2.5 72B",
-      desc: "Excellent coding and multilingual model",
-      isFavourite: false,
-    },
-    {
-      name: "Gemma 2 27B",
-      desc: "Lightweight and efficient model from Google",
-      isFavourite: false,
-    },
-  ]);
+  const [modelsList, setModelsList] = useState<any[]>([]);
 
-  const handleToggleFavourite = (modelName: string) => {
-    setModelsList((prev) =>
-      prev.map((model) =>
-        model.name === modelName
-          ? { ...model, isFavourite: !model.isFavourite }
-          : model
-      )
-    );
-  };
-
+  const activeWsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const messageIdCounter = useRef(0);
   const isDraggingRef = useRef(false);
 
-  // Auto scroll to bottom of chat when messages change
+  // Check auth on mount
   useEffect(() => {
+    const token = getToken();
+    if (token) {
+      setIsLoggedIn(true);
+      loadInitialData();
+    }
+
+    const handleUnauthorized = () => {
+      setIsLoggedIn(false);
+      clearToken();
+    };
+
+    window.addEventListener("voxkage_unauthorized", handleUnauthorized);
+    return () => {
+      window.removeEventListener("voxkage_unauthorized", handleUnauthorized);
+    };
+  }, []);
+
+  const loadInitialData = async () => {
+    try {
+      // Load sessions list
+      const sess = await fetchSessions();
+      setSessionsList(sess);
+
+      // Load favorites
+      const favs = await fetchFavorites();
+      
+      // Load available models
+      const apiModels = await fetchModels();
+      
+      // Build modelsList
+      const builtList = apiModels.map((m: string) => {
+        let name = m;
+        let desc = "OpenCode model";
+        if (m === "deepseek-v4-flash-free") {
+          name = "DeepSeek V4 Flash";
+          desc = "Fastest performance with intelligence";
+        } else if (m === "gemini-3.5-flash") {
+          name = "Gemini 3.5 Flash";
+          desc = "Fastest for quick answers";
+        } else if (m === "claude-sonnet-4") {
+          name = "Claude 4.6 Sonnet";
+          desc = "Most efficient for everyday tasks";
+        } else if (m === "mimo-v2.5-free") {
+          name = "Mimo 2.5 Free";
+          desc = "Multimodal vision understanding model";
+        }
+        
+        return {
+          name,
+          desc,
+          isFavourite: favs.includes(m) || m === "deepseek-v4-flash-free",
+          api_key: m
+        };
+      });
+      setModelsList(builtList);
+    } catch (e) {
+      console.error("Failed to load initial data", e);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      await login(loginEmail, loginMasterKey);
+      setIsLoggedIn(true);
+      loadInitialData();
+    } catch (err: any) {
+      setLoginError(err.message || "Failed to log in.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    setIsLoggedIn(false);
+    setMessages([]);
+    setCurrentSessionId(null);
+    setIsChatActive(false);
+    setChatTitle("Greeting");
+  };
+
+  const loadSessionHistory = async (sessionId: string) => {
+    try {
+      const history = await fetchSessionMessages(sessionId);
+      const mapped = history.map((m: any) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        status: "completed" as const,
+        thinkingSteps: []
+      }));
+      setMessages(mapped);
+      setIsChatActive(true);
+      setCurrentSessionId(sessionId);
+      
+      const sess = sessionsList.find(s => s.id === sessionId);
+      if (sess) {
+        setChatTitle(sess.name);
+      }
+    } catch (e) {
+      console.error("Failed to load session messages", e);
+    }
+  };
+
+  const handleSelectSession = (sessionId: string | null) => {
+    if (sessionId) {
+      loadSessionHistory(sessionId);
+    } else {
+      handleCreateNewChat();
+    }
+  };
+
+  const handleCreateNewChat = () => {
+    if (activeWsRef.current) {
+      activeWsRef.current.close();
+    }
+    setCurrentSessionId(null);
+    setMessages([]);
+    setIsChatActive(false);
+    setChatTitle("Greeting");
+  };
+
+  const handleToggleFavourite = async (modelName: string) => {
+    let apiName = modelName;
+    if (modelName === "DeepSeek V4 Flash") apiName = "deepseek-v4-flash-free";
+    else if (modelName === "Gemini 3.5 Flash") apiName = "gemini-3.5-flash";
+    else if (modelName === "Claude 4.6 Sonnet") apiName = "claude-sonnet-4";
+    else if (modelName === "Mimo 2.5 Free") apiName = "mimo-v2.5-free";
+
+    const updated = modelsList.map((model) =>
+      model.name === modelName
+        ? { ...model, isFavourite: !model.isFavourite }
+        : model
+    );
+    setModelsList(updated);
+
+    const favs = updated.filter(m => m.isFavourite).map(m => m.api_key);
+    try {
+      await saveFavorites(favs);
+    } catch (e) {
+      console.error("Failed to save favorites to backend", e);
+    }
+  };
+
+  const modelNameToKey = (name: string): string => {
+    const lower = name.toLowerCase();
+    if (lower.includes("deepseek")) return "deepseek-flash";
+    if (lower.includes("gemini")) return "gemini-flash";
+    if (lower.includes("claude") || lower.includes("sonnet")) return "claude-sonnet";
+    if (lower.includes("mimo")) return "mimo-free";
+    return "deepseek-flash";
+  };
+
+  const scrollToBottom = () => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
   }, [messages]);
 
-  // Pointer drag events for panel resizing
   const handlePointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     isDraggingRef.current = true;
@@ -291,7 +819,6 @@ export default function Home() {
       const totalWidth = rect.width;
       const newRightWidth = totalWidth - relativeX;
 
-      // Clamps: min chat column is 380px, min code inspector column is 300px
       const minChatWidth = 380;
       const minCodeWidth = 300;
 
@@ -317,65 +844,275 @@ export default function Home() {
     };
   }, []);
 
-  const handleSendMessage = (text: string) => {
-    messageIdCounter.current += 1;
-    const userMsgId = `msg-user-${messageIdCounter.current}`;
-    const newUserMessage: Message = {
-      id: userMsgId,
+  const handleStopGeneration = () => {
+    if (activeWsRef.current) {
+      activeWsRef.current.close();
+      activeWsRef.current = null;
+    }
+    setMessages((prev) => {
+      if (prev.length === 0) return prev;
+      const copy = [...prev];
+      const lastIdx = copy.length - 1;
+      const last = copy[lastIdx];
+      if (last && last.role === "assistant" && last.status !== "completed") {
+        copy[lastIdx] = {
+          ...last,
+          status: "completed"
+        };
+      }
+      return copy;
+    });
+  };
+
+  const isStreaming = messages.length > 0 &&
+    (messages[messages.length - 1].status === "thinking" ||
+     messages[messages.length - 1].status === "streaming");
+
+  const handleSendMessage = async (text: string) => {
+    if (!text.trim()) return;
+
+    let sessionId = currentSessionId;
+    
+    // Check if new transient session
+    if (!sessionId) {
+      try {
+        const words = text.trim().split(" ");
+        const defaultName = words.slice(0, 4).join(" ") + (words.length > 4 ? "..." : "");
+        const newSess = await createSession(defaultName);
+        sessionId = newSess.id;
+        setCurrentSessionId(sessionId);
+        setChatTitle(defaultName);
+        setSessionsList(prev => [newSess, ...prev]);
+      } catch (e) {
+        console.error("Failed to create session on message send", e);
+        return;
+      }
+    }
+
+    const userMsg: Message = {
+      id: `user-${Date.now()}`,
       role: "user",
       content: text,
     };
 
-    // Update state to active chat and append user message
+    const assistantMsg: Message = {
+      id: `assistant-${Date.now()}`,
+      role: "assistant",
+      content: "",
+      status: "thinking",
+      thinkingDuration: 0,
+      thinkingStart: Date.now(),
+      thinkingSteps: []
+    };
+
     setIsChatActive(true);
-    setMessages((prev) => [...prev, newUserMessage]);
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    // Set dynamic chat title based on the first query
-    if (messages.length === 0) {
-      const truncatedTitle = text.length > 15 ? text.substring(0, 15) + "..." : text;
-      setChatTitle(truncatedTitle);
-    }
+    const token = getToken() || "";
+    const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId}?token=${token}`;
+    const socket = new WebSocket(wsUrl);
+    activeWsRef.current = socket;
 
-    const isTelegramFileQuery =
-      text.toLowerCase().includes("python") &&
-      text.toLowerCase().includes("file") &&
-      text.toLowerCase().includes("telegram");
-
-    // Trigger mock assistant response after delay
-    setTimeout(() => {
-      messageIdCounter.current += 1;
-      const assistantMsgId = `msg-assistant-${messageIdCounter.current}`;
-      
-      let mockResponse = getMockResponse(text);
-      let responseFiles: typeof MOCK_TELEGRAM_FILES | undefined = undefined;
-
-      if (isTelegramFileQuery) {
-        mockResponse = `Auto-start wiring. The launcher snippet goes into cli.py's cmd_launch() right after _ensure_tray_running(). Every time you run voxkage, it checks the lock file and starts the watcher if it isn't already running — same singleton pattern as the tray. You never have to manually start it.
-
-Drop-in replacement. The telegram_server.py MCP tool names are identical — nothing in GEMINI.md or your settings needs to change. telegram_get_pending_messages still works as a manual check, it now also reads the inbox file in addition to live-polling.`;
-        responseFiles = MOCK_TELEGRAM_FILES;
-      }
-
-      const newAssistantMessage: Message = {
-        id: assistantMsgId,
-        role: "assistant",
-        content: mockResponse,
-        files: responseFiles,
+    socket.onopen = () => {
+      const payload = {
+        message: text,
+        model: modelNameToKey(selectedModel),
+        variant: selectedVariant,
+        client_time: new Date().toLocaleString()
       };
-      setMessages((prev) => [...prev, newAssistantMessage]);
-    }, 900);
+      socket.send(json_stringify_safe(payload));
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "hud_log") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant") {
+              const steps = last.thinkingSteps || [];
+              const exists = steps.some(s => s.label === data.content);
+              if (!exists) {
+                const stepId = `step-${steps.length + 1}`;
+                copy[lastIdx] = {
+                  ...last,
+                  thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
+                };
+              }
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "tool_success") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant" && last.thinkingSteps) {
+              copy[lastIdx] = {
+                ...last,
+                thinkingSteps: last.thinkingSteps.map(s => {
+                  if (s.status === "pending") {
+                    return { ...s, status: "success" };
+                  }
+                  return s;
+                })
+              };
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "tool_failed") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant" && last.thinkingSteps) {
+              copy[lastIdx] = {
+                ...last,
+                thinkingSteps: last.thinkingSteps.map(s => {
+                  if (s.status === "pending") {
+                    return { ...s, status: "failed" };
+                  }
+                  return s;
+                })
+              };
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "token") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant") {
+              const isThinking = last.status === "thinking";
+              const newStatus = isThinking ? "streaming" : last.status;
+              const newDuration = isThinking && last.thinkingStart
+                ? Math.max(1, Math.round((Date.now() - last.thinkingStart) / 1000))
+                : last.thinkingDuration;
+
+              copy[lastIdx] = {
+                ...last,
+                status: newStatus,
+                thinkingDuration: newDuration,
+                content: last.content + data.content
+              };
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "rename") {
+          setChatTitle(data.name);
+          loadInitialData();
+        }
+        else if (data.type === "done") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant") {
+              copy[lastIdx] = {
+                ...last,
+                status: "completed"
+              };
+            }
+            return copy;
+          });
+          socket.close();
+        }
+      } catch (err) {
+        console.error("Error parsing WS packet", err);
+      }
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    socket.onclose = () => {
+      activeWsRef.current = null;
+    };
   };
 
-  const getMockResponse = (text: string): string => {
-    const lower = text.toLowerCase().trim();
-    if (lower.includes("hello") || lower.includes("hi")) {
-      return "Hello! How can I help you today?";
+  const json_stringify_safe = (val: any) => {
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return "";
     }
-    if (lower.includes("help") || lower.includes("what can you do")) {
-      return "I can assist you with web design layout verification, shader compiling, backend optimizations, and system tasks, sir. Let me know what you would like to build next.";
-    }
-    return `I have received your request regarding "${text}". As a mock local service, I am ready to process this task and generate the next stage of the landing interface. How would you like me to proceed?`;
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a] px-4 select-none">
+        <GradientBackground isChatActive={false} />
+        
+        <div className="w-full max-w-md bg-[#0e0e11] border border-zinc-800/80 rounded-2xl p-8 z-10 shadow-2xl relative">
+          <div className="flex flex-col items-center mb-8">
+            <h1 className="text-white text-3xl font-light tracking-[0.03em] font-sans mb-2" style={{ fontFamily: "Copernicus, Tiempos, Georgia, serif" }}>
+              VoxKage
+            </h1>
+            <p className="text-zinc-500 text-[13px] font-sans text-center">
+              Enter your developer master credentials to authorize access.
+            </p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] text-zinc-400 font-sans font-medium pl-1 text-left w-full block">
+                Developer Email
+              </label>
+              <input
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
+                required
+                className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700 font-sans"
+                placeholder="ayushdwivedi001@gmail.com"
+              />
+            </div>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] text-zinc-400 font-sans font-medium pl-1 text-left w-full block">
+                Master Key
+              </label>
+              <input
+                type="password"
+                value={loginMasterKey}
+                onChange={(e) => setLoginMasterKey(e.target.value)}
+                required
+                className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700 font-sans"
+                placeholder="••••••••"
+              />
+            </div>
+            
+            {loginError && (
+              <span className="text-red-400 text-[12.5px] font-sans pl-1 block text-left">
+                {loginError}
+              </span>
+            )}
+            
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full h-11 bg-[#cc785c] hover:bg-[#a9583e] text-white rounded-xl font-sans font-medium text-[14.5px] transition-all duration-200 cursor-pointer mt-4 flex items-center justify-center disabled:opacity-50"
+            >
+              {loginLoading ? "Authorizing..." : "Authorize Access"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a]">
@@ -383,7 +1120,15 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
       <GradientBackground isChatActive={isChatActive} />
 
       {/* Claude-style Premium Sidebar */}
-      <Sidebar isExpanded={sidebarExpanded} setIsExpanded={setSidebarExpanded} />
+      <Sidebar 
+        isExpanded={sidebarExpanded} 
+        setIsExpanded={setSidebarExpanded}
+        currentSessionId={currentSessionId}
+        onSelectSession={handleSelectSession}
+        sessionsList={sessionsList}
+        onCreateNewChat={handleCreateNewChat}
+        onLogout={handleLogout}
+      />
 
       {/* Main content workspace container */}
       <main
@@ -454,86 +1199,11 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
                       </div>
                     ) : (
                       /* Assistant Response (aligned left) */
-                      <div className="flex flex-col items-start w-full">
-                        {/* Small thought tag */}
-                        <span className="text-[12.5px] text-zinc-500 font-sans mb-1.5 select-none">
-                          Thought for 0s
-                        </span>
-
-                        {/* Main text message */}
-                        <div className="text-[16.5px] text-zinc-100 leading-relaxed font-serif max-w-[90%] select-text whitespace-pre-wrap">
-                          {msg.content}
-                        </div>
-
-                        {/* Custom Mock Files List */}
-                        {msg.files && msg.files.length > 0 && (
-                          <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4">
-                            {msg.files.map((file, idx) => (
-                              <FileListItem
-                                key={idx}
-                                name={file.name}
-                                type={file.type}
-                                onClick={() => {
-                                  setActiveFile(file);
-                                  setIsExpanded(false);
-                                }}
-                                onDownload={() => alert(`Downloading ${file.name}`)}
-                              />
-                            ))}
-
-                            {/* Download All Button */}
-                            <div className="mt-1 flex justify-start">
-                              <button
-                                type="button"
-                                onClick={() => alert("Downloading all files")}
-                                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13px] font-medium transition-all duration-200 cursor-pointer"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Download all</span>
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Actions bar */}
-                        <div className="flex items-center gap-4 mt-3 text-zinc-500 select-none mb-2">
-                          <button
-                            type="button"
-                            className="hover:text-zinc-300 transition-colors"
-                            aria-label="Copy response"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="hover:text-zinc-300 transition-colors"
-                            aria-label="Speak response"
-                          >
-                            <Volume2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="hover:text-zinc-300 transition-colors"
-                            aria-label="Thumbs up"
-                          >
-                            <ThumbsUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="hover:text-zinc-300 transition-colors"
-                            aria-label="Thumbs down"
-                          >
-                            <ThumbsDown className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            className="hover:text-zinc-300 transition-colors"
-                            aria-label="Retry response"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
+                      <AssistantResponseBubble
+                        msg={msg}
+                        setActiveFile={setActiveFile}
+                        onScrollToBottom={scrollToBottom}
+                      />
                     )}
                   </div>
                 ))}
@@ -545,8 +1215,7 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
             {!isChatActive && (
               <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20">
                 <h1
-                  className="text-white text-3xl sm:text-[40px] md:text-[44px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center"
-                  style={{ fontFamily: "Copernicus, Tiempos, Georgia, serif" }}
+                  className="text-white text-3xl sm:text-[40px] md:text-[44px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
                 >
                   Ready to build, Ayush?
                 </h1>
@@ -558,6 +1227,8 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
                   setSelectedVariant={setSelectedVariant}
                   modelsList={modelsList}
                   onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                  isStreaming={isStreaming}
+                  onStop={handleStopGeneration}
                 />
               </div>
             )}
@@ -575,6 +1246,8 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
                     setSelectedVariant={setSelectedVariant}
                     modelsList={modelsList}
                     onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                    isStreaming={isStreaming}
+                    onStop={handleStopGeneration}
                   />
 
                   <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">

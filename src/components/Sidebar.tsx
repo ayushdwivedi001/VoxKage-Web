@@ -19,20 +19,22 @@ import {
 interface SidebarProps {
   isExpanded: boolean;
   setIsExpanded: (expanded: boolean) => void;
+  currentSessionId: string | null;
+  onSelectSession: (id: string | null) => void;
+  sessionsList: any[];
+  onCreateNewChat: () => void;
+  onLogout: () => void;
 }
 
-export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
-  // Sample chats list for demonstration
-  const recentChats = [
-    "Getting to know VoxKage",
-    "Custom mesh shader code",
-    "Next.js 16 dynamic routing",
-    "Japanese JLPT N4 study plan",
-    "Modern software engineer portfolio",
-    "Resume review request",
-    "Aptitude test preparation strategy",
-    "Monthly Mutual Fund Investments",
-  ];
+export default function Sidebar({
+  isExpanded,
+  setIsExpanded,
+  currentSessionId,
+  onSelectSession,
+  sessionsList,
+  onCreateNewChat,
+  onLogout,
+}: SidebarProps) {
 
   return (
     <aside
@@ -95,11 +97,12 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
       {/* === MAIN CONTENT SCROLL AREA === */}
       <div className="flex-grow overflow-y-auto overflow-x-hidden py-4 flex flex-col gap-5 custom-sidebar-scrollbar w-full">
         {/* New Chat Button */}
-        <div className="px-[6px] w-full">
+        <div className="px-[6px] w-full text-zinc-300">
           {isExpanded ? (
             <button
               type="button"
-              className="flex items-center gap-3.5 w-full h-[40px] pl-[9px] rounded-full border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 hover:bg-zinc-800/80 text-zinc-100 hover:text-white transition-all duration-200 active:scale-[0.98] overflow-hidden"
+              onClick={onCreateNewChat}
+              className="flex items-center gap-3.5 w-full h-[40px] pl-[9px] rounded-full border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 hover:bg-zinc-800/80 text-zinc-100 hover:text-white transition-all duration-200 active:scale-[0.98] overflow-hidden cursor-pointer"
             >
               <Plus className="w-[18px] h-[18px] stroke-[2.5] flex-shrink-0 text-zinc-400 hover:text-white hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200" />
               <span className="text-[14.5px] font-medium tracking-wide whitespace-nowrap">New chat</span>
@@ -107,7 +110,8 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
           ) : (
             <button
               type="button"
-              className="flex items-center justify-center w-[36px] h-[36px] rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-100 hover:text-white hover:bg-zinc-800 transition-all duration-200"
+              onClick={onCreateNewChat}
+              className="flex items-center justify-center w-[36px] h-[36px] rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-100 hover:text-white hover:bg-zinc-800 transition-all duration-200 cursor-pointer"
               aria-label="New chat"
             >
               <Plus className="w-[18px] h-[18px] stroke-[2.5] flex-shrink-0" />
@@ -210,15 +214,28 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
               </button>
             </div>
             <div className="flex flex-col gap-0.5 -mx-3 max-h-[220px] overflow-y-auto custom-sidebar-scrollbar pr-1">
-              {recentChats.map((chat, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  className="w-full text-left py-2 px-3 rounded-lg text-[13.5px] text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-150 truncate block"
-                >
-                  {chat}
-                </button>
-              ))}
+              {sessionsList.map((session) => {
+                const isActive = session.id === currentSessionId;
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => onSelectSession(session.id)}
+                    className={`w-full text-left py-2 px-3 rounded-lg text-[13.5px] truncate block cursor-pointer transition-all duration-150 ${
+                      isActive
+                        ? "bg-zinc-800/80 text-white font-medium border border-zinc-700/20"
+                        : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+                    }`}
+                  >
+                    {session.name}
+                  </button>
+                );
+              })}
+              {sessionsList.length === 0 && (
+                <span className="text-[12.5px] text-zinc-600 px-3 py-1 font-sans">
+                  No active chats
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -270,8 +287,10 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
             </button>
             <button
               type="button"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] transition-all duration-200"
-              aria-label="User settings"
+              onClick={onLogout}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] transition-all duration-200 cursor-pointer"
+              aria-label="Logout"
+              title="Logout"
             >
               <ChevronsUpDown className="w-3.5 h-3.5" />
             </button>
