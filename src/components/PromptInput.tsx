@@ -3,7 +3,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, ChevronDown, Mic, ArrowUp } from "lucide-react";
 
-export default function PromptInput() {
+interface PromptInputProps {
+  onSubmit?: (text: string) => void;
+}
+
+export default function PromptInput({ onSubmit }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -52,6 +56,15 @@ export default function PromptInput() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleSubmit = () => {
+    if (value.trim().length > 0) {
+      if (onSubmit) {
+        onSubmit(value);
+      }
+      setValue("");
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value);
   };
@@ -59,9 +72,11 @@ export default function PromptInput() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      // Handle submit action here
+      handleSubmit();
     }
   };
+
+  const hasText = value.trim().length > 0;
 
   return (
     <div
@@ -122,7 +137,12 @@ export default function PromptInput() {
           {/* Submit Button */}
           <button
             type="button"
-            className="flex items-center justify-center w-9 h-9 rounded-full bg-zinc-700/80 hover:bg-zinc-600 text-zinc-100 hover:text-white transition-all duration-200 active:scale-95 cursor-pointer ml-1"
+            onClick={handleSubmit}
+            className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-300 ml-1 ${
+              hasText
+                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+                : "bg-zinc-700/50 text-zinc-500 cursor-default"
+            }`}
             aria-label="Submit prompt"
           >
             <ArrowUp className="w-5 h-5 stroke-[2.5]" />

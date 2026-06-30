@@ -15,7 +15,8 @@ const FRAGMENT_SHADER_SOURCE = `
   precision mediump float;
   varying vec2 vUv;
   uniform float u_time;
-  uniform float u_load; // 0.0 to 1.0 animation uniform
+  uniform float u_load;         // 0.0 to 1.0 animation uniform on load
+  uniform float u_chat_active;  // 0.0 to 1.0 animation uniform when chat starts
 
   // Simple pseudo-random hash function
   float hash(vec2 p) {
@@ -26,9 +27,12 @@ const FRAGMENT_SHADER_SOURCE = `
     // Generate a slow-motion horizontal wave traveling from left to right
     float wave = sin(vUv.x * 2.2 - u_time * 0.33) * 0.045;
     
+    // Slide the linear gradient down by 65% when chat is active
+    float chatOffset = u_chat_active * 0.65;
+    
     // Stable gradient factor calculation (gradient covers 94% height)
     float limit = 0.94;
-    float stableFactor = clamp((vUv.y + wave) / limit, 0.0, 1.0);
+    float stableFactor = clamp((vUv.y + wave + chatOffset) / limit, 0.0, 1.0);
     
     // Symmetric sides peak curve: 0.0 at center (0.5), rises to 1.0 at sides (0.0 and 1.0)
     float sidesPeak = 4.0 * (vUv.x - 0.5) * (vUv.x - 0.5);
@@ -58,7 +62,7 @@ const FRAGMENT_SHADER_SOURCE = `
     
     vec3 color = black;
     
-    // Smooth 3-stage vertical gradient transition
+    // Smooth 3-stage vertical gradient transition (pushed even higher)
     if (factor < 0.46) {
       // Transition from light blue to dark blue (covers bottom 46% of the gradient)
       float t = smoothstep(0.0, 0.46, factor);
@@ -89,9 +93,20 @@ const FRAGMENT_SHADER_SOURCE = `
   }
 `;
 
-export default function GradientBackground() {
+interface GradientBackgroundProps {
+  isChatActive?: boolean;
+}
+
+export default function GradientBackground({ isChatActive = false }: GradientBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [mounted, setMounted] = useState(false);
+  
+  // Use a ref for the chat active state to read inside WebGL loop without re-triggering useEffect
+  const chatActiveRef = useRef(isChatActive);
+
+  useEffect(() => {
+    chatActiveRef.current = isChatActive;
+  }, [isChatActive]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -162,6 +177,7 @@ export default function GradientBackground() {
 
     const timeLoc = gl.getUniformLocation(program, "u_time");
     const loadLoc = gl.getUniformLocation(program, "u_load");
+    const chatLoc = gl.getUniformLocation(program, "u_chat_active");
 
     // Handling window resize
     const resize = () => {
@@ -176,6 +192,7 @@ export default function GradientBackground() {
     resize();
 
     let animationFrameId: number;
+    let currentChatActive = 0.0;
     const startTime = performance.now();
 
     const render = () => {
@@ -187,6 +204,11 @@ export default function GradientBackground() {
       const t = Math.min(elapsed / duration, 1.0);
       const loadVal = 1.0 - Math.pow(1.0 - t, 3.0); // easeOutCubic
       gl.uniform1f(loadLoc, loadVal);
+
+      // Smoothly animate u_chat_active towards target
+      const chatActiveTarget = chatActiveRef.current ? 1.0 : 0.0;
+      currentChatActive += (chatActiveTarget - currentChatActive) * 0.055; // Smooth interpolation
+      gl.uniform1f(chatLoc, currentChatActive);
 
       gl.clearColor(0.02, 0.02, 0.04, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
