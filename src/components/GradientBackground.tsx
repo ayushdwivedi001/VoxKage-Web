@@ -60,30 +60,26 @@ const FRAGMENT_SHADER_SOURCE = `
     // 4. Pure Black (Top)
     vec3 black = vec3(0.02, 0.02, 0.04); // #05050a
     
-    vec3 color = black;
+    // Progressive multi-color blend for a completely seamless, continuous transition (no bands)
+    // 1. Blend from light blue to dark blue: finishes earlier (at 0.35) to push light blue down
+    float t1 = smoothstep(0.0, 0.35, factor);
+    vec3 col1 = mix(lightBlue, darkBlue, t1);
     
-    // Smooth 3-stage vertical gradient transition (pushed even higher)
-    if (factor < 0.46) {
-      // Transition from light blue to dark blue (covers bottom 46% of the gradient)
-      float t = smoothstep(0.0, 0.46, factor);
-      color = mix(lightBlue, darkBlue, t);
-    } else if (factor < 0.82) {
-      // Transition from dark blue to deep indigo (covers middle region up to 82%)
-      float t = smoothstep(0.46, 0.82, factor);
-      color = mix(darkBlue, deepIndigo, t);
-    } else {
-      // Transition from deep indigo to black (fades to black at the very top 6% of screen)
-      float t = smoothstep(0.82, 1.0, factor);
-      color = mix(deepIndigo, black, t);
-    }
+    // 2. Blend into deep indigo: starts earlier (at 0.22) and ends around 0.80
+    float t2 = smoothstep(0.22, 0.80, factor);
+    vec3 col2 = mix(col1, deepIndigo, t2);
     
-    // Noise grain texture (0.11 intensity) - active over the whole screen from the start
+    // 3. Blend into pure black at the top: starts earlier (at 0.52) and completes at 0.96
+    float t3 = smoothstep(0.52, 0.96, factor);
+    vec3 color = mix(col2, black, t3);
+    
+    // Noise grain texture (0.11 intensity) - active over the whole screen from the start, disabled in chat
     float timeStep = floor(u_time * 15.0);
     vec2 grainSeed = vUv + vec2(hash(vec2(timeStep, 1.1)), hash(vec2(timeStep, 2.2)));
     float grainVal = hash(grainSeed);
-    float grain = (grainVal - 0.5) * 0.11;
+    float grain = (grainVal - 0.5) * 0.11 * (1.0 - u_chat_active);
     
-    // Apply grain (is applied even when factor is 1.0, producing grain on black base)
+    // Apply grain
     color += vec3(grain);
     
     // Clamp to valid range
@@ -272,8 +268,9 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
           style={{
             width: "100%",
             height: "100%",
-            opacity: 0.035, // Static noise texture active from 1st frame
+            opacity: isChatActive ? 0.0 : 0.035, // Disable noise overlay in active chat
             animation: "noiseAnimation 0.22s steps(4) infinite",
+            transition: "opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
           <filter id="noiseFilter">
