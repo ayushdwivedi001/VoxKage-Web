@@ -15,6 +15,7 @@ import PromptInput from "@/components/PromptInput";
 import Sidebar from "@/components/Sidebar";
 import FileListItem from "@/components/FileListItem";
 import FileInspectorPanel from "@/components/FileInspectorPanel";
+import MoreModelsModal from "@/components/MoreModelsModal";
 
 interface Message {
   id: string;
@@ -198,6 +199,66 @@ export default function Home() {
   const [activeFile, setActiveFile] = useState<{ name: string; code: string } | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(480);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // Model Selector global states
+  const [selectedModel, setSelectedModel] = useState("DeepSeek V4 Flash");
+  const [selectedVariant, setSelectedVariant] = useState("Max");
+  const [moreModelsModalOpen, setMoreModelsModalOpen] = useState(false);
+  const [modelsList, setModelsList] = useState([
+    {
+      name: "Fable 5",
+      desc: "For your toughest challenges",
+      unavailable: true,
+      requiresUpgrade: true,
+      isFavourite: true,
+    },
+    {
+      name: "Opus 4.8",
+      desc: "For complex tasks",
+      requiresUpgrade: true,
+      isFavourite: true,
+    },
+    {
+      name: "Sonnet 4.6",
+      desc: "Most efficient for everyday tasks",
+      isFavourite: true,
+    },
+    {
+      name: "DeepSeek V4 Flash",
+      desc: "Fastest performance with intelligence",
+      isFavourite: true,
+    },
+    {
+      name: "Haiku 4.5",
+      desc: "Fastest for quick answers",
+      isFavourite: false,
+    },
+    {
+      name: "Llama 3.3 70B",
+      desc: "High quality open-source model",
+      isFavourite: false,
+    },
+    {
+      name: "Qwen 2.5 72B",
+      desc: "Excellent coding and multilingual model",
+      isFavourite: false,
+    },
+    {
+      name: "Gemma 2 27B",
+      desc: "Lightweight and efficient model from Google",
+      isFavourite: false,
+    },
+  ]);
+
+  const handleToggleFavourite = (modelName: string) => {
+    setModelsList((prev) =>
+      prev.map((model) =>
+        model.name === modelName
+          ? { ...model, isFavourite: !model.isFavourite }
+          : model
+      )
+    );
+  };
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageIdCounter = useRef(0);
@@ -489,7 +550,15 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
                 >
                   Ready to build, Ayush?
                 </h1>
-                <PromptInput onSubmit={handleSendMessage} />
+                <PromptInput
+                  onSubmit={handleSendMessage}
+                  selectedModel={selectedModel}
+                  setSelectedModel={setSelectedModel}
+                  selectedVariant={selectedVariant}
+                  setSelectedVariant={setSelectedVariant}
+                  modelsList={modelsList}
+                  onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                />
               </div>
             )}
 
@@ -498,7 +567,15 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
               <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5">
                 {/* Content layers */}
                 <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
-                  <PromptInput onSubmit={handleSendMessage} />
+                  <PromptInput
+                    onSubmit={handleSendMessage}
+                    selectedModel={selectedModel}
+                    setSelectedModel={setSelectedModel}
+                    selectedVariant={selectedVariant}
+                    setSelectedVariant={setSelectedVariant}
+                    modelsList={modelsList}
+                    onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                  />
 
                   <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">
                     VoxKage can make mistakes. Please double check responses.
@@ -538,6 +615,17 @@ Drop-in replacement. The telegram_server.py MCP tool names are identical — not
 
         </div>
       </main>
+
+      {/* More Models Modal */}
+      {moreModelsModalOpen && (
+        <MoreModelsModal
+          selectedModel={selectedModel}
+          modelsList={modelsList}
+          onSelectModel={setSelectedModel}
+          onToggleFavourite={handleToggleFavourite}
+          onClose={() => setMoreModelsModalOpen(false)}
+        />
+      )}
 
       {/* CSS custom scrollbar style tag */}
       <style>{`

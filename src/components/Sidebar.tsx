@@ -84,7 +84,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
         ) : (
           <button
             type="button"
-            className="flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 active:scale-95 pl-[9px] text-left"
+            className="flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 active:scale-95"
             aria-label="Expand sidebar"
           >
             <PanelLeft className="w-[18px] h-[18px] flex-shrink-0" />
@@ -107,7 +107,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
           ) : (
             <button
               type="button"
-              className="flex items-center w-[36px] h-[40px] pl-[9px] rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-100 hover:text-white hover:bg-zinc-800 transition-all duration-200"
+              className="flex items-center justify-center w-[36px] h-[36px] rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-100 hover:text-white hover:bg-zinc-800 transition-all duration-200"
               aria-label="New chat"
             >
               <Plus className="w-[18px] h-[18px] stroke-[2.5] flex-shrink-0" />
@@ -239,7 +239,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
           </button>
         )}
 
-        <div className="relative flex items-center w-full pl-[4px]">
+        <div className={`relative flex items-center w-full ${isExpanded ? "pl-1" : "justify-center pl-0"}`}>
           {/* Avatar (Static horizontal center of 24px) */}
           <div className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800 text-zinc-300 text-[13px] font-semibold border border-zinc-700/40 flex-shrink-0 select-none">
             A

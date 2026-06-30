@@ -2,15 +2,89 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, ChevronDown, Mic, ArrowUp } from "lucide-react";
+import ModelSelectorDropdown from "./ModelSelectorDropdown";
+import VariantSubPopup from "./VariantSubPopup";
+
+interface ModelOption {
+  name: string;
+  desc: string;
+  unavailable?: boolean;
+  requiresUpgrade?: boolean;
+  isFavourite?: boolean;
+}
 
 interface PromptInputProps {
   onSubmit?: (text: string) => void;
+  selectedModel: string;
+  setSelectedModel: (model: string) => void;
+  selectedVariant: string;
+  setSelectedVariant: (variant: string) => void;
+  modelsList: ModelOption[];
+  onOpenMoreModels: () => void;
 }
 
-export default function PromptInput({ onSubmit }: PromptInputProps) {
+export default function PromptInput({
+  onSubmit,
+  selectedModel,
+  setSelectedModel,
+  selectedVariant,
+  setSelectedVariant,
+  modelsList,
+  onOpenMoreModels,
+}: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+
+  // Hover states for Variant sub-popup
+  const [isHoveringVariantRow, setIsHoveringVariantRow] = useState(false);
+  const [isHoveringVariantPopup, setIsHoveringVariantPopup] = useState(false);
+  const showVariantPopup = modelDropdownOpen && (isHoveringVariantRow || isHoveringVariantPopup);
+
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Click outside listener for main dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setModelDropdownOpen(false);
+      }
+    };
+    if (modelDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [modelDropdownOpen]);
+
+  const handleSelectModel = (modelName: string) => {
+    setSelectedModel(modelName);
+    setModelDropdownOpen(false);
+  };
+
+  const handleSelectVariant = (variantName: string) => {
+    setSelectedVariant(variantName);
+    setIsHoveringVariantRow(false);
+    setIsHoveringVariantPopup(false);
+  };
+
+  const handleOpenMoreModels = () => {
+    setModelDropdownOpen(false);
+    onOpenMoreModels();
+  };
+
+  const handleMouseEnterVariant = () => setIsHoveringVariantRow(true);
+  const handleMouseLeaveVariant = () => {
+    setTimeout(() => {
+      setIsHoveringVariantRow(false);
+    }, 120);
+  };
+
+  const handleMouseEnterVariantPopup = () => setIsHoveringVariantPopup(true);
+  const handleMouseLeaveVariantPopup = () => setIsHoveringVariantPopup(false);
 
   // Auto-resize height based on value
   const adjustHeight = () => {
@@ -116,14 +190,41 @@ export default function PromptInput({ onSubmit }: PromptInputProps) {
 
         {/* Right Side: Options and Submit */}
         <div className="flex items-center gap-3">
-          {/* Build Dropdown */}
-          <button
-            type="button"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 text-[14px] font-medium"
-          >
-            <span>Build</span>
-            <ChevronDown className="w-4 h-4 opacity-70" />
-          </button>
+          {/* Model Selector Dropdown & Button Wrapper */}
+          <div ref={dropdownRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 text-[13.5px] font-medium border border-transparent hover:border-zinc-800 bg-transparent select-none cursor-pointer"
+            >
+              <span>{selectedModel}</span>
+              <span className="text-zinc-500 font-normal text-[12.5px] ml-0.5">{selectedVariant}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5" />
+            </button>
+
+            {/* Main Dropdown */}
+            {modelDropdownOpen && (
+              <ModelSelectorDropdown
+                selectedModel={selectedModel}
+                selectedVariant={selectedVariant}
+                modelsList={modelsList}
+                onSelectModel={handleSelectModel}
+                onOpenMoreModels={handleOpenMoreModels}
+                onMouseEnterVariant={handleMouseEnterVariant}
+                onMouseLeaveVariant={handleMouseLeaveVariant}
+              />
+            )}
+
+            {/* Variant Sub-Popup */}
+            {showVariantPopup && (
+              <VariantSubPopup
+                selectedVariant={selectedVariant}
+                onSelectVariant={handleSelectVariant}
+                onMouseEnter={handleMouseEnterVariantPopup}
+                onMouseLeave={handleMouseLeaveVariantPopup}
+              />
+            )}
+          </div>
 
           {/* Voice Input Button */}
           <button
