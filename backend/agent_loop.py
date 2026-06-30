@@ -514,7 +514,13 @@ async def run_agentic_loop(
             if assistant_text:
                 messages.append({"role": "assistant", "content": assistant_text})
 
-            if not current_tool_calls:
+            if current_tool_calls:
+                # Clear the intermediate streamed tokens from the response bubble
+                yield json.dumps({"type": "clear_tokens", "content": assistant_text})
+                # Add to client's thinking steps as well
+                if assistant_text.strip():
+                    yield json.dumps({"type": "hud_log", "content": assistant_text.strip()})
+            else:
                 break
 
             # Execute tool calls

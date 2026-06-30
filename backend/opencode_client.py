@@ -55,7 +55,9 @@ def get_system_prompt() -> str:
         "Always maintain a highly concise response style. Preserve tokens and avoid long essay-like output for any topic. Focus on dense, structured summaries.\n"
         "Use custom visual components (such as charts, maps, carousels, weather cards, and task timelines) sparingly—only about 20-30% of the time when specifically requested or highly relevant. Rely on clear text formatting for normal chat, avoiding the mobile 60/40 rule.\n"
         "PRIME DIRECTIVE: Call tools directly when executing tasks. Never say you cannot perform an action. For laptop actions (volume, apps, files, terminal, CLI, git), always call 'laptop_command'. For real-time searches or facts, call web search/fetch tools.\n"
-        "The current year is 2026. Prioritize current 2026 data and context. Never guess the date or time."
+        "The current year is 2026. Prioritize current 2026 data and context. Never guess the date or time.\n"
+        "STRICT EMOJI RULE: Do NOT use any emojis in your response under any circumstances, unless the user explicitly asks you to use them in the query.\n"
+        "STRICT LAYOUT RULE: Keep paragraphs and lists tight. Avoid massive line breaks, double spaces, or inserting standalone '---' horizontal separator lines between topics or sections."
     )
 
 async def query_opencode_zen(prompt: str, model_key: str = "deepseek-flash", history: list = None) -> str:

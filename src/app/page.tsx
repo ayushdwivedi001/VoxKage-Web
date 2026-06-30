@@ -125,6 +125,57 @@ interface AssistantResponseBubbleProps {
   onScrollToBottom: () => void;
 }
 
+const extractFilesFromContent = (content: string) => {
+  const files: Array<{ name: string; type: string; code: string }> = [];
+  if (!content) return files;
+
+  const codeBlockRegex = /```(\w*)\n([\s\S]*?)(?:```|$)/g;
+  let match;
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    const lang = match[1] || "txt";
+    const code = match[2];
+    if (!code.trim()) continue;
+
+    // Try to find a filename in the text preceding the code block (within last 150 characters)
+    const searchStartIndex = Math.max(0, match.index - 150);
+    const precedingText = content.substring(searchStartIndex, match.index);
+    
+    // Regex to search for a filename
+    const fileMatch = precedingText.match(/`?([\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?/i);
+    let fileName = fileMatch ? fileMatch[1] : "";
+
+    if (!fileName) {
+      const ext = lang === "python" ? "py" : lang === "javascript" ? "js" : lang === "typescript" ? "ts" : lang === "html" ? "html" : lang === "css" ? "css" : "txt";
+      const index = files.length + 1;
+      fileName = `app_${index}.${ext}`;
+    }
+
+    if (!files.some(f => f.name === fileName)) {
+      let fileType = "Code";
+      if (fileName.endsWith(".py")) fileType = "Python";
+      else if (fileName.endsWith(".js") || fileName.endsWith(".jsx")) fileType = "JavaScript";
+      else if (fileName.endsWith(".ts") || fileName.endsWith(".tsx")) fileType = "TypeScript";
+      else if (fileName.endsWith(".html")) fileType = "HTML";
+      else if (fileName.endsWith(".css")) fileType = "CSS";
+      else if (fileName.endsWith(".json")) fileType = "JSON";
+
+      files.push({
+        name: fileName,
+        type: `${fileType} · ${lang.toUpperCase()}`,
+        code: code.trim()
+      });
+    }
+  }
+
+  return files;
+};
+
+const removeCodeBlocks = (text: string) => {
+  if (!text) return "";
+  return text.replace(/```\w*\n[\s\S]*?(?:```|$)/g, "").trim();
+};
+
 const parseSources = (content: string) => {
   if (!content) return { cleanContent: "", sources: [] };
   const sourcesRegex = /<Sources\s+data="([^"]+)"\s*\/>/i;
@@ -230,35 +281,126 @@ function parseInlineElements(text: string) {
   return tokens.length > 0 ? tokens : text;
 }
 
+function renderTable(rows: string[][], key: string) {
+  if (rows.length === 0) return null;
+  const headers = rows[0];
+  const bodyRows = rows.slice(1);
+
+  return (
+    <div key={key} className="w-full my-3.5 overflow-x-auto rounded-xl border border-zinc-850 bg-zinc-950/40 custom-scrollbar select-text">
+      <table className="w-full text-left border-collapse min-w-[500px]">
+        <thead>
+          <tr className="border-b border-zinc-800/80 bg-zinc-900/10">
+            {headers.map((h, idx) => (
+              <th key={idx} className="px-4 py-2.5 text-[13px] font-semibold text-zinc-300 tracking-wide font-sans">
+                {parseInlineElements(h)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-zinc-900/60">
+          {bodyRows.map((row, rowIdx) => (
+            <tr key={rowIdx} className="hover:bg-zinc-900/10 transition-colors duration-150">
+              {row.map((cell, cellIdx) => (
+                <td key={cellIdx} className="px-4 py-2.5 text-[13px] text-zinc-400 font-sans leading-relaxed">
+                  {parseInlineElements(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function renderFormattedContent(content: string) {
   if (!content) return null;
   const lines = content.split("\n");
+  const renderedElements: React.ReactNode[] = [];
 
-  return lines.map((line, lineIdx) => {
-    // Check for markdown headings
-    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      const headingText = headingMatch[2];
-      // Headers remain white and bold, never blue
-      const headingClass = level === 1 
-        ? "text-[22px] font-bold text-zinc-100 mt-4 mb-2 block" 
-        : level === 2 
-          ? "text-[19px] font-bold text-zinc-100 mt-3.5 mb-1.5 block" 
-          : "text-[17px] font-bold text-zinc-100 mt-3 mb-1 block";
-      return (
-        <span key={lineIdx} className={headingClass}>
-          {parseInlineElements(headingText)}
-        </span>
-      );
+  let inTable = false;
+  let tableRows: string[][] = [];
+  let tableKey = 0;
+
+  const isTableRow = (line: string) => {
+    return line.trim().startsWith("|") && line.trim().endsWith("|");
+  };
+
+  const parseRowCells = (line: string) => {
+    const parts = line.split("|");
+    return parts.slice(1, parts.length - 1).map(c => c.trim());
+  };
+
+  const isSeparatorRow = (cells: string[]) => {
+    return cells.length > 0 && cells.every(c => c.match(/^:?-+:?$/));
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (isTableRow(line)) {
+      const cells = parseRowCells(line);
+      if (!inTable) {
+        // Lookahead to see if next row is separator
+        const nextLine = lines[i + 1];
+        if (nextLine && isTableRow(nextLine)) {
+          const nextCells = parseRowCells(nextLine);
+          if (isSeparatorRow(nextCells)) {
+            inTable = true;
+            tableRows = [cells];
+            i++; // skip separator
+            continue;
+          }
+        }
+      }
+
+      if (inTable) {
+        tableRows.push(cells);
+        continue;
+      }
     }
 
-    return (
-      <div key={lineIdx} className="min-h-[1.5em] mb-1">
-        {parseInlineElements(line)}
-      </div>
-    );
-  });
+    if (inTable && (!isTableRow(line) || i === lines.length - 1)) {
+      if (isTableRow(line) && i === lines.length - 1) {
+        tableRows.push(parseRowCells(line));
+      }
+      renderedElements.push(renderTable(tableRows, `table-${tableKey++}`));
+      inTable = false;
+      tableRows = [];
+      if (isTableRow(line)) continue;
+    }
+
+    if (!isTableRow(line)) {
+      const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const headingText = headingMatch[2];
+        const headingClass = level === 1 
+          ? "text-[22px] font-bold text-zinc-100 mt-4 mb-2 block" 
+          : level === 2 
+            ? "text-[19px] font-bold text-zinc-100 mt-3.5 mb-1.5 block" 
+            : "text-[17px] font-bold text-zinc-100 mt-3 mb-1 block";
+        renderedElements.push(
+          <span key={`h-${i}`} className={headingClass}>
+            {parseInlineElements(headingText)}
+          </span>
+        );
+      } else {
+        renderedElements.push(
+          <div key={`p-${i}`} className="min-h-[1.5em] mb-1">
+            {parseInlineElements(line)}
+          </div>
+        );
+      }
+    }
+  }
+
+  if (inTable && tableRows.length > 0) {
+    renderedElements.push(renderTable(tableRows, `table-${tableKey++}`));
+  }
+
+  return renderedElements;
 }
 
 function AssistantResponseBubble({
@@ -360,76 +502,77 @@ function AssistantResponseBubble({
 
   const renderStepIcon = (status: "pending" | "success" | "failed") => {
     if (status === "success") {
-      return <Check className="w-3.5 h-3.5 text-blue-400 stroke-[2.5]" />;
+      return <Check className="w-3 h-3 text-zinc-400 stroke-[2.5]" />;
     } else if (status === "failed") {
-      return <span className="text-red-400 font-bold text-[12px]">X</span>;
+      return <span className="text-red-400 font-bold text-[11px]">X</span>;
     } else {
-      return <Clock className="w-3.5 h-3.5 text-zinc-500 animate-pulse" />;
+      return <Clock className="w-3 h-3 text-zinc-500 animate-pulse" />;
     }
   };
 
+  const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
+  
+  const activeStep = thoughts.find(t => t.status === "pending") || (isMsgRunning ? thoughts[thoughts.length - 1] : null);
+  const displayLabel = isMsgRunning
+    ? (activeStep ? activeStep.label : `Thinking${dots}`)
+    : `Thought for ${msg.thinkingDuration || elapsedSeconds || 3}s`;
+
+  const showGlow = isMsgRunning;
+
   return (
     <div className="flex flex-col items-start w-full">
-      {/* --- Thinking Accordion Header --- */}
-      {msg.status === "thinking" ? (
-        <div className="flex items-center gap-2 py-1.5 text-zinc-500 font-sans select-none mb-1">
-          <span className="text-[13px] font-medium tracking-wide animate-thinking-glow">
-            Thinking{dots}
+      {/* --- Clickable Thinking Accordion Header (Always Interactive) --- */}
+      <div className="flex flex-col mb-1.5 w-full">
+        <div
+          onClick={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
+          className="flex items-center gap-2 py-1.5 text-zinc-500 hover:text-zinc-200 transition-colors duration-200 cursor-pointer select-none group/thought w-fit"
+        >
+          <ChevronRight
+            className={`w-3.5 h-3.5 transition-all duration-200 ${
+              isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
+            }`}
+          />
+          <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
+            {displayLabel}
           </span>
-          <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
-        </div>
-      ) : (
-        <div className="flex flex-col mb-1.5 w-full">
-          <div
-            onClick={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
-            className="flex items-center gap-1.5 py-1 text-zinc-500 hover:text-zinc-200 transition-colors duration-200 cursor-pointer select-none group/thought"
-          >
-            <ChevronRight
-              className={`w-3.5 h-3.5 opacity-0 group-hover/thought:opacity-100 transition-all duration-200 ${
-                isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
-              }`}
-            />
-            <span className="text-[13px] font-sans tracking-wide">
-              Thought for {msg.thinkingDuration || elapsedSeconds || 3}s
-            </span>
-          </div>
-
-          {/* Expanded Step Timeline */}
-          {isThoughtsExpanded && thoughts.length > 0 && (
-            <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[90%]">
-              {thoughts.map((step, idx) => {
-                const isLast = idx === thoughts.length - 1;
-                return (
-                  <div key={idx} className="relative flex items-start gap-3.5 pb-4 last:pb-1">
-                    {!isLast && (
-                      <div className="absolute left-[11px] top-6 bottom-0 w-[1px] bg-zinc-800" />
-                    )}
-
-                    <div
-                      className={`w-[23px] h-[23px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 ${
-                        step.status === "success"
-                          ? "border-blue-500/80 bg-blue-950/20"
-                          : "border-zinc-800 bg-[#16161a]"
-                      }`}
-                    >
-                      {renderStepIcon(step.status)}
-                    </div>
-
-                    <span className="text-[13px] leading-[22px] text-zinc-400 font-sans truncate block pr-2">
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+          {isMsgRunning && (
+            <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
           )}
         </div>
-      )}
+
+        {/* Expanded Step Timeline */}
+        {isThoughtsExpanded && thoughts.length > 0 && (
+          <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[90%]">
+            {thoughts.map((step, idx) => {
+              const isLast = idx === thoughts.length - 1;
+              return (
+                <div key={idx} className="relative flex items-start gap-3.5 pb-4 last:pb-1">
+                  {!isLast && (
+                    <div className="absolute left-[10px] top-6 bottom-0 w-[1px] bg-zinc-800" />
+                  )}
+
+                  <div
+                    className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 bg-zinc-950/60 border-zinc-800 transition-colors duration-200`}
+                  >
+                    {renderStepIcon(step.status)}
+                  </div>
+
+                  <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate ${
+                    step.status === "pending" ? "text-zinc-300 font-medium animate-pulse" : "text-zinc-500"
+                  }`}>
+                    {step.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* --- Assistant Response Text content --- */}
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
-          {renderFormattedContent(finalContent)}
+          {renderFormattedContent(removeCodeBlocks(finalContent))}
         </div>
       )}
 
@@ -466,76 +609,77 @@ function AssistantResponseBubble({
       )}
 
       {/* --- Files cards and Actions section --- */}
-      {msg.status === "completed" && (
-        <>
-          {msg.files && msg.files.length > 0 && (
-            <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4 animate-fadeIn">
-              {msg.files.map((file, idx) => (
-                <FileListItem
-                  key={idx}
-                  name={file.name}
-                  type={file.type}
-                  onClick={() => {
-                    setActiveFile(file);
-                  }}
-                  onDownload={() => alert(`Downloading ${file.name}`)}
-                />
-              ))}
-
-              <div className="mt-1 flex justify-start">
-                <button
-                  type="button"
-                  onClick={() => alert("Downloading all files")}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13px] font-medium transition-all duration-200 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download all</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-4 mt-3 text-zinc-500 select-none mb-2 animate-fadeIn">
-            <button
-              type="button"
-              className="hover:text-zinc-300 transition-colors"
-              aria-label="Copy response"
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleSpeak}
-              className={`transition-colors duration-200 ${
-                isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
-              }`}
-              aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              className="hover:text-zinc-300 transition-colors"
-              aria-label="Thumbs up"
-            >
-              <ThumbsUp className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              className="hover:text-zinc-300 transition-colors"
-              aria-label="Thumbs down"
-            >
-              <ThumbsDown className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              className="hover:text-zinc-300 transition-colors"
-              aria-label="Retry response"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
+      {(msg.status === "completed" || msg.status === "streaming") && (() => {
+        const extractedFiles = extractFilesFromContent(finalContent);
+        if (extractedFiles.length === 0) return null;
+        return (
+          <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4 animate-fadeIn">
+            {extractedFiles.map((file, idx) => (
+              <FileListItem
+                key={idx}
+                name={file.name}
+                type={file.type}
+                onClick={() => {
+                  setActiveFile(file);
+                }}
+                onDownload={() => {
+                  const blob = new Blob([file.code], { type: "text/plain" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = file.name;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+              />
+            ))}
           </div>
-        </>
+        );
+      })()}
+      {/* --- Response actions block --- */}
+      {msg.status === "completed" && (
+        <div className="flex items-center gap-4 mt-3 text-zinc-500 select-none mb-2 animate-fadeIn">
+          <button
+            type="button"
+            className="hover:text-zinc-300 transition-colors"
+            aria-label="Copy response"
+          >
+            <Copy className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleSpeak}
+            className={`transition-colors duration-200 ${
+              isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
+            }`}
+            aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
+          >
+            <Volume2 className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            className="hover:text-zinc-300 transition-colors"
+            aria-label="Thumbs up"
+          >
+            <ThumbsUp className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            className="hover:text-zinc-300 transition-colors"
+            aria-label="Thumbs down"
+          >
+            <ThumbsDown className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            className="hover:text-zinc-300 transition-colors"
+            aria-label="Retry response"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
       {/* Sources Centric Modal Popup Overlay */}
@@ -621,6 +765,11 @@ export default function Home() {
   const [activeFile, setActiveFile] = useState<{ name: string; code: string } | null>(null);
   const [rightPanelWidth, setRightPanelWidth] = useState(480);
   const [isExpanded, setIsExpanded] = useState(false);
+
+  // New comments and artifacts states
+  const [comments, setComments] = useState<Array<{ id: string; fileName: string; line: number; text: string }>>([]);
+  const [jumpToLine, setJumpToLine] = useState<number | null>(null);
+  const [showArtifactsPanel, setShowArtifactsPanel] = useState(false);
 
   // Model Selector global states
   const [selectedModel, setSelectedModel] = useState("DeepSeek V4 Flash");
@@ -914,13 +1063,20 @@ export default function Home() {
     activeWsRef.current = socket;
 
     socket.onopen = () => {
+      let promptText = text;
+      if (comments.length > 0) {
+        const commentCtx = comments.map(c => `[Context: ${c.fileName} at line ${c.line}]: "${c.text}"`).join("\n");
+        promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
+      }
+
       const payload = {
-        message: text,
+        message: promptText,
         model: modelNameToKey(selectedModel),
         variant: selectedVariant,
         client_time: new Date().toLocaleString()
       };
       socket.send(json_stringify_safe(payload));
+      setComments([]);
     };
 
     socket.onmessage = (event) => {
@@ -942,6 +1098,24 @@ export default function Home() {
                   thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
                 };
               }
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "clear_tokens") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant") {
+              const cleanContent = last.content.endsWith(data.content)
+                ? last.content.substring(0, last.content.length - data.content.length)
+                : last.content.replace(data.content, "");
+              copy[lastIdx] = {
+                ...last,
+                content: cleanContent.trim()
+              };
             }
             return copy;
           });
@@ -1114,6 +1288,26 @@ export default function Home() {
     );
   }
 
+  const sessionArtifacts = messages.flatMap(m => 
+    m.role === "assistant" ? extractFilesFromContent(parseMessageContent(m.content).finalContent) : []
+  );
+
+  let displayedActiveFile = activeFile;
+  if (activeFile && messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role === "assistant" && (lastMsg.status === "streaming" || lastMsg.status === "completed")) {
+      const { finalContent } = parseMessageContent(lastMsg.content);
+      const latestFiles = extractFilesFromContent(finalContent);
+      const matchingFile = latestFiles.find(f => f.name === activeFile.name);
+      if (matchingFile) {
+        displayedActiveFile = {
+          ...activeFile,
+          code: matchingFile.code
+        };
+      }
+    }
+  }
+
   return (
     <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a]">
       {/* Animated mesh gradient background (prop driven to slide down) */}
@@ -1149,7 +1343,7 @@ export default function Home() {
               : "opacity-0 -translate-y-4 pointer-events-none"
           } ${isExpanded ? "hidden" : "flex"}`}
           style={{
-            right: activeFile ? `${rightPanelWidth}px` : 0,
+            right: (activeFile || showArtifactsPanel) ? `${rightPanelWidth}px` : 0,
           }}
         >
           {/* Chat dropdown title */}
@@ -1161,14 +1355,26 @@ export default function Home() {
             <ChevronDown className="w-4 h-4 opacity-75" />
           </button>
 
-          {/* Share Button */}
-          {!activeFile && (
-            <button
-              type="button"
-              className="px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13.5px] font-medium transition-all duration-200"
-            >
-              Share
-            </button>
+          {/* Share & Artifacts Button Container */}
+          {!activeFile && !showArtifactsPanel && (
+            <div className="flex items-center gap-2">
+              {sessionArtifacts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowArtifactsPanel(true)}
+                  className="flex items-center justify-center w-8 h-8 rounded-xl border border-blue-900/60 bg-blue-950/40 hover:bg-blue-900/40 text-blue-400 hover:text-blue-300 transition-all duration-200 cursor-pointer"
+                  aria-label="View artifacts"
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                className="px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13.5px] font-medium transition-all duration-200"
+              >
+                Share
+              </button>
+            </div>
           )}
         </div>
 
@@ -1178,8 +1384,8 @@ export default function Home() {
           {/* Left Column: Chat Area */}
           <div
             style={{
-              width: activeFile && isExpanded ? "0px" : activeFile ? `calc(100% - ${rightPanelWidth}px)` : "100%",
-              display: activeFile && isExpanded ? "none" : "flex",
+              width: (activeFile || showArtifactsPanel) && isExpanded ? "0px" : (activeFile || showArtifactsPanel) ? `calc(100% - ${rightPanelWidth}px)` : "100%",
+              display: (activeFile || showArtifactsPanel) && isExpanded ? "none" : "flex",
             }}
             className="flex flex-col h-full relative transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
           >
@@ -1238,6 +1444,41 @@ export default function Home() {
               <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5">
                 {/* Content layers */}
                 <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
+                  {/* Render comment context pills here! */}
+                  {comments.length > 0 && (
+                    <div className="w-full max-w-3xl flex flex-wrap gap-2 mb-2.5 animate-fadeIn">
+                      {comments.map((comment) => (
+                        <div 
+                          key={comment.id}
+                          onClick={() => {
+                            const matchingFile = sessionArtifacts.find(f => f.name === comment.fileName);
+                            if (matchingFile) {
+                              setActiveFile(matchingFile);
+                              setJumpToLine(comment.line);
+                              setShowArtifactsPanel(false);
+                            }
+                          }}
+                          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1b2a47]/50 border border-blue-900/60 hover:bg-[#1b2a47]/80 hover:border-blue-500/50 transition-all duration-200 cursor-pointer select-none max-w-[280px]"
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+                          <span className="text-[12.5px] text-zinc-300 font-sans truncate font-medium">
+                            {comment.fileName}:{comment.line} - {comment.text}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setComments(prev => prev.filter(c => c.id !== comment.id));
+                            }}
+                            className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <PromptInput
                     onSubmit={handleSendMessage}
                     selectedModel={selectedModel}
@@ -1259,7 +1500,7 @@ export default function Home() {
           </div>
 
           {/* Draggable Vertical Splitter Handle */}
-          {activeFile && !isExpanded && (
+          {(activeFile || showArtifactsPanel) && !isExpanded && (
             <div
               onPointerDown={handlePointerDown}
               className="w-1 cursor-col-resize h-full bg-zinc-800/80 hover:bg-blue-600/80 transition-colors z-30 select-none flex items-center justify-center relative group"
@@ -1269,7 +1510,7 @@ export default function Home() {
           )}
 
           {/* Right Column: Code Inspection Panel */}
-          {activeFile && (
+          {displayedActiveFile && (
             <div
               style={{
                 width: isExpanded ? "100%" : `${rightPanelWidth}px`,
@@ -1277,12 +1518,84 @@ export default function Home() {
               className="h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
             >
               <FileInspectorPanel
-                fileName={activeFile.name}
-                code={activeFile.code}
-                onClose={() => setActiveFile(null)}
+                fileName={displayedActiveFile.name}
+                code={displayedActiveFile.code}
+                onClose={() => {
+                  setActiveFile(null);
+                  setJumpToLine(null);
+                }}
                 isExpanded={isExpanded}
                 onToggleExpand={() => setIsExpanded(!isExpanded)}
+                comments={comments}
+                onAddComment={(line, text) => {
+                  setComments(prev => [
+                    ...prev,
+                    {
+                      id: `comment-${Date.now()}`,
+                      fileName: displayedActiveFile!.name,
+                      line,
+                      text
+                    }
+                  ]);
+                }}
+                onDeleteComment={(id) => {
+                  setComments(prev => prev.filter(c => c.id !== id));
+                }}
+                jumpToLine={jumpToLine}
               />
+            </div>
+          )}
+
+          {showArtifactsPanel && !displayedActiveFile && (
+            <div
+              style={{
+                width: isExpanded ? "100%" : `${rightPanelWidth}px`,
+              }}
+              className="h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden bg-[#0d0d11] border-l border-zinc-800/80 flex flex-col"
+            >
+              <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0">
+                <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide">
+                  Artifacts
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowArtifactsPanel(false)}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+                  aria-label="Close panel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex-grow overflow-auto p-5 flex flex-col gap-4">
+                <h3 className="text-zinc-100 text-[15px] font-medium font-sans">
+                  Artifacts created in this session
+                </h3>
+                <div className="flex flex-col gap-2.5">
+                  {sessionArtifacts.map((file, idx) => (
+                    <FileListItem
+                      key={idx}
+                      name={file.name}
+                      type={file.type}
+                      onClick={() => {
+                        setActiveFile(file);
+                        setShowArtifactsPanel(false);
+                      }}
+                      onDownload={() => {
+                        const blob = new Blob([file.code], { type: "text/plain" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = file.name;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
