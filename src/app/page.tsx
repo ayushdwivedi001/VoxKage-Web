@@ -19,6 +19,77 @@ interface Message {
   content: string;
 }
 
+// Max collapsed height in px before showing Show more
+const USER_BUBBLE_MAX_H = 180;
+
+function UserBubble({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [needsClamp, setNeedsClamp] = useState(false);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    // Temporarily remove the maxHeight to measure true scrollHeight
+    el.style.maxHeight = "none";
+    const natural = el.scrollHeight;
+    el.style.maxHeight = "";
+    setNeedsClamp(natural > USER_BUBBLE_MAX_H);
+  }, [content]);
+
+  return (
+    <div className="max-w-[85%] flex flex-col items-end">
+      {/* The bubble itself */}
+      <div
+        className="bg-[#202024] text-zinc-100 rounded-2xl px-4 pt-3 text-[15px] leading-relaxed font-sans border border-zinc-800/40 select-text w-full"
+        style={{ paddingBottom: needsClamp ? 0 : "10px" }}
+      >
+        {/* Text content wrapper — clamped when collapsed */}
+        <div
+          style={{
+            position: "relative",
+            overflow: "hidden",
+            maxHeight: needsClamp && !expanded ? `${USER_BUBBLE_MAX_H}px` : undefined,
+            wordBreak: "break-word",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {/* Actual text, measured via this ref */}
+          <div ref={innerRef}>{content}</div>
+
+          {/* Gradient fade — inside the clamped region so it covers the last lines */}
+          {needsClamp && !expanded && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                inset: "auto 0 0 0",
+                height: "72px",
+                background: "linear-gradient(to bottom, transparent 0%, #202024 80%)",
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </div>
+
+        {/* Show more / Show less row — inside the bubble, below the text */}
+        {needsClamp && (
+          <div className="pt-1.5 pb-2.5">
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="text-[13px] font-medium text-zinc-400 hover:text-white transition-all duration-200 hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.65)]"
+            >
+              {expanded ? "Show less" : "Show more"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function Home() {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [isChatActive, setIsChatActive] = useState(false);
@@ -134,9 +205,7 @@ export default function Home() {
                   {msg.role === "user" ? (
                     /* User Bubble (aligned right) */
                     <div className="flex flex-col items-end w-full">
-                      <div className="bg-[#202024] text-zinc-100 rounded-2xl px-4 py-2.5 max-w-[85%] text-[15px] leading-relaxed font-sans border border-zinc-800/40 select-text">
-                        {msg.content}
-                      </div>
+                      <UserBubble content={msg.content} />
                     </div>
                   ) : (
                     /* Assistant Response (aligned left) */
