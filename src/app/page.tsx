@@ -123,6 +123,9 @@ interface AssistantResponseBubbleProps {
   msg: Message;
   setActiveFile: (file: { name: string; code: string } | null) => void;
   onScrollToBottom: () => void;
+  messages: Message[];
+  activeFileVersions: { [name: string]: number };
+  setActiveFileVersions: React.Dispatch<React.SetStateAction<{ [name: string]: number }>>;
 }
 
 const extractFilesFromContent = (content: string) => {
@@ -174,6 +177,38 @@ const extractFilesFromContent = (content: string) => {
 const removeCodeBlocks = (text: string) => {
   if (!text) return "";
   return text.replace(/```\w*\n[\s\S]*?(?:```|$)/g, "").trim();
+};
+
+const computeSessionFiles = (messages: Message[]) => {
+  const list: Array<{ name: string; type: string; versions: Array<{ version: number; code: string }> }> = [];
+
+  messages.forEach((m) => {
+    if (m.role === "assistant") {
+      const { finalContent } = parseMessageContent(m.content);
+      const extracted = extractFilesFromContent(finalContent);
+      extracted.forEach((file) => {
+        let existing = list.find((item) => item.name === file.name);
+        if (!existing) {
+          existing = {
+            name: file.name,
+            type: file.type,
+            versions: [],
+          };
+          list.push(existing);
+        }
+        // Only push version if the code is different from the last version
+        const lastVer = existing.versions[existing.versions.length - 1];
+        if (!lastVer || lastVer.code !== file.code) {
+          existing.versions.push({
+            version: existing.versions.length + 1,
+            code: file.code,
+          });
+        }
+      });
+    }
+  });
+
+  return list;
 };
 
 const parseSources = (content: string) => {
@@ -407,6 +442,9 @@ function AssistantResponseBubble({
   msg,
   setActiveFile,
   onScrollToBottom,
+  messages,
+  activeFileVersions,
+  setActiveFileVersions,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(msg.thinkingDuration || 0);
@@ -500,6 +538,23 @@ function AssistantResponseBubble({
           { id: "step-3", label: "Formulating response...", status: "success" as const }
         ];
 
+  // If streaming and there is an active code block being written, append "Writing [filename]..." step
+  const extracted = extractFilesFromContent(finalContent);
+  const isStreamingCode = msg.status === "streaming" && extracted.length > 0;
+  
+  const processedThoughts = [...thoughts];
+  if (isStreamingCode) {
+    const activeFileName = extracted[extracted.length - 1].name;
+    const stepLabel = `Writing ${activeFileName}...`;
+    if (!processedThoughts.some(t => t.label === stepLabel)) {
+      processedThoughts.push({
+        id: "writing-file-step",
+        label: stepLabel,
+        status: "pending" as const
+      });
+    }
+  }
+
   const renderStepIcon = (status: "pending" | "success" | "failed") => {
     if (status === "success") {
       return <Check className="w-3 h-3 text-zinc-400 stroke-[2.5]" />;
@@ -512,7 +567,7 @@ function AssistantResponseBubble({
 
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
   
-  const activeStep = thoughts.find(t => t.status === "pending") || (isMsgRunning ? thoughts[thoughts.length - 1] : null);
+  const activeStep = processedThoughts.find(t => t.status === "pending") || (isMsgRunning ? processedThoughts[processedThoughts.length - 1] : null);
   const displayLabel = isMsgRunning
     ? (activeStep ? activeStep.label : `Thinking${dots}`)
     : `Thought for ${msg.thinkingDuration || elapsedSeconds || 3}s`;
@@ -541,10 +596,10 @@ function AssistantResponseBubble({
         </div>
 
         {/* Expanded Step Timeline */}
-        {isThoughtsExpanded && thoughts.length > 0 && (
+        {isThoughtsExpanded && processedThoughts.length > 0 && (
           <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[90%]">
-            {thoughts.map((step, idx) => {
-              const isLast = idx === thoughts.length - 1;
+            {processedThoughts.map((step, idx) => {
+              const isLast = idx === processedThoughts.length - 1;
               return (
                 <div key={idx} className="relative flex items-start gap-3.5 pb-4 last:pb-1">
                   {!isLast && (
@@ -612,29 +667,46 @@ function AssistantResponseBubble({
       {(msg.status === "completed" || msg.status === "streaming") && (() => {
         const extractedFiles = extractFilesFromContent(finalContent);
         if (extractedFiles.length === 0) return null;
+        const sessionFiles = computeSessionFiles(messages);
+        
         return (
           <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4 animate-fadeIn">
-            {extractedFiles.map((file, idx) => (
-              <FileListItem
-                key={idx}
-                name={file.name}
-                type={file.type}
-                onClick={() => {
-                  setActiveFile(file);
-                }}
-                onDownload={() => {
-                  const blob = new Blob([file.code], { type: "text/plain" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = file.name;
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                  URL.revokeObjectURL(url);
-                }}
-              />
-            ))}
+            {extractedFiles.map((file, idx) => {
+              const fileData = sessionFiles.find(f => f.name === file.name);
+              const currentActiveVer = activeFileVersions[file.name] || (fileData ? fileData.versions.length : 1);
+              const currentVerObj = fileData?.versions.find(v => v.version === currentActiveVer) || file;
+
+              return (
+                <FileListItem
+                  key={idx}
+                  name={file.name}
+                  type={file.type}
+                  versions={fileData ? fileData.versions : undefined}
+                  activeVersion={currentActiveVer}
+                  onSelectVersion={(ver) => {
+                    setActiveFileVersions(prev => ({ ...prev, [file.name]: ver }));
+                    const targetVer = fileData?.versions.find(v => v.version === ver);
+                    if (targetVer) {
+                      setActiveFile({ name: file.name, code: targetVer.code });
+                    }
+                  }}
+                  onClick={() => {
+                    setActiveFile({ name: file.name, code: currentVerObj.code });
+                  }}
+                  onDownload={() => {
+                    const blob = new Blob([currentVerObj.code], { type: "text/plain" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = file.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  }}
+                />
+              );
+            })}
           </div>
         );
       })()}
@@ -770,6 +842,7 @@ export default function Home() {
   const [comments, setComments] = useState<Array<{ id: string; fileName: string; line: number; text: string }>>([]);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
   const [showArtifactsPanel, setShowArtifactsPanel] = useState(false);
+  const [activeFileVersions, setActiveFileVersions] = useState<{ [name: string]: number }>({});
 
   // Model Selector global states
   const [selectedModel, setSelectedModel] = useState("DeepSeek V4 Flash");
@@ -1057,164 +1130,222 @@ export default function Home() {
     setIsChatActive(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    const token = getToken() || "";
-    const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId}?token=${token}`;
-    const socket = new WebSocket(wsUrl);
-    activeWsRef.current = socket;
+    let promptText = text;
+    if (comments.length > 0) {
+      const commentCtx = comments.map(c => `[Context: ${c.fileName} at line ${c.line}]: "${c.text}"`).join("\n");
+      promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
+    }
 
-    socket.onopen = () => {
-      let promptText = text;
-      if (comments.length > 0) {
-        const commentCtx = comments.map(c => `[Context: ${c.fileName} at line ${c.line}]: "${c.text}"`).join("\n");
-        promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
-      }
+    const connectAndSend = (retryCount: number) => {
+      const token = getToken() || "";
+      const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId}?token=${token}`;
+      const socket = new WebSocket(wsUrl);
+      activeWsRef.current = socket;
+      
+      let gotDoneEvent = false;
 
-      const payload = {
-        message: promptText,
-        model: modelNameToKey(selectedModel),
-        variant: selectedVariant,
-        client_time: new Date().toLocaleString()
+      socket.onopen = () => {
+        const payload = {
+          message: promptText,
+          model: modelNameToKey(selectedModel),
+          variant: selectedVariant,
+          client_time: new Date().toLocaleString()
+        };
+        socket.send(json_stringify_safe(payload));
+        if (retryCount === 0) {
+          setComments([]);
+        }
       };
-      socket.send(json_stringify_safe(payload));
-      setComments([]);
-    };
 
-    socket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === "hud_log") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant") {
-              const steps = last.thinkingSteps || [];
-              const exists = steps.some(s => s.label === data.content);
-              if (!exists) {
-                const stepId = `step-${steps.length + 1}`;
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "hud_log") {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                const steps = last.thinkingSteps || [];
+                const exists = steps.some(s => s.label === data.content);
+                if (!exists) {
+                  const stepId = `step-${steps.length + 1}`;
+                  copy[lastIdx] = {
+                    ...last,
+                    thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
+                  };
+                }
+              }
+              return copy;
+            });
+          }
+          else if (data.type === "clear_tokens") {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                const cleanContent = last.content.endsWith(data.content)
+                  ? last.content.substring(0, last.content.length - data.content.length)
+                  : last.content.replace(data.content, "");
                 copy[lastIdx] = {
                   ...last,
-                  thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
+                  content: cleanContent.trim()
                 };
               }
-            }
-            return copy;
-          });
-        }
-        else if (data.type === "clear_tokens") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant") {
-              const cleanContent = last.content.endsWith(data.content)
-                ? last.content.substring(0, last.content.length - data.content.length)
-                : last.content.replace(data.content, "");
-              copy[lastIdx] = {
-                ...last,
-                content: cleanContent.trim()
-              };
-            }
-            return copy;
-          });
-        }
-        else if (data.type === "tool_success") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant" && last.thinkingSteps) {
-              copy[lastIdx] = {
-                ...last,
-                thinkingSteps: last.thinkingSteps.map(s => {
-                  if (s.status === "pending") {
-                    return { ...s, status: "success" };
-                  }
-                  return s;
-                })
-              };
-            }
-            return copy;
-          });
-        }
-        else if (data.type === "tool_failed") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant" && last.thinkingSteps) {
-              copy[lastIdx] = {
-                ...last,
-                thinkingSteps: last.thinkingSteps.map(s => {
-                  if (s.status === "pending") {
-                    return { ...s, status: "failed" };
-                  }
-                  return s;
-                })
-              };
-            }
-            return copy;
-          });
-        }
-        else if (data.type === "token") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant") {
-              const isThinking = last.status === "thinking";
-              const newStatus = isThinking ? "streaming" : last.status;
-              const newDuration = isThinking && last.thinkingStart
-                ? Math.max(1, Math.round((Date.now() - last.thinkingStart) / 1000))
-                : last.thinkingDuration;
+              return copy;
+            });
+          }
+          else if (data.type === "tool_success") {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant" && last.thinkingSteps) {
+                copy[lastIdx] = {
+                  ...last,
+                  thinkingSteps: last.thinkingSteps.map(s => {
+                    if (s.status === "pending") {
+                      return { ...s, status: "success" };
+                    }
+                    return s;
+                  })
+                };
+              }
+              return copy;
+            });
+          }
+          else if (data.type === "tool_failed") {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant" && last.thinkingSteps) {
+                copy[lastIdx] = {
+                  ...last,
+                  thinkingSteps: last.thinkingSteps.map(s => {
+                    if (s.status === "pending") {
+                      return { ...s, status: "failed" };
+                    }
+                    return s;
+                  })
+                };
+              }
+              return copy;
+            });
+          }
+          else if (data.type === "token") {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                const isThinking = last.status === "thinking";
+                const newStatus = isThinking ? "streaming" : last.status;
+                const newDuration = isThinking && last.thinkingStart
+                  ? Math.max(1, Math.round((Date.now() - last.thinkingStart) / 1000))
+                  : last.thinkingDuration;
 
-              copy[lastIdx] = {
-                ...last,
-                status: newStatus,
-                thinkingDuration: newDuration,
-                content: last.content + data.content
-              };
-            }
-            return copy;
-          });
+                copy[lastIdx] = {
+                  ...last,
+                  status: newStatus,
+                  thinkingDuration: newDuration,
+                  content: last.content + data.content
+                };
+              }
+              return copy;
+            });
+          }
+          else if (data.type === "rename") {
+            setChatTitle(data.name);
+            loadInitialData();
+          }
+          else if (data.type === "done") {
+            gotDoneEvent = true;
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                copy[lastIdx] = {
+                  ...last,
+                  status: "completed"
+                };
+              }
+              return copy;
+            });
+            socket.close();
+          }
+        } catch (err) {
+          console.error("Error parsing WS packet", err);
         }
-        else if (data.type === "rename") {
-          setChatTitle(data.name);
-          loadInitialData();
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      socket.onclose = () => {
+        if (activeWsRef.current === socket && !gotDoneEvent) {
+          if (retryCount < 3) {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                const steps = last.thinkingSteps || [];
+                const stepId = `retry-${retryCount + 1}`;
+                const stepLabel = `Connection dropped. Reconnecting (attempt ${retryCount + 1}/3)...`;
+                copy[lastIdx] = {
+                  ...last,
+                  status: "thinking",
+                  content: "",
+                  thinkingSteps: [...steps, { id: stepId, label: stepLabel, status: "pending" }]
+                };
+              }
+              return copy;
+            });
+            setTimeout(() => {
+              connectAndSend(retryCount + 1);
+            }, 1500);
+          } else {
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const lastIdx = copy.length - 1;
+              const last = copy[lastIdx];
+              if (last && last.role === "assistant") {
+                const steps = last.thinkingSteps || [];
+                copy[lastIdx] = {
+                  ...last,
+                  status: "completed",
+                  thinkingSteps: [...steps.map(s => s.status === "pending" ? { ...s, status: "failed" as const } : s), {
+                    id: "retry-failed",
+                    label: "Reconnection failed. Please check your network connection.",
+                    status: "failed"
+                  }]
+                };
+              }
+              return copy;
+            });
+            activeWsRef.current = null;
+          }
+        } else {
+          if (activeWsRef.current === socket) {
+            activeWsRef.current = null;
+          }
         }
-        else if (data.type === "done") {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const lastIdx = copy.length - 1;
-            const last = copy[lastIdx];
-            if (last && last.role === "assistant") {
-              copy[lastIdx] = {
-                ...last,
-                status: "completed"
-              };
-            }
-            return copy;
-          });
-          socket.close();
-        }
-      } catch (err) {
-        console.error("Error parsing WS packet", err);
-      }
+      };
     };
 
-    socket.onerror = (error) => {
-      console.error("WebSocket error:", error);
-    };
-
-    socket.onclose = () => {
-      activeWsRef.current = null;
-    };
+    connectAndSend(0);
   };
 
   const json_stringify_safe = (val: any) => {
@@ -1288,21 +1419,18 @@ export default function Home() {
     );
   }
 
-  const sessionArtifacts = messages.flatMap(m => 
-    m.role === "assistant" ? extractFilesFromContent(parseMessageContent(m.content).finalContent) : []
-  );
+  const sessionArtifacts = computeSessionFiles(messages);
 
   let displayedActiveFile = activeFile;
-  if (activeFile && messages.length > 0) {
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role === "assistant" && (lastMsg.status === "streaming" || lastMsg.status === "completed")) {
-      const { finalContent } = parseMessageContent(lastMsg.content);
-      const latestFiles = extractFilesFromContent(finalContent);
-      const matchingFile = latestFiles.find(f => f.name === activeFile.name);
-      if (matchingFile) {
+  if (activeFile) {
+    const fileData = sessionArtifacts.find(f => f.name === activeFile.name);
+    if (fileData) {
+      const selectedVerNum = activeFileVersions[activeFile.name] || fileData.versions.length;
+      const verObj = fileData.versions.find(v => v.version === selectedVerNum) || fileData.versions[fileData.versions.length - 1];
+      if (verObj) {
         displayedActiveFile = {
-          ...activeFile,
-          code: matchingFile.code
+          name: activeFile.name,
+          code: verObj.code,
         };
       }
     }
@@ -1362,7 +1490,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setShowArtifactsPanel(true)}
-                  className="flex items-center justify-center w-8 h-8 rounded-xl border border-blue-900/60 bg-blue-950/40 hover:bg-blue-900/40 text-blue-400 hover:text-blue-300 transition-all duration-200 cursor-pointer"
+                  className="flex items-center justify-center w-8 h-8 rounded-xl border border-zinc-800 bg-[#181715] hover:bg-[#252320] text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
                   aria-label="View artifacts"
                 >
                   <FileText className="w-4 h-4" />
@@ -1409,6 +1537,9 @@ export default function Home() {
                         msg={msg}
                         setActiveFile={setActiveFile}
                         onScrollToBottom={scrollToBottom}
+                        messages={messages}
+                        activeFileVersions={activeFileVersions}
+                        setActiveFileVersions={setActiveFileVersions}
                       />
                     )}
                   </div>
@@ -1435,6 +1566,16 @@ export default function Home() {
                   onOpenMoreModels={() => setMoreModelsModalOpen(true)}
                   isStreaming={isStreaming}
                   onStop={handleStopGeneration}
+                  comments={comments}
+                  onRemoveComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
+                  onClickComment={(fileName, line) => {
+                    const matchingFile = sessionArtifacts.find(f => f.name === fileName);
+                    if (matchingFile) {
+                      setActiveFile({ name: fileName, code: matchingFile.versions[matchingFile.versions.length - 1].code });
+                      setJumpToLine(line);
+                      setShowArtifactsPanel(false);
+                    }
+                  }}
                 />
               </div>
             )}
@@ -1444,41 +1585,6 @@ export default function Home() {
               <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5">
                 {/* Content layers */}
                 <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
-                  {/* Render comment context pills here! */}
-                  {comments.length > 0 && (
-                    <div className="w-full max-w-3xl flex flex-wrap gap-2 mb-2.5 animate-fadeIn">
-                      {comments.map((comment) => (
-                        <div 
-                          key={comment.id}
-                          onClick={() => {
-                            const matchingFile = sessionArtifacts.find(f => f.name === comment.fileName);
-                            if (matchingFile) {
-                              setActiveFile(matchingFile);
-                              setJumpToLine(comment.line);
-                              setShowArtifactsPanel(false);
-                            }
-                          }}
-                          className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1b2a47]/50 border border-blue-900/60 hover:bg-[#1b2a47]/80 hover:border-blue-500/50 transition-all duration-200 cursor-pointer select-none max-w-[280px]"
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                          <span className="text-[12.5px] text-zinc-300 font-sans truncate font-medium">
-                            {comment.fileName}:{comment.line} - {comment.text}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setComments(prev => prev.filter(c => c.id !== comment.id));
-                            }}
-                            className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   <PromptInput
                     onSubmit={handleSendMessage}
                     selectedModel={selectedModel}
@@ -1489,6 +1595,16 @@ export default function Home() {
                     onOpenMoreModels={() => setMoreModelsModalOpen(true)}
                     isStreaming={isStreaming}
                     onStop={handleStopGeneration}
+                    comments={comments}
+                    onRemoveComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
+                    onClickComment={(fileName, line) => {
+                      const matchingFile = sessionArtifacts.find(f => f.name === fileName);
+                      if (matchingFile) {
+                        setActiveFile({ name: fileName, code: matchingFile.versions[matchingFile.versions.length - 1].code });
+                        setJumpToLine(line);
+                        setShowArtifactsPanel(false);
+                      }
+                    }}
                   />
 
                   <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">
@@ -1572,28 +1688,37 @@ export default function Home() {
                   Artifacts created in this session
                 </h3>
                 <div className="flex flex-col gap-2.5">
-                  {sessionArtifacts.map((file, idx) => (
-                    <FileListItem
-                      key={idx}
-                      name={file.name}
-                      type={file.type}
-                      onClick={() => {
-                        setActiveFile(file);
-                        setShowArtifactsPanel(false);
-                      }}
-                      onDownload={() => {
-                        const blob = new Blob([file.code], { type: "text/plain" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = file.name;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                      }}
-                    />
-                  ))}
+                  {sessionArtifacts.map((file, idx) => {
+                    const activeVer = activeFileVersions[file.name] || file.versions.length;
+                    const verObj = file.versions.find(v => v.version === activeVer) || file.versions[file.versions.length - 1];
+                    return (
+                      <FileListItem
+                        key={idx}
+                        name={file.name}
+                        type={file.type}
+                        versions={file.versions}
+                        activeVersion={activeVer}
+                        onSelectVersion={(ver) => {
+                          setActiveFileVersions(prev => ({ ...prev, [file.name]: ver }));
+                        }}
+                        onClick={() => {
+                          setActiveFile({ name: file.name, code: verObj.code });
+                          setShowArtifactsPanel(false);
+                        }}
+                        onDownload={() => {
+                          const blob = new Blob([verObj.code], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = file.name;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>

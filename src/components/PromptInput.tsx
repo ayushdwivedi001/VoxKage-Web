@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, ChevronDown, Mic, ArrowUp, Square } from "lucide-react";
+import { Plus, ChevronDown, Mic, ArrowUp, Square, X } from "lucide-react";
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
@@ -23,6 +23,9 @@ interface PromptInputProps {
   onOpenMoreModels: () => void;
   isStreaming?: boolean;
   onStop?: () => void;
+  comments?: Array<{ id: string; fileName: string; line: number; text: string }>;
+  onRemoveComment?: (id: string) => void;
+  onClickComment?: (fileName: string, line: number) => void;
 }
 
 export default function PromptInput({
@@ -35,6 +38,9 @@ export default function PromptInput({
   onOpenMoreModels,
   isStreaming = false,
   onStop,
+  comments = [],
+  onRemoveComment,
+  onClickComment,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -162,6 +168,40 @@ export default function PromptInput({
         isFocused ? "border-zinc-700 shadow-lg shadow-black/20" : "border-zinc-800/80"
       } rounded-[28px] p-5 pb-4 flex flex-col backdrop-blur-md`}
     >
+      {/* Pinned Comments Context Attachment Pills inside Prompt Box */}
+      {comments.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-3.5 animate-fadeIn">
+          {comments.map((comment) => (
+            <div 
+              key={comment.id}
+              onClick={() => {
+                if (onClickComment) {
+                  onClickComment(comment.fileName, comment.line);
+                }
+              }}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#202024] border border-zinc-800 hover:border-zinc-700 transition-all duration-200 cursor-pointer select-none max-w-[280px]"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
+              <span className="text-[12.5px] text-zinc-300 font-sans truncate font-medium">
+                {comment.fileName}:{comment.line} - {comment.text}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onRemoveComment) {
+                    onRemoveComment(comment.id);
+                  }
+                }}
+                className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-900/60 hover:bg-zinc-800 text-zinc-450 hover:text-zinc-200 transition-colors cursor-pointer"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Input Field */}
       <div className="relative w-full">
         <textarea
