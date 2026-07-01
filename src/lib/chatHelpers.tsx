@@ -172,6 +172,144 @@ export interface WeatherItem {
   lng?: number;
 }
 
+export interface ChartPoint {
+  label: string;
+  value: number;
+  secondary_value?: number;
+}
+
+export interface ChartItem {
+  type: "line" | "area" | "bar";
+  title: string;
+  xLabel?: string;
+  yLabel?: string;
+  data: ChartPoint[];
+}
+
+export interface FlowNode {
+  id: string;
+  label: string;
+  description?: string;
+  category?: string;
+}
+
+export interface FlowEdge {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface FlowItem {
+  title: string;
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+}
+
+export const parseChartAndFlow = (content: string) => {
+  if (!content) return { cleanContent: content, chart: null, flow: null };
+  
+  let cleanContent = content;
+  let chart: ChartItem | null = null;
+  let flow: FlowItem | null = null;
+
+  // 1. Match Chart Tag: <Chart ... />
+  const chartRegex = /<Chart\s+([^>]*?)\s*\/>/i;
+  const chartMatch = cleanContent.match(chartRegex);
+  if (chartMatch) {
+    const attrString = chartMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+
+    const type = (getAttr("type") || "line") as "line" | "area" | "bar";
+    const title = getAttr("title");
+    const xLabel = getAttr("xLabel") || undefined;
+    const yLabel = getAttr("yLabel") || undefined;
+    const rawData = getAttr("data");
+
+    let data: ChartPoint[] = [];
+    if (rawData) {
+      const items = rawData.split("||");
+      items.forEach((item) => {
+        const parts = item.split("|");
+        if (parts.length >= 2) {
+          const label = parts[0];
+          const value = parseFloat(parts[1]);
+          if (!isNaN(value)) {
+            const secVal = parts[2] && parts[2] !== "empty" ? parseFloat(parts[2]) : undefined;
+            data.push({
+              label,
+              value,
+              secondary_value: isNaN(secVal as number) ? undefined : secVal
+            });
+          }
+        }
+      });
+    }
+
+    if (title && data.length > 0) {
+      chart = { type, title, xLabel, yLabel, data };
+    }
+    cleanContent = cleanContent.replace(chartRegex, '').trim();
+  }
+
+  // 2. Match Flow Tag: <Flow ... />
+  const flowRegex = /<Flow\s+([^>]*?)\s*\/>/i;
+  const flowMatch = cleanContent.match(flowRegex);
+  if (flowMatch) {
+    const attrString = flowMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+
+    const title = getAttr("title");
+    const rawNodes = getAttr("nodes");
+    const rawEdges = getAttr("edges");
+
+    let nodes: FlowNode[] = [];
+    if (rawNodes) {
+      const items = rawNodes.split("||");
+      items.forEach((item) => {
+        const parts = item.split("|");
+        if (parts.length >= 2) {
+          nodes.push({
+            id: parts[0],
+            label: parts[1],
+            description: parts[2] && parts[2] !== "empty" ? parts[2] : undefined,
+            category: parts[3] && parts[3] !== "empty" ? parts[3] : undefined
+          });
+        }
+      });
+    }
+
+    let edges: FlowEdge[] = [];
+    if (rawEdges) {
+      const items = rawEdges.split("||");
+      items.forEach((item) => {
+        const parts = item.split("|");
+        if (parts.length >= 2) {
+          edges.push({
+            from: parts[0],
+            to: parts[1],
+            label: parts[2] && parts[2] !== "empty" ? parts[2] : undefined
+          });
+        }
+      });
+    }
+
+    if (title && nodes.length > 0) {
+      flow = { title, nodes, edges };
+    }
+    cleanContent = cleanContent.replace(flowRegex, '').trim();
+  }
+
+  return { cleanContent, chart, flow };
+};
+
 export const parseMapAndWeather = (content: string) => {
   if (!content) return { cleanContent: content, map: null, weather: null };
   
@@ -254,7 +392,8 @@ export const parseMapAndWeather = (content: string) => {
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
-  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noImagesContent);
+  const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
+  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noChartContent);
   
   let thinkingContent = "";
   let finalContent = cleanTextContent;
@@ -289,7 +428,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images, map, weather };
+  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow };
 };
 
 export function parseInlineElements(text: string) {

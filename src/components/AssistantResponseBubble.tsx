@@ -45,6 +45,24 @@ const WeatherWidget = dynamic(() => import("./WeatherWidget"), {
   )
 });
 
+const ChartWidget = dynamic(() => import("./ChartWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[320px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading analytics chart...
+    </div>
+  )
+});
+
+const FlowWidget = dynamic(() => import("./FlowWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[320px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading process flow diagram...
+    </div>
+  )
+});
+
 interface AssistantResponseBubbleProps {
   msg: Message;
   setActiveFile: (file: { name: string; code: string } | null) => void;
@@ -136,7 +154,7 @@ export default function AssistantResponseBubble({
   }, [msg.status, msg.thinkingDuration]);
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent, sources, images, map, weather } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent, sources, images, map, weather, chart, flow } = parseMessageContent(msg.content);
 
   // Fallback to logical default steps when no deep <think> reasoning blocks exist
   const thoughts = thinkingContent
@@ -311,6 +329,20 @@ export default function AssistantResponseBubble({
       {msg.status !== "thinking" && weather && (
         <div className="w-full max-w-[90%] select-none flex justify-center">
           <WeatherWidget lat={weather.lat} lng={weather.lng} />
+        </div>
+      )}
+
+      {/* --- Dynamic Chart Widget --- */}
+      {msg.status !== "thinking" && chart && (
+        <div className="w-full max-w-[90%] select-none flex justify-center">
+          <ChartWidget type={chart.type} title={chart.title} xLabel={chart.xLabel} yLabel={chart.yLabel} data={chart.data} />
+        </div>
+      )}
+
+      {/* --- Dynamic Flow Widget --- */}
+      {msg.status !== "thinking" && flow && (
+        <div className="w-full max-w-[90%] select-none flex justify-center">
+          <FlowWidget title={flow.title} nodes={flow.nodes} edges={flow.edges} />
         </div>
       )}
 

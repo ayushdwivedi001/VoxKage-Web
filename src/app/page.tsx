@@ -1076,6 +1076,7 @@ export default function Home() {
                 onClose={() => {
                   setActiveFile(null);
                   setJumpToLine(null);
+                  setIsExpanded(false);
                 }}
                 isExpanded={isExpanded}
                 onToggleExpand={() => setIsExpanded(!isExpanded)}
@@ -1112,7 +1113,10 @@ export default function Home() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setShowArtifactsPanel(false)}
+                  onClick={() => {
+                    setShowArtifactsPanel(false);
+                    setIsExpanded(false);
+                  }}
                   className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
                   aria-label="Close panel"
                 >

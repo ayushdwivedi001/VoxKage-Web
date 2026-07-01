@@ -342,5 +342,92 @@ TOOLS_SCHEMA = [
                 }
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_chart",
+            "description": "Render an interactive dark-themed Recharts analytics graph/chart (line, area, or bar chart) in the response bubble.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["line", "area", "bar"],
+                        "description": "The style type of chart to render."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "A title for the analytics chart (e.g., 'VoxKage Memory Index' or 'Weekly CPU Usage')."
+                    },
+                    "x_axis_label": {
+                        "type": "string",
+                        "description": "Optional label label for the horizontal X axis."
+                    },
+                    "y_axis_label": {
+                        "type": "string",
+                        "description": "Optional label label for the vertical Y axis."
+                    },
+                    "data": {
+                        "type": "array",
+                        "description": "List of data points to plot.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string", "description": "X-axis point label (e.g., 'Mon', '2026-Q1')."},
+                                "value": {"type": "number", "description": "The numerical value to plot."},
+                                "secondary_value": {"type": "number", "description": "Optional second metric value to plot for multi-line comparison."}
+                            },
+                            "required": ["label", "value"]
+                        }
+                    }
+                },
+                "required": ["type", "title", "data"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_flow",
+            "description": "Render a clean, responsive custom SVG workflow/process flow diagram or architecture pipeline.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the flow diagram (e.g., 'Query Execution Pipeline')."
+                    },
+                    "nodes": {
+                        "type": "array",
+                        "description": "List of process nodes in the flow.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "description": "Unique node identifier (e.g., 'user_input')."},
+                                "label": {"type": "string", "description": "Node title/label (e.g., 'Parse Prompt')."},
+                                "description": {"type": "string", "description": "Optional short detail text below the label."},
+                                "category": {"type": "string", "description": "Visual class tag (e.g. 'Process', 'System', 'Storage', 'User', 'API')."}
+                            },
+                            "required": ["id", "label"]
+                        }
+                    },
+                    "edges": {
+                        "type": "array",
+                        "description": "List of directed connectors joining the nodes.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "from_id": {"type": "string", "description": "Source node ID matching one of the defined node IDs."},
+                                "to_id": {"type": "string", "description": "Target destination node ID."},
+                                "label": {"type": "string", "description": "Optional label text overlaid on the connector path."}
+                            },
+                            "required": ["from_id", "to_id"]
+                        }
+                    }
+                },
+                "required": ["title", "nodes", "edges"]
+            }
+        }
     }
 ]

@@ -221,7 +221,7 @@ async def execute_tool_call_v2(
         tool_output = ""
 
         # --- Route Search and Fetch Tools ---
-        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather"}:
+        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather", "render_chart", "render_flow"}:
             announcement = ""
             if name == "get_images":
                 announcement = f"Searching free image assets for: '{args.get('query', '')}'..."
@@ -229,6 +229,10 @@ async def execute_tool_call_v2(
                 announcement = f"Rendering interactive dark map view..."
             elif name == "get_weather":
                 announcement = f"Retrieving local weather forecast reports..."
+            elif name == "render_chart":
+                announcement = f"Generating interactive dark analytics chart: '{args.get('title', '')}'..."
+            elif name == "render_flow":
+                announcement = f"Generating responsive process pipeline: '{args.get('title', '')}'..."
             elif name == "web_search":
                 announcement = f"Searching the web for: '{args.get('query', '')}'..."
             elif name == "web_fetch":
@@ -279,6 +283,47 @@ async def execute_tool_call_v2(
                 else:
                     tool_context["weather_tag"] = '<Weather />'
                 tool_output = json.dumps({"status": "success", "latitude": lat, "longitude": lng})
+            elif name == "render_chart":
+                chart_type = args.get("type", "line")
+                title = args.get("title", "")
+                x_lbl = args.get("x_axis_label", "")
+                y_lbl = args.get("y_axis_label", "")
+                data_list = args.get("data", [])
+                
+                formatted_pts = []
+                for pt in data_list:
+                    lbl = str(pt.get("label", "")).replace("|", "").replace(";", "")
+                    val = str(pt.get("value", "0"))
+                    sec_val = str(pt.get("secondary_value", "empty"))
+                    formatted_pts.append(f"{lbl}|{val}|{sec_val}")
+                
+                data_str = "||".join(formatted_pts)
+                tool_context["chart_tag"] = f'<Chart type="{chart_type}" title="{title}" xLabel="{x_lbl}" yLabel="{y_lbl}" data="{data_str}" />'
+                tool_output = json.dumps({"status": "success", "type": chart_type, "title": title, "points_count": len(data_list)})
+            elif name == "render_flow":
+                title = args.get("title", "")
+                nodes_list = args.get("nodes", [])
+                edges_list = args.get("edges", [])
+                
+                formatted_nodes = []
+                for n in nodes_list:
+                    n_id = str(n.get("id", "")).replace("|", "").replace(";", "")
+                    n_lbl = str(n.get("label", "")).replace("|", "").replace(";", "")
+                    n_desc = str(n.get("description", "") or "empty").replace("|", "").replace(";", "")
+                    n_cat = str(n.get("category", "") or "empty").replace("|", "").replace(";", "")
+                    formatted_nodes.append(f"{n_id}|{n_lbl}|{n_desc}|{n_cat}")
+                nodes_str = "||".join(formatted_nodes)
+                
+                formatted_edges = []
+                for e in edges_list:
+                    e_from = str(e.get("from_id", "")).replace("|", "").replace(";", "")
+                    e_to = str(e.get("to_id", "")).replace("|", "").replace(";", "")
+                    e_lbl = str(e.get("label", "") or "empty").replace("|", "").replace(";", "")
+                    formatted_edges.append(f"{e_from}|{e_to}|{e_lbl}")
+                edges_str = "||".join(formatted_edges)
+                
+                tool_context["flow_tag"] = f'<Flow title="{title}" nodes="{nodes_str}" edges="{edges_str}" />'
+                tool_output = json.dumps({"status": "success", "title": title, "nodes_count": len(nodes_list), "edges_count": len(edges_list)})
             elif name == "web_search":
                 q = args.get("query", "")
                 search_res = await web_search(q)
@@ -477,7 +522,9 @@ async def run_agentic_loop(
         "web_search_called": False,
         "consulted_sources": consulted_sources,
         "map_tag": None,
-        "weather_tag": None
+        "weather_tag": None,
+        "chart_tag": None,
+        "flow_tag": None
     }
     
     if not api_key:
@@ -512,7 +559,7 @@ async def run_agentic_loop(
 
     v_upper = (variant or "High").upper()
     is_agentic = v_upper in ("HIGH", "XHIGH", "MAX")
-    max_iterations = 5 if is_agentic else 1
+    max_iterations = 12 if is_agentic else 1
 
     for iteration in range(max_iterations):
         payload = {
@@ -655,6 +702,36 @@ async def run_agentic_loop(
             yield json.dumps({"type": "error", "content": f"Agent loop failed: {str(e)}"})
             return
 
+    # Force final synthesis if the loop exited after executing tool calls
+    if messages and messages[-1]["role"] == "tool":
+        try:
+            payload = {
+                "model": model_id,
+                "messages": messages,
+                "stream": True
+            }
+            payload.update(get_variant_overrides(variant))
+            
+            assistant_text = ""
+            async for delta in query_opencode_proxy(
+                payload=payload,
+                manager_ref=manager_ref,
+                user_id=user_id,
+                client_websocket=client_websocket
+            ):
+                if isinstance(delta, dict) and isinstance(delta.get("content"), str) and delta.get("content").startswith("Error:"):
+                    yield json.dumps({"type": "error", "content": delta.get("content")})
+                    return
+                if delta.get("content"):
+                    yield json.dumps({"type": "token", "content": delta["content"]})
+                    assistant_text += delta["content"]
+            
+            if assistant_text:
+                messages.append({"role": "assistant", "content": assistant_text})
+        except Exception as e:
+            yield json.dumps({"type": "error", "content": f"Final synthesis failed: {str(e)}"})
+            return
+
     if web_search_called or consulted_sources:
         if not consulted_sources:
             consulted_sources.append({"title": "Google Search", "url": "https://www.google.com"})
@@ -674,3 +751,9 @@ async def run_agentic_loop(
 
     if tool_context.get("weather_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['weather_tag']}"})
+
+    if tool_context.get("chart_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['chart_tag']}"})
+
+    if tool_context.get("flow_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['flow_tag']}"})
