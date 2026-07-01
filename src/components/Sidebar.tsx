@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import {
   PanelLeft,
   PanelLeftClose,
@@ -14,6 +14,10 @@ import {
   SlidersHorizontal,
   Download,
   ChevronsUpDown,
+  MoreHorizontal,
+  Star,
+  Edit3,
+  Trash2
 } from "lucide-react";
 
 interface SidebarProps {
@@ -24,6 +28,9 @@ interface SidebarProps {
   sessionsList: any[];
   onCreateNewChat: () => void;
   onLogout: () => void;
+  onToggleStar: (sessionId: string, starred: boolean) => void;
+  onRenameSession: (sessionId: string, currentName: string) => void;
+  onDeleteSession: (sessionId: string) => void;
 }
 
 export default function Sidebar({
@@ -34,7 +41,11 @@ export default function Sidebar({
   sessionsList,
   onCreateNewChat,
   onLogout,
+  onToggleStar,
+  onRenameSession,
+  onDeleteSession,
 }: SidebarProps) {
+  const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
 
   return (
     <aside
@@ -201,44 +212,141 @@ export default function Sidebar({
         </nav>
 
         {/* Recents Chats Section (Only visible when expanded) */}
-        {isExpanded && (
-          <div className="flex flex-col gap-2.5 px-5 mt-2 transition-opacity duration-300">
-            <div className="flex items-center justify-between text-zinc-500 text-[11px] font-semibold tracking-wider uppercase select-none">
-              <span>Recents</span>
-              <button
-                type="button"
-                className="text-zinc-500 hover:text-zinc-300 transition-colors"
-                aria-label="Filter recents"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="flex flex-col gap-0.5 -mx-3 max-h-[220px] overflow-y-auto custom-sidebar-scrollbar pr-1">
-              {sessionsList.map((session) => {
-                const isActive = session.id === currentSessionId;
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => onSelectSession(session.id)}
-                    className={`w-full text-left py-2 px-3 rounded-lg text-[13.5px] truncate block cursor-pointer transition-all duration-150 ${
-                      isActive
-                        ? "bg-zinc-800/80 text-white font-medium border border-zinc-700/20"
-                        : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
-                    }`}
-                  >
-                    {session.name}
-                  </button>
-                );
-              })}
-              {sessionsList.length === 0 && (
-                <span className="text-[12.5px] text-zinc-600 px-3 py-1 font-sans">
-                  No active chats
-                </span>
+        {isExpanded && (() => {
+          const starredSessions = sessionsList.filter((s) => s.is_starred);
+          const recentSessions = sessionsList.filter((s) => !s.is_starred);
+
+          const renderSessionItem = (session: any) => {
+            const isActive = session.id === currentSessionId;
+            const isStarred = session.is_starred;
+            
+            return (
+              <div key={session.id} className="relative group w-full mb-1">
+                <button
+                  type="button"
+                  onClick={() => onSelectSession(session.id)}
+                  className={`w-full flex items-center justify-between py-2.5 px-4 rounded-xl text-[14.5px] cursor-pointer transition-all duration-150 relative ${
+                    isActive
+                      ? "bg-[#18181c] text-white font-medium border border-zinc-800"
+                      : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 truncate pr-6">
+                    {isStarred && (
+                      <Star className="w-3.5 h-3.5 fill-white text-white flex-shrink-0" />
+                    )}
+                    <span className="truncate">{session.name}</span>
+                  </div>
+                </button>
+                
+                {/* Three dots on hover */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActivePopupSessionId(activePopupSessionId === session.id ? null : session.id);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center w-7 h-7 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-150 cursor-pointer z-10"
+                  aria-label="Session actions"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+
+                {/* Dropdown Options Popup */}
+                {activePopupSessionId === session.id && (
+                  <>
+                    {/* Click-away backdrop */}
+                    <div 
+                      className="fixed inset-0 z-45 cursor-default" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActivePopupSessionId(null);
+                      }}
+                    />
+                    <div className="absolute right-2 top-[38px] w-[140px] bg-[#121215] border border-zinc-800 rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleStar(session.id, !isStarred);
+                          setActivePopupSessionId(null);
+                        }}
+                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                      >
+                        <Star className={`w-3.5 h-3.5 ${isStarred ? "fill-white text-white" : "text-zinc-400"}`} />
+                        <span>{isStarred ? "Remove Star" : "Star"}</span>
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivePopupSessionId(null);
+                          onRenameSession(session.id, session.name);
+                        }}
+                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Rename</span>
+                      </button>
+                      
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActivePopupSessionId(null);
+                          onDeleteSession(session.id);
+                        }}
+                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          };
+
+          return (
+            <div className="flex flex-col gap-5 px-5 mt-2 transition-opacity duration-300">
+              {/* Starred section (only visible if there are starred sessions) */}
+              {starredSessions.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center text-zinc-500 text-[11px] font-semibold tracking-wider uppercase select-none">
+                    <span>Starred</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 -mx-3">
+                    {starredSessions.map((session) => renderSessionItem(session))}
+                  </div>
+                </div>
               )}
+
+              {/* Recents section */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between text-zinc-500 text-[11px] font-semibold tracking-wider uppercase select-none">
+                  <span>Recents</span>
+                  <button
+                    type="button"
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                    aria-label="Filter recents"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex flex-col gap-0.5 -mx-3">
+                  {recentSessions.map((session) => renderSessionItem(session))}
+                  {recentSessions.length === 0 && starredSessions.length === 0 && (
+                    <span className="text-[12.5px] text-zinc-600 px-3 py-1 font-sans">
+                      No active chats
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* === FOOTER USER SECTION === */}

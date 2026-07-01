@@ -20,6 +20,10 @@ import {
   X,
   ArrowUpRight,
   Square,
+  Star,
+  Edit3,
+  Trash2,
+  ArrowDown
 } from "lucide-react";
 import GradientBackground from "@/components/GradientBackground";
 import PromptInput from "@/components/PromptInput";
@@ -35,6 +39,7 @@ import {
   fetchSessionMessages,
   deleteSession,
   renameSession,
+  toggleSessionStar,
   fetchFavorites,
   saveFavorites,
   fetchSettingsProfile,
@@ -844,6 +849,16 @@ export default function Home() {
   const [showArtifactsPanel, setShowArtifactsPanel] = useState(false);
   const [activeFileVersions, setActiveFileVersions] = useState<{ [name: string]: number }>({});
 
+  // Caching and UI helper states
+  const [messagesCache, setMessagesCache] = useState<{ [sessionId: string]: Message[] }>({});
+  const [isSessionLoading, setIsSessionLoading] = useState(false);
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
+
   // Model Selector global states
   const [selectedModel, setSelectedModel] = useState("DeepSeek V4 Flash");
   const [selectedVariant, setSelectedVariant] = useState("Max");
@@ -872,6 +887,13 @@ export default function Home() {
       window.removeEventListener("voxkage_unauthorized", handleUnauthorized);
     };
   }, []);
+
+  // Sync current active session messages with cache
+  useEffect(() => {
+    if (currentSessionId && messages.length > 0) {
+      setMessagesCache((prev) => ({ ...prev, [currentSessionId]: messages }));
+    }
+  }, [messages, currentSessionId]);
 
   const loadInitialData = async () => {
     try {
@@ -941,6 +963,27 @@ export default function Home() {
   };
 
   const loadSessionHistory = async (sessionId: string) => {
+    const cached = messagesCache[sessionId];
+    if (cached) {
+      setMessages(cached);
+      setIsChatActive(true);
+      setCurrentSessionId(sessionId);
+      const sess = sessionsList.find(s => s.id === sessionId);
+      if (sess) {
+        setChatTitle(sess.name);
+      }
+      setTimeout(scrollToBottom, 50);
+    } else {
+      setIsSessionLoading(true);
+      setMessages([]);
+      setIsChatActive(true);
+      setCurrentSessionId(sessionId);
+      const sess = sessionsList.find(s => s.id === sessionId);
+      if (sess) {
+        setChatTitle(sess.name);
+      }
+    }
+
     try {
       const history = await fetchSessionMessages(sessionId);
       const mapped = history.map((m: any) => ({
@@ -950,16 +993,18 @@ export default function Home() {
         status: "completed" as const,
         thinkingSteps: []
       }));
-      setMessages(mapped);
-      setIsChatActive(true);
-      setCurrentSessionId(sessionId);
-      
-      const sess = sessionsList.find(s => s.id === sessionId);
-      if (sess) {
-        setChatTitle(sess.name);
-      }
+      setMessagesCache(prev => ({ ...prev, [sessionId]: mapped }));
+      setCurrentSessionId(prevId => {
+        if (prevId === sessionId) {
+          setMessages(mapped);
+          setTimeout(scrollToBottom, 50);
+        }
+        return prevId;
+      });
     } catch (e) {
       console.error("Failed to load session messages", e);
+    } finally {
+      setIsSessionLoading(false);
     }
   };
 
@@ -979,6 +1024,55 @@ export default function Home() {
     setMessages([]);
     setIsChatActive(false);
     setChatTitle("Greeting");
+  };
+
+  const handleToggleStar = async (sessionId: string, starred: boolean) => {
+    setSessionsList(prev => prev.map(s => s.id === sessionId ? { ...s, is_starred: starred } : s));
+    try {
+      await toggleSessionStar(sessionId, starred);
+    } catch (e) {
+      console.error("Failed to toggle star", e);
+      setSessionsList(prev => prev.map(s => s.id === sessionId ? { ...s, is_starred: !starred } : s));
+    }
+  };
+
+  const handleRenameSessionClick = (sessionId: string, currentName: string) => {
+    setRenameSessionId(sessionId);
+    setRenameValue(currentName);
+  };
+
+  const executeRenameSession = async () => {
+    if (!renameSessionId || !renameValue.trim()) return;
+    const targetId = renameSessionId;
+    const newName = renameValue.trim();
+    setSessionsList(prev => prev.map(s => s.id === targetId ? { ...s, name: newName } : s));
+    if (currentSessionId === targetId) {
+      setChatTitle(newName);
+    }
+    setRenameSessionId(null);
+    try {
+      await renameSession(targetId, newName);
+    } catch (e) {
+      console.error("Failed to rename session", e);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    if (!confirm("Are you sure you want to delete this session?")) return;
+    setSessionsList(prev => prev.filter(s => s.id !== sessionId));
+    setMessagesCache(prev => {
+      const copy = { ...prev };
+      delete copy[sessionId];
+      return copy;
+    });
+    if (currentSessionId === sessionId) {
+      handleCreateNewChat();
+    }
+    try {
+      await deleteSession(sessionId);
+    } catch (e) {
+      console.error("Failed to delete session", e);
+    }
   };
 
   const handleToggleFavourite = async (modelName: string) => {
@@ -1013,9 +1107,20 @@ export default function Home() {
   };
 
   const scrollToBottom = () => {
-    if (messagesEndRef.current) {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTo({
+        top: chatContainerRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    } else if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
+  };
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    setShowScrollBottom(distanceToBottom > 300);
   };
 
   useEffect(() => {
@@ -1450,6 +1555,9 @@ export default function Home() {
         sessionsList={sessionsList}
         onCreateNewChat={handleCreateNewChat}
         onLogout={handleLogout}
+        onToggleStar={handleToggleStar}
+        onRenameSession={handleRenameSessionClick}
+        onDeleteSession={handleDeleteSession}
       />
 
       {/* Main content workspace container */}
@@ -1475,13 +1583,72 @@ export default function Home() {
           }}
         >
           {/* Chat dropdown title */}
-          <button
-            type="button"
-            className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-white/5 text-zinc-300 hover:text-zinc-100 transition-all duration-200 text-[14.5px] font-medium"
-          >
-            <span>{chatTitle}</span>
-            <ChevronDown className="w-4 h-4 opacity-75" />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowHeaderDropdown(prev => !prev)}
+              className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-white/5 text-zinc-300 hover:text-zinc-100 transition-all duration-200 text-[14.5px] font-medium cursor-pointer"
+            >
+              <span>{chatTitle}</span>
+              <ChevronDown className="w-4 h-4 opacity-75" />
+            </button>
+
+            {showHeaderDropdown && (() => {
+              const currentSess = sessionsList.find(s => s.id === currentSessionId);
+              const isStarred = currentSess?.is_starred || false;
+              return (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40 cursor-default" 
+                    onClick={() => setShowHeaderDropdown(false)}
+                  />
+                  <div className="absolute left-0 mt-1.5 w-[160px] bg-[#121215] border border-zinc-800 rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currentSessionId) {
+                          handleToggleStar(currentSessionId, !isStarred);
+                        }
+                        setShowHeaderDropdown(false);
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                    >
+                      <Star className={`w-3.5 h-3.5 ${isStarred ? "fill-white text-white" : "text-zinc-400"}`} />
+                      <span>{isStarred ? "Remove Star" : "Star"}</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderDropdown(false);
+                        if (currentSessionId && currentSess) {
+                          handleRenameSessionClick(currentSessionId, currentSess.name);
+                        }
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                    >
+                      <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                      <span>Rename</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowHeaderDropdown(false);
+                        if (currentSessionId) {
+                          handleDeleteSession(currentSessionId);
+                        }
+                      }}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
 
           {/* Share & Artifacts Button Container */}
           {!activeFile && !showArtifactsPanel && (
@@ -1519,34 +1686,76 @@ export default function Home() {
           >
             {/* Scrollable Chat Area */}
             <div
+              ref={chatContainerRef}
+              onScroll={handleScroll}
               className={`w-full h-full overflow-y-auto custom-chat-scrollbar flex flex-col items-center transition-all duration-500 ease-out ${
                 isChatActive ? "opacity-100 block" : "opacity-0 hidden"
               }`}
             >
               <div className="w-full max-w-3xl flex flex-col gap-8 pt-24 pb-[180px] px-4 md:px-6">
-                {messages.map((msg) => (
-                  <div key={msg.id} className="w-full">
-                    {msg.role === "user" ? (
-                      /* User Bubble (aligned right) */
-                      <div className="flex flex-col items-end w-full">
-                        <UserBubble content={msg.content} />
+                {isSessionLoading ? (
+                  <div className="flex flex-col gap-8 w-full animate-pulse select-none">
+                    <div className="flex gap-4 items-start w-full">
+                      <div className="w-8 h-8 rounded-full bg-zinc-800/40 flex-shrink-0" />
+                      <div className="flex flex-col gap-3.5 flex-grow">
+                        <div className="h-4 bg-zinc-800/40 rounded-lg w-1/4" />
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-3/4" />
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-1/2" />
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-5/6" />
                       </div>
-                    ) : (
-                      /* Assistant Response (aligned left) */
-                      <AssistantResponseBubble
-                        msg={msg}
-                        setActiveFile={setActiveFile}
-                        onScrollToBottom={scrollToBottom}
-                        messages={messages}
-                        activeFileVersions={activeFileVersions}
-                        setActiveFileVersions={setActiveFileVersions}
-                      />
-                    )}
+                    </div>
+                    <div className="flex gap-4 items-start justify-end w-full mt-4">
+                      <div className="flex flex-col gap-3.5 items-end flex-grow max-w-[70%]">
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-3/4" />
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-1/2" />
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-zinc-800/40 flex-shrink-0" />
+                    </div>
+                    <div className="flex gap-4 items-start w-full mt-4">
+                      <div className="w-8 h-8 rounded-full bg-zinc-800/40 flex-shrink-0" />
+                      <div className="flex flex-col gap-3.5 flex-grow">
+                        <div className="h-4 bg-zinc-800/40 rounded-lg w-1/5" />
+                        <div className="h-3.5 bg-zinc-800/40 rounded-lg w-2/3" />
+                      </div>
+                    </div>
                   </div>
-                ))}
+                ) : (
+                  messages.map((msg) => (
+                    <div key={msg.id} className="w-full">
+                      {msg.role === "user" ? (
+                        /* User Bubble (aligned right) */
+                        <div className="flex flex-col items-end w-full">
+                          <UserBubble content={msg.content} />
+                        </div>
+                      ) : (
+                        /* Assistant Response (aligned left) */
+                        <AssistantResponseBubble
+                          msg={msg}
+                          setActiveFile={setActiveFile}
+                          onScrollToBottom={scrollToBottom}
+                          messages={messages}
+                          activeFileVersions={activeFileVersions}
+                          setActiveFileVersions={setActiveFileVersions}
+                        />
+                      )}
+                    </div>
+                  ))
+                )}
                 <div ref={messagesEndRef} />
               </div>
             </div>
+
+            {/* Scroll to Bottom Button */}
+            {isChatActive && showScrollBottom && (
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className="absolute bottom-28 right-8 z-30 flex items-center justify-center w-9 h-9 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-xl transition-all duration-200 cursor-pointer animate-fadeIn"
+                aria-label="Scroll to bottom"
+              >
+                <ArrowDown className="w-5 h-5" />
+              </button>
+            )}
 
             {/* Landing Hero Title & Input (only visible when not active, centered vertically) */}
             {!isChatActive && (
@@ -1736,6 +1945,47 @@ export default function Home() {
           onToggleFavourite={handleToggleFavourite}
           onClose={() => setMoreModelsModalOpen(false)}
         />
+      )}
+
+      {/* Rename Session Dialog */}
+      {renameSessionId && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div 
+            onClick={() => setRenameSessionId(null)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-200" 
+          />
+          <div className="relative w-full max-w-sm bg-[#121216] border border-zinc-800 rounded-2xl p-6 shadow-2xl z-10 flex flex-col gap-4 font-sans text-zinc-300 animate-fadeIn">
+            <h3 className="text-zinc-100 text-base font-semibold">Rename Chat</h3>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  executeRenameSession();
+                }
+              }}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setRenameSessionId(null)}
+                className="px-4 py-2 rounded-xl border border-zinc-800 text-[13.5px] hover:bg-zinc-800/80 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeRenameSession}
+                className="px-4 py-2 rounded-xl bg-[#cc785c] text-[13.5px] hover:bg-[#a9583e] text-white transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* CSS custom scrollbar style tag */}

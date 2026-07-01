@@ -91,6 +91,10 @@ export async function renameSession(sessionId: string, name: string) {
   return apiRequest(`/sessions/${sessionId}/rename?name=${encodeURIComponent(name)}`, "PUT");
 }
 
+export async function toggleSessionStar(sessionId: string, starred: boolean) {
+  return apiRequest(`/sessions/${sessionId}/star?starred=${starred}`, "PUT");
+}
+
 export async function fetchFavorites() {
   const res = await apiRequest("/user/favorites");
   return res.favorite_models || [];

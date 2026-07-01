@@ -18,7 +18,7 @@ from auth import create_access_token, get_current_user
 from database import (
     create_session, list_sessions, get_session, update_session_name, delete_session,
     log_message, get_session_messages, get_user_favorites, save_user_favorites,
-    get_user_settings_profile, save_user_settings_profile
+    get_user_settings_profile, save_user_settings_profile, toggle_session_star
 )
 from opencode_client import list_opencode_models
 from agent_loop import run_agentic_loop, LAPTOP_CHANNELS
@@ -168,6 +168,10 @@ def delete_single_session(session_id: str, user: str = Depends(get_current_user)
 @app.put("/sessions/{session_id}/rename")
 def rename_session(session_id: str, name: str, user: str = Depends(get_current_user)):
     return update_session_name(session_id, user, name)
+
+@app.put("/sessions/{session_id}/star")
+def star_session_endpoint(session_id: str, starred: bool, user: str = Depends(get_current_user)):
+    return toggle_session_star(session_id, user, starred)
 
 # --- User Settings REST Endpoints ---
 @app.get("/user/favorites")
