@@ -9,7 +9,8 @@ import {
   ThumbsDown,
   RotateCcw,
   Globe,
-  X
+  X,
+  Image as ImageIcon
 } from "lucide-react";
 import {
   Message,
@@ -20,6 +21,7 @@ import {
   renderFormattedContent
 } from "@/lib/chatHelpers";
 import FileListItem from "./FileListItem";
+import ImageCarousel from "./ImageCarousel";
 
 interface AssistantResponseBubbleProps {
   msg: Message;
@@ -112,7 +114,7 @@ export default function AssistantResponseBubble({
   }, [msg.status, msg.thinkingDuration]);
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent, sources } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent, sources, images } = parseMessageContent(msg.content);
 
   // Fallback to logical default steps when no deep <think> reasoning blocks exist
   const thoughts = thinkingContent
@@ -146,7 +148,32 @@ export default function AssistantResponseBubble({
     }
   }
 
-  const renderStepIcon = (status: "pending" | "success" | "failed") => {
+  const renderStepIcon = (status: "pending" | "success" | "failed", label: string) => {
+    const isPending = status === "pending";
+    const lowerLabel = label.toLowerCase();
+    
+    // Check if it's an image search
+    if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
+      return (
+        <ImageIcon 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+          }`} 
+        />
+      );
+    }
+    
+    // Check if it's general web search/deep search/fetch
+    if (lowerLabel.includes("search:") || lowerLabel.includes("fetch") || lowerLabel.includes("deep search") || lowerLabel.includes("parallel search")) {
+      return (
+        <Globe 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+          }`} 
+        />
+      );
+    }
+
     if (status === "success") {
       return <Check className="w-3 h-3 text-zinc-400 stroke-[2.5]" />;
     } else if (status === "failed") {
@@ -200,7 +227,7 @@ export default function AssistantResponseBubble({
                   <div
                     className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 bg-zinc-950/60 border-zinc-800 transition-colors duration-200`}
                   >
-                    {renderStepIcon(step.status)}
+                    {renderStepIcon(step.status, step.label)}
                   </div>
 
                   <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate ${
@@ -219,6 +246,13 @@ export default function AssistantResponseBubble({
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
           {renderFormattedContent(removeCodeBlocks(finalContent))}
+        </div>
+      )}
+
+      {/* --- Dynamic Sliding Image Carousel --- */}
+      {images && images.length > 0 && (
+        <div className="w-full max-w-[90%] select-none">
+          <ImageCarousel images={images} />
         </div>
       )}
 

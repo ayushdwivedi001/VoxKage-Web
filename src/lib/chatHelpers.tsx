@@ -123,26 +123,70 @@ export const parseSources = (content: string) => {
   return { cleanContent, sources };
 };
 
+export interface ImageItem {
+  title: string;
+  url: string;
+}
+
+export const parseImages = (content: string) => {
+  if (!content) return { cleanContent: "", images: [] };
+  const imagesRegex = /<Images\s+query="([^"]*)"\s+data="([^"]+)"\s*\/>/i;
+  const match = content.match(imagesRegex);
+  let cleanContent = content.replace(/<Images[\s\S]*/i, '').trim();
+  let images: ImageItem[] = [];
+
+  if (match) {
+    const rawData = match[2];
+    const pairs = rawData.split('||');
+    pairs.forEach((p) => {
+      const parts = p.split('|');
+      if (parts.length >= 2) {
+        images.push({ title: parts[0], url: parts[1] });
+      }
+    });
+  }
+
+  return { cleanContent, images };
+};
+
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
+  const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
   
   let thinkingContent = "";
-  let finalContent = noSourcesContent;
+  let finalContent = noImagesContent;
 
-  const thinkStartIndex = noSourcesContent.indexOf("<think>");
-  const thinkEndIndex = noSourcesContent.indexOf("</think>");
+  const thinkStartIndex = noImagesContent.indexOf("<think>");
+  const thinkEndIndex = noImagesContent.indexOf("</think>");
 
   if (thinkStartIndex !== -1) {
     if (thinkEndIndex !== -1) {
-      thinkingContent = noSourcesContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
-      finalContent = (noSourcesContent.substring(0, thinkStartIndex) + noSourcesContent.substring(thinkEndIndex + 8)).trim();
+      thinkingContent = noImagesContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
+      finalContent = (noImagesContent.substring(0, thinkStartIndex) + noImagesContent.substring(thinkEndIndex + 8)).trim();
     } else {
-      thinkingContent = noSourcesContent.substring(thinkStartIndex + 7).trim();
-      finalContent = noSourcesContent.substring(0, thinkStartIndex).trim();
+      thinkingContent = noImagesContent.substring(thinkStartIndex + 7).trim();
+      finalContent = noImagesContent.substring(0, thinkStartIndex).trim();
     }
   }
 
-  return { thinkingContent, finalContent, sources };
+  // Sanitize standalone layout dividers, compact spacing, and normalize double-dashes
+  if (finalContent) {
+    finalContent = finalContent
+      .replace(/^\s*---\s*$/gm, "")
+      .replace(/\s*--\s*/g, " – ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  if (thinkingContent) {
+    thinkingContent = thinkingContent
+      .replace(/^\s*---\s*$/gm, "")
+      .replace(/\s*--\s*/g, " – ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  return { thinkingContent, finalContent, sources, images };
 };
 
 export function parseInlineElements(text: string) {
@@ -150,7 +194,8 @@ export function parseInlineElements(text: string) {
   let remaining = text;
   let tokenKey = 0;
 
-  const regex = /(\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/g;
+  // Regex matches URLs (http/https and www.), bold (**text**), inline code (`code`), standard filenames (file.ext), or function signatures containing ()
+  const regex = /(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\bwww\.[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/gi;
   let match;
   let lastIndex = 0;
 
@@ -162,7 +207,20 @@ export function parseInlineElements(text: string) {
       tokens.push(<React.Fragment key={tokenKey++}>{remaining.substring(lastIndex, matchIndex)}</React.Fragment>);
     }
 
-    if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
+    if (matchStr.match(/^https?:\/\//i) || matchStr.match(/^www\./i)) {
+      const url = matchStr.match(/^www\./i) ? `https://${matchStr}` : matchStr;
+      tokens.push(
+        <a 
+          key={tokenKey++} 
+          href={url} 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="text-blue-400 hover:text-blue-350 underline font-medium break-all select-text"
+        >
+          {matchStr}
+        </a>
+      );
+    } else if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
       const boldText = matchStr.slice(2, -2);
       tokens.push(
         <strong key={tokenKey++} className="font-bold text-zinc-100">
@@ -178,7 +236,7 @@ export function parseInlineElements(text: string) {
       );
     } else {
       tokens.push(
-        <span key={tokenKey++} className="text-blue-400 font-mono font-medium hover:underline cursor-help">
+        <span key={tokenKey++} className="text-blue-450 font-mono font-medium hover:underline cursor-help">
           {matchStr}
         </span>
       );

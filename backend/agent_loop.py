@@ -10,6 +10,7 @@ from opencode_client import get_opencode_model, sanitize_history_roles, get_syst
 from opencode_proxy import query_opencode_proxy
 from websearch_engine import web_search, web_fetch, web_search_deep, web_search_parallel, web_fetch_parallel
 from rag_engine import query_rag_vector, query_scoped_rag_vector, list_rag_documents, delete_rag_document
+from image_engine import fetch_verified_images
 from memory_engine import (
     remember_user, recall_user, get_user_profile, forget_user,
     set_trusted_action, check_trusted, log_problem, log_solution, search_memory
@@ -20,7 +21,9 @@ from tool_schemas import TOOLS_SCHEMA
 LAPTOP_CHANNELS = {}
 
 def get_tool_label(name: str, args: dict) -> str:
-    if name == "web_search":
+    if name == "get_images":
+        return f"Search Images: '{args.get('query', '')}'"
+    elif name == "web_search":
         return f"Search: '{args.get('query', '')}'"
     elif name == "web_fetch":
         return f"Fetch URL: {args.get('url', '')}"
@@ -213,9 +216,11 @@ async def execute_tool_call_v2(
         tool_output = ""
 
         # --- Route Search and Fetch Tools ---
-        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep"}:
+        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images"}:
             announcement = ""
-            if name == "web_search":
+            if name == "get_images":
+                announcement = f"Searching free image assets for: '{args.get('query', '')}'..."
+            elif name == "web_search":
                 announcement = f"Searching the web for: '{args.get('query', '')}'..."
             elif name == "web_fetch":
                 announcement = f"Fetching content from URL: {args.get('url', '')}..."
@@ -229,7 +234,12 @@ async def execute_tool_call_v2(
             if announcement:
                 await send_to_client({"type": "hud_log", "content": announcement})
 
-            if name == "web_search":
+            if name == "get_images":
+                q = args.get("query", "")
+                lim = args.get("limit", 5)
+                urls = await fetch_verified_images(q, limit=lim)
+                tool_output = json.dumps(urls)
+            elif name == "web_search":
                 q = args.get("query", "")
                 search_res = await web_search(q)
                 tool_output = json.dumps(search_res)

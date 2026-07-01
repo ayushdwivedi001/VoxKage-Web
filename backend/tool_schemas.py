@@ -272,6 +272,21 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "get_images",
+            "description": "Fetch dynamic high-resolution image URLs for a query from free photo libraries or web search.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search term for images (e.g. 'humpback whale', 'dark nebula')."},
+                    "limit": {"type": "integer", "description": "Maximum number of images to return. Default is 5."}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_current_datetime",
             "description": "Get the current date and time.",
             "parameters": {
