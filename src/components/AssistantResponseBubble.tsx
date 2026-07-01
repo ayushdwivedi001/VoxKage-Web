@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
   Check,
   ChevronRight,
@@ -10,7 +11,9 @@ import {
   RotateCcw,
   Globe,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Navigation,
+  Sun
 } from "lucide-react";
 import {
   Message,
@@ -22,6 +25,25 @@ import {
 } from "@/lib/chatHelpers";
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
+
+const MapWidget = dynamic(() => import("./MapWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[300px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading map resources...
+    </div>
+  )
+});
+
+const WeatherWidget = dynamic(() => import("./WeatherWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full max-w-[450px] p-5 my-4 rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex flex-col gap-4 animate-pulse">
+      <div className="h-5 w-2/3 bg-zinc-850 rounded"></div>
+      <div className="w-14 h-14 bg-zinc-850 rounded-full"></div>
+    </div>
+  )
+});
 
 interface AssistantResponseBubbleProps {
   msg: Message;
@@ -114,7 +136,7 @@ export default function AssistantResponseBubble({
   }, [msg.status, msg.thinkingDuration]);
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent, sources, images } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent, sources, images, map, weather } = parseMessageContent(msg.content);
 
   // Fallback to logical default steps when no deep <think> reasoning blocks exist
   const thoughts = thinkingContent
@@ -156,6 +178,28 @@ export default function AssistantResponseBubble({
     if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
       return (
         <ImageIcon 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+          }`} 
+        />
+      );
+    }
+    
+    // Check if it's map layout rendering
+    if (lowerLabel.includes("map:") || lowerLabel.includes("render map") || lowerLabel.includes("show map")) {
+      return (
+        <Navigation 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+          }`} 
+        />
+      );
+    }
+
+    // Check if it's weather query
+    if (lowerLabel.includes("weather") || lowerLabel.includes("get_weather")) {
+      return (
+        <Sun 
           className={`w-3.5 h-3.5 ${
             isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
           }`} 
@@ -253,6 +297,20 @@ export default function AssistantResponseBubble({
       {images && images.length > 0 && (
         <div className="w-full max-w-[90%] select-none">
           <ImageCarousel images={images} />
+        </div>
+      )}
+
+      {/* --- Dynamic Map Widget --- */}
+      {msg.status !== "thinking" && map && (
+        <div className="w-full max-w-[90%] select-none flex justify-center">
+          <MapWidget lat={map.lat} lng={map.lng} label={map.label} places={map.places} />
+        </div>
+      )}
+
+      {/* --- Dynamic Weather Widget --- */}
+      {msg.status !== "thinking" && weather && (
+        <div className="w-full max-w-[90%] select-none flex justify-center">
+          <WeatherWidget lat={weather.lat} lng={weather.lng} />
         </div>
       )}
 

@@ -29,10 +29,10 @@ body {
 /* Thinking Glow Animation */
 @keyframes thinkingGlow {
   0% {
-    background-position: -200% 0;
+    background-position: 200% 0;
   }
   100% {
-    background-position: 200% 0;
+    background-position: -200% 0;
   }
 }
 

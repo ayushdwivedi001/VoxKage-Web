@@ -294,5 +294,53 @@ TOOLS_SCHEMA = [
                 "properties": {}
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_map",
+            "description": "Render a rich interactive map explorer centered at coordinates with an optional place list explorer for multiple markers.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number", "description": "The latitude of the map center (e.g. 22.7196)."},
+                    "longitude": {"type": "number", "description": "The longitude of the map center (e.g. 75.8577)."},
+                    "label": {"type": "string", "description": "Optional overall title for the map view (e.g. 'Indore Tourism')."},
+                    "places": {
+                        "type": "array",
+                        "description": "Optional list of multiple places/markers to render on the map and explore in the sidebar.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Name of the location (e.g. 'Rajwada Palace')."},
+                                "latitude": {"type": "number", "description": "Latitude of the location marker."},
+                                "longitude": {"type": "number", "description": "Longitude of the location marker."},
+                                "rating": {"type": "number", "description": "Optional rating score (e.g. 4.4)."},
+                                "reviews_count": {"type": "integer", "description": "Optional count of user reviews (e.g. 74096)."},
+                                "description": {"type": "string", "description": "Short description of the location highlights."},
+                                "category": {"type": "string", "description": "Category tag (e.g. 'Historic', 'Sights', 'Food', 'Nature')."},
+                                "image_url": {"type": "string", "description": "Optional thumbnail photo URL. Highly recommended to specify if stock photo is known."}
+                            },
+                            "required": ["name", "latitude", "longitude"]
+                        }
+                    }
+                },
+                "required": ["latitude", "longitude"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Render a premium location-based weather forecast widget card for specific coordinates or user's local coordinates.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "latitude": {"type": "number", "description": "Optional latitude coordinates (e.g. 20.88). If omitted, requests client browser coordinates."},
+                    "longitude": {"type": "number", "description": "Optional longitude coordinates (e.g. 71.40). If omitted, requests client browser coordinates."}
+                }
+            }
+        }
     }
 ]

@@ -149,23 +149,126 @@ export const parseImages = (content: string) => {
   return { cleanContent, images };
 };
 
+export interface MapPlace {
+  name: string;
+  lat: number;
+  lng: number;
+  rating?: number;
+  reviews_count?: number;
+  description?: string;
+  category?: string;
+  image_url?: string;
+}
+
+export interface MapItem {
+  lat: number;
+  lng: number;
+  label?: string;
+  places?: MapPlace[];
+}
+
+export interface WeatherItem {
+  lat?: number;
+  lng?: number;
+}
+
+export const parseMapAndWeather = (content: string) => {
+  if (!content) return { cleanContent: content, map: null, weather: null };
+  
+  let cleanContent = content;
+  let map: MapItem | null = null;
+  let weather: WeatherItem | null = null;
+
+  // 1. Match Map Tag: <Map ... /> with flexible attribute parsing
+  const mapRegex = /<Map\s+([^>]*?)\s*\/>/i;
+  const mapMatch = cleanContent.match(mapRegex);
+  if (mapMatch) {
+    const attrString = mapMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+
+    const latVal = parseFloat(getAttr("lat"));
+    const lngVal = parseFloat(getAttr("lng"));
+    const label = getAttr("label") || undefined;
+    const placesRaw = getAttr("places");
+
+    let places: MapPlace[] = [];
+    if (placesRaw) {
+      const items = placesRaw.split("||");
+      items.forEach((item) => {
+        const parts = item.split("|");
+        if (parts.length >= 3) {
+          const name = parts[0];
+          const pLat = parseFloat(parts[1]);
+          const pLng = parseFloat(parts[2]);
+          if (!isNaN(pLat) && !isNaN(pLng)) {
+            const rating = parts[3] ? parseFloat(parts[3]) : undefined;
+            const reviews_count = parts[4] ? parseInt(parts[4]) : undefined;
+            const description = parts[5] || undefined;
+            const category = parts[6] || undefined;
+            const image_url = (parts[7] && parts[7] !== "empty") ? parts[7] : undefined;
+
+            places.push({
+              name,
+              lat: pLat,
+              lng: pLng,
+              rating: isNaN(rating as number) ? undefined : rating,
+              reviews_count: isNaN(reviews_count as number) ? undefined : reviews_count,
+              description,
+              category,
+              image_url
+            });
+          }
+        }
+      });
+    }
+
+    if (!isNaN(latVal) && !isNaN(lngVal)) {
+      map = { lat: latVal, lng: lngVal, label, places };
+    }
+    cleanContent = cleanContent.replace(mapRegex, '').trim();
+  }
+
+  // 2. Match Weather Tag: <Weather /> or <Weather lat="[lat]" lng="[lng]" />
+  const weatherRegex = /<Weather(?:\s+lat="([^"]+)"\s+lng="([^"]+)")?\s*\/>/i;
+  const weatherMatch = cleanContent.match(weatherRegex);
+  if (weatherMatch) {
+    if (weatherMatch[1] && weatherMatch[2]) {
+      const lat = parseFloat(weatherMatch[1]);
+      const lng = parseFloat(weatherMatch[2]);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        weather = { lat, lng };
+      }
+    } else {
+      weather = {};
+    }
+    cleanContent = cleanContent.replace(weatherRegex, '').trim();
+  }
+
+  return { cleanContent, map, weather };
+};
+
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
+  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noImagesContent);
   
   let thinkingContent = "";
-  let finalContent = noImagesContent;
+  let finalContent = cleanTextContent;
 
-  const thinkStartIndex = noImagesContent.indexOf("<think>");
-  const thinkEndIndex = noImagesContent.indexOf("</think>");
+  const thinkStartIndex = cleanTextContent.indexOf("<think>");
+  const thinkEndIndex = cleanTextContent.indexOf("</think>");
 
   if (thinkStartIndex !== -1) {
     if (thinkEndIndex !== -1) {
-      thinkingContent = noImagesContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
-      finalContent = (noImagesContent.substring(0, thinkStartIndex) + noImagesContent.substring(thinkEndIndex + 8)).trim();
+      thinkingContent = cleanTextContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
+      finalContent = (cleanTextContent.substring(0, thinkStartIndex) + cleanTextContent.substring(thinkEndIndex + 8)).trim();
     } else {
-      thinkingContent = noImagesContent.substring(thinkStartIndex + 7).trim();
-      finalContent = noImagesContent.substring(0, thinkStartIndex).trim();
+      thinkingContent = cleanTextContent.substring(thinkStartIndex + 7).trim();
+      finalContent = cleanTextContent.substring(0, thinkStartIndex).trim();
     }
   }
 
@@ -186,7 +289,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images };
+  return { thinkingContent, finalContent, sources, images, map, weather };
 };
 
 export function parseInlineElements(text: string) {
@@ -194,8 +297,8 @@ export function parseInlineElements(text: string) {
   let remaining = text;
   let tokenKey = 0;
 
-  // Regex matches URLs (http/https and www.), bold (**text**), inline code (`code`), standard filenames (file.ext), or function signatures containing ()
-  const regex = /(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\bwww\.[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/gi;
+  // Regex matches URLs (http/https, www., and raw domains), bold (**text**), inline code (`code`), standard filenames (file.ext), or function signatures containing ()
+  const regex = /(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/gi;
   let match;
   let lastIndex = 0;
 
@@ -207,8 +310,13 @@ export function parseInlineElements(text: string) {
       tokens.push(<React.Fragment key={tokenKey++}>{remaining.substring(lastIndex, matchIndex)}</React.Fragment>);
     }
 
-    if (matchStr.match(/^https?:\/\//i) || matchStr.match(/^www\./i)) {
-      const url = matchStr.match(/^www\./i) ? `https://${matchStr}` : matchStr;
+    // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
+    const isLink = matchStr.match(/^https?:\/\//i) || 
+                   matchStr.match(/^www\./i) || 
+                   matchStr.match(/^[a-zA-Z0-9-]+\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br)/i);
+
+    if (isLink) {
+      const url = (!matchStr.match(/^https?:\/\//i)) ? `https://${matchStr}` : matchStr;
       tokens.push(
         <a 
           key={tokenKey++} 

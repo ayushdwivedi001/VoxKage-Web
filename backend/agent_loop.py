@@ -21,7 +21,12 @@ from tool_schemas import TOOLS_SCHEMA
 LAPTOP_CHANNELS = {}
 
 def get_tool_label(name: str, args: dict) -> str:
-    if name == "get_images":
+    if name == "show_map":
+        return f"Show Map: '{args.get('label') or 'Coordinate Location'}'"
+    elif name == "get_weather":
+        loc = f"{args.get('latitude')}, {args.get('longitude')}" if args.get('latitude') is not None else "Current Geolocation"
+        return f"Get Weather: '{loc}'"
+    elif name == "get_images":
         return f"Search Images: '{args.get('query', '')}'"
     elif name == "web_search":
         return f"Search: '{args.get('query', '')}'"
@@ -216,10 +221,14 @@ async def execute_tool_call_v2(
         tool_output = ""
 
         # --- Route Search and Fetch Tools ---
-        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images"}:
+        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather"}:
             announcement = ""
             if name == "get_images":
                 announcement = f"Searching free image assets for: '{args.get('query', '')}'..."
+            elif name == "show_map":
+                announcement = f"Rendering interactive dark map view..."
+            elif name == "get_weather":
+                announcement = f"Retrieving local weather forecast reports..."
             elif name == "web_search":
                 announcement = f"Searching the web for: '{args.get('query', '')}'..."
             elif name == "web_fetch":
@@ -239,6 +248,37 @@ async def execute_tool_call_v2(
                 lim = args.get("limit", 5)
                 urls = await fetch_verified_images(q, limit=lim)
                 tool_output = json.dumps(urls)
+            elif name == "show_map":
+                lat = args.get("latitude")
+                lng = args.get("longitude")
+                lbl = args.get("label", "")
+                places_list = args.get("places", [])
+                
+                # Format places to: Name|Lat|Lng|Rating|Reviews|Desc|Category|ImageURL||Name|...
+                formatted_places = []
+                for p in places_list:
+                    p_name = str(p.get("name", "")).replace("|", "").replace(";", "")
+                    p_lat = str(p.get("latitude", ""))
+                    p_lng = str(p.get("longitude", ""))
+                    p_rat = str(p.get("rating", ""))
+                    p_rev = str(p.get("reviews_count", ""))
+                    p_desc = str(p.get("description", "")).replace("|", "").replace(";", "")
+                    p_cat = str(p.get("category", "")).replace("|", "").replace(";", "")
+                    p_img = str(p.get("image_url", "") or "empty").replace("|", "").replace(";", "")
+                    formatted_places.append(f"{p_name}|{p_lat}|{p_lng}|{p_rat}|{p_rev}|{p_desc}|{p_cat}|{p_img}")
+                
+                places_str = "||".join(formatted_places)
+                tool_context["map_tag"] = f'<Map lat="{lat}" lng="{lng}" label="{lbl}" places="{places_str}" />'
+                tool_output = json.dumps({"status": "success", "latitude": lat, "longitude": lng, "label": lbl, "places_count": len(places_list)})
+            elif name == "get_weather":
+                lat = args.get("latitude")
+                lng = args.get("longitude")
+                # Format to: <Weather lat="..." lng="..." /> or <Weather /> if omitted
+                if lat is not None and lng is not None:
+                    tool_context["weather_tag"] = f'<Weather lat="{lat}" lng="{lng}" />'
+                else:
+                    tool_context["weather_tag"] = '<Weather />'
+                tool_output = json.dumps({"status": "success", "latitude": lat, "longitude": lng})
             elif name == "web_search":
                 q = args.get("query", "")
                 search_res = await web_search(q)
@@ -433,6 +473,12 @@ async def run_agentic_loop(
     api_key = os.getenv("OPENCODE_API_KEY")
     consulted_sources = []
     web_search_called = False
+    tool_context = {
+        "web_search_called": False,
+        "consulted_sources": consulted_sources,
+        "map_tag": None,
+        "weather_tag": None
+    }
     
     if not api_key:
         yield json.dumps({"type": "error", "content": "OPENCODE_API_KEY not configured on backend."})
@@ -466,7 +512,7 @@ async def run_agentic_loop(
 
     v_upper = (variant or "High").upper()
     is_agentic = v_upper in ("HIGH", "XHIGH", "MAX")
-    max_iterations = 20 if is_agentic else 1
+    max_iterations = 5 if is_agentic else 1
 
     for iteration in range(max_iterations):
         payload = {
@@ -573,10 +619,8 @@ async def run_agentic_loop(
             tool_outputs = {}
 
             # Execute tools in parallel (since we stripped dependencies for simplicity, execute all at once)
-            tool_context = {
-                "web_search_called": web_search_called,
-                "consulted_sources": consulted_sources
-            }
+            tool_context["web_search_called"] = web_search_called
+            tool_context["consulted_sources"] = consulted_sources
             tasks = [
                 execute_tool_call_v2(
                     tc=tc,
@@ -624,3 +668,9 @@ async def run_agentic_loop(
             sources_str = "||".join([f"{s['title'].replace('|', '-').replace('<', '').replace('>', '')}|{s['url']}" for s in unique_sources])
             sources_tag = f'\n\n<Sources data="{sources_str}" />'
             yield json.dumps({"type": "token", "content": sources_tag})
+
+    if tool_context.get("map_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['map_tag']}"})
+
+    if tool_context.get("weather_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['weather_tag']}"})
