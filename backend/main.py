@@ -273,6 +273,47 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
             # Log user query to database
             log_message(session_id, "user", query)
 
+            # Instantly kick off dynamic rename in background concurrently
+            async def run_smart_rename(sid: str, q: str, m_key: str, uid: str, ws):
+                try:
+                    db_msgs = get_session_messages(sid)
+                    user_msgs = [m for m in db_msgs if m["role"] == "user"]
+                    if len(user_msgs) <= 1:
+                        from opencode_proxy import query_opencode_proxy
+                        from opencode_client import get_opencode_model
+                        title_prompt = f"Summarize this query into a short, creative 3-5 word title for a chat thread (do not include quotes or markdown): '{q}'"
+                        title_payload = {
+                            "model": get_opencode_model(m_key),
+                            "messages": [{"role": "user", "content": title_prompt}],
+                            "temperature": 0.7
+                        }
+                        title_chunks = []
+                        async for chunk in query_opencode_proxy(
+                            payload=title_payload,
+                            manager_ref=manager,
+                            user_id=uid,
+                            client_websocket=ws,
+                            timeout=15.0
+                        ):
+                            if isinstance(chunk, dict):
+                                err_msg = chunk.get("content")
+                                if err_msg and err_msg.startswith("Error:"):
+                                    continue
+                                content = chunk.get("content", "")
+                                if content:
+                                    title_chunks.append(content)
+                        generated_title = "".join(title_chunks).strip()
+                        for char in ['"', "'", '`', '*', '#']:
+                            generated_title = generated_title.replace(char, '')
+                        generated_title = generated_title.strip().strip('.')
+                        if generated_title:
+                            update_session_name(sid, uid, generated_title)
+                            await ws.send_text(json.dumps({"type": "rename", "name": generated_title}))
+                except Exception as re_err:
+                    print(f"Async Rename failed: {re_err}")
+
+            asyncio.create_task(run_smart_rename(session_id, query, model_key, user, websocket))
+
             formatted_history = []
             for msg in messages_history:
                 formatted_history.append({"role": msg["role"], "content": msg["content"]})
@@ -308,41 +349,6 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
             post_percent = calculate_context_percent(messages_history)
             await websocket.send_text(json.dumps({"type": "context_sync", "percent": post_percent}))
             await websocket.send_text(json.dumps({"type": "done"}))
-
-            # Smart rename
-            try:
-                session_info = get_session(session_id, user)
-                user_msgs = [m for m in messages_history if m["role"] == "user"]
-                if len(user_msgs) == 1:
-                    from opencode_proxy import query_opencode_proxy
-                    from opencode_client import get_opencode_model
-                    title_prompt = f"Summarize this query into a short, creative 3-5 word title for a chat thread (do not include quotes or markdown): '{query}'"
-                    title_payload = {
-                        "model": get_opencode_model(model_key),
-                        "messages": [{"role": "user", "content": title_prompt}],
-                        "temperature": 0.7
-                    }
-                    title_chunks = []
-                    async for chunk in query_opencode_proxy(
-                        payload=title_payload,
-                        manager_ref=manager,
-                        user_id=user,
-                        client_websocket=websocket,
-                        timeout=15.0
-                    ):
-                        if isinstance(chunk, dict):
-                            err_msg = chunk.get("content")
-                            if err_msg and err_msg.startswith("Error:"):
-                                continue
-                            content = chunk.get("content", "")
-                            if content:
-                                title_chunks.append(content)
-                    generated_title = "".join(title_chunks).strip().replace('"', '')
-                    if generated_title:
-                        update_session_name(session_id, user, generated_title)
-                        await websocket.send_text(json.dumps({"type": "rename", "name": generated_title}))
-            except Exception as re_err:
-                print(f"Rename failed: {re_err}")
 
     except WebSocketDisconnect:
         manager.disconnect_chat(user, websocket)
