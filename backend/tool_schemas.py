@@ -429,5 +429,79 @@ TOOLS_SCHEMA = [
                 "required": ["title", "nodes", "edges"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_chemical_structure",
+            "description": "Retrieve structural chemistry data (molecular weight, formula, and SVG structure skeleton) for a compound or molecule.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "compound_name": {
+                        "type": "string",
+                        "description": "Name of the chemical compound (e.g., 'Paracetamol', 'Aspirin')."
+                    },
+                    "smiles_notation": {
+                        "type": "string",
+                        "description": "Optional SMILES structure notation (e.g., 'CC(=O)NC1=CC=C(O)C=C1')."
+                    }
+                },
+                "required": ["compound_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_timeline",
+            "description": "Render a clean, collapsible vertical history event track timeline widget.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Title of the historical timeline (e.g., 'Evolution of Web Protocols')."
+                    },
+                    "events": {
+                        "type": "array",
+                        "description": "Ordered events in the timeline.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "date": {"type": "string", "description": "Date or time period label (e.g., '1989', 'Phase 2')."},
+                                "title": {"type": "string", "description": "Event heading/label."},
+                                "description": {"type": "string", "description": "Optional paragraph detailing the event."},
+                                "category": {"type": "string", "description": "Optional category classification tag."}
+                            },
+                            "required": ["date", "title"]
+                        }
+                    }
+                },
+                "required": ["title", "events"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "render_calculator",
+            "description": "Render a live high-tech calculator widget (loan amortization, compound interest, or tax estimates) with interactive sliders.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": ["loan", "compound", "tax"],
+                        "description": "Type of calculator widget."
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Header title of the calculator (e.g., 'Mortgage Payment Calculator')."
+                    }
+                },
+                "required": ["type", "title"]
+            }
+        }
     }
 ]

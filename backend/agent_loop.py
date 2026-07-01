@@ -221,7 +221,7 @@ async def execute_tool_call_v2(
         tool_output = ""
 
         # --- Route Search and Fetch Tools ---
-        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather", "render_chart", "render_flow"}:
+        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather", "render_chart", "render_flow", "get_chemical_structure", "render_timeline", "render_calculator"}:
             announcement = ""
             if name == "get_images":
                 announcement = f"Searching free image assets for: '{args.get('query', '')}'..."
@@ -233,6 +233,12 @@ async def execute_tool_call_v2(
                 announcement = f"Generating interactive dark analytics chart: '{args.get('title', '')}'..."
             elif name == "render_flow":
                 announcement = f"Generating responsive process pipeline: '{args.get('title', '')}'..."
+            elif name == "get_chemical_structure":
+                announcement = f"Retrieving structural chemistry data for: '{args.get('compound_name', '')}'..."
+            elif name == "render_timeline":
+                announcement = f"Generating collapsible history timeline: '{args.get('title', '')}'..."
+            elif name == "render_calculator":
+                announcement = f"Configuring interactive finance calculator: '{args.get('title', '')}'..."
             elif name == "web_search":
                 announcement = f"Searching the web for: '{args.get('query', '')}'..."
             elif name == "web_fetch":
@@ -324,6 +330,49 @@ async def execute_tool_call_v2(
                 
                 tool_context["flow_tag"] = f'<Flow title="{title}" nodes="{nodes_str}" edges="{edges_str}" />'
                 tool_output = json.dumps({"status": "success", "title": title, "nodes_count": len(nodes_list), "edges_count": len(edges_list)})
+            elif name == "get_chemical_structure":
+                comp = args.get("compound_name", "")
+                smiles = args.get("smiles_notation", "")
+                
+                formula = "Unknown"
+                weight = "Unknown"
+                canonical_smiles = smiles or "Unknown"
+                
+                try:
+                    import httpx
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{comp}/property/MolecularFormula,MolecularWeight,CanonicalSMILES/JSON"
+                        r = await client.get(url)
+                        if r.status_code == 200:
+                            props = r.json().get("PropertyTable", {}).get("Properties", [{}])[0]
+                            formula = props.get("MolecularFormula", "Unknown")
+                            weight = str(props.get("MolecularWeight", "Unknown"))
+                            canonical_smiles = smiles or props.get("CanonicalSMILES", "Unknown")
+                except:
+                    pass
+                    
+                tool_context["chemistry_tag"] = f'<Chemistry compound="{comp}" formula="{formula}" weight="{weight}" smiles="{canonical_smiles}" />'
+                tool_output = json.dumps({"status": "success", "compound": comp, "formula": formula, "weight": weight, "smiles": canonical_smiles})
+            elif name == "render_timeline":
+                title = args.get("title", "")
+                events_list = args.get("events", [])
+                
+                formatted_evs = []
+                for ev in events_list:
+                    ev_date = str(ev.get("date", "")).replace("|", "").replace(";", "")
+                    ev_title = str(ev.get("title", "")).replace("|", "").replace(";", "")
+                    ev_desc = str(ev.get("description", "") or "empty").replace("|", "").replace(";", "")
+                    ev_cat = str(ev.get("category", "") or "empty").replace("|", "").replace(";", "")
+                    formatted_evs.append(f"{ev_date}|{ev_title}|{ev_desc}|{ev_cat}")
+                
+                events_str = "||".join(formatted_evs)
+                tool_context["timeline_tag"] = f'<Timeline title="{title}" events="{events_str}" />'
+                tool_output = json.dumps({"status": "success", "title": title, "events_count": len(events_list)})
+            elif name == "render_calculator":
+                c_type = args.get("type", "loan")
+                title = args.get("title", "")
+                tool_context["calculator_tag"] = f'<Calculator type="{c_type}" title="{title}" />'
+                tool_output = json.dumps({"status": "success", "type": c_type, "title": title})
             elif name == "web_search":
                 q = args.get("query", "")
                 search_res = await web_search(q)
@@ -524,7 +573,10 @@ async def run_agentic_loop(
         "map_tag": None,
         "weather_tag": None,
         "chart_tag": None,
-        "flow_tag": None
+        "flow_tag": None,
+        "chemistry_tag": None,
+        "timeline_tag": None,
+        "calculator_tag": None
     }
     
     if not api_key:
@@ -757,3 +809,12 @@ async def run_agentic_loop(
 
     if tool_context.get("flow_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['flow_tag']}"})
+
+    if tool_context.get("chemistry_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['chemistry_tag']}"})
+
+    if tool_context.get("timeline_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['timeline_tag']}"})
+
+    if tool_context.get("calculator_tag"):
+        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['calculator_tag']}"})

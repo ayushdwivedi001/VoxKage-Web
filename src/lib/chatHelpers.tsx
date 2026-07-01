@@ -1,4 +1,15 @@
 import React from "react";
+import dynamic from "next/dynamic";
+
+const InlineMath = dynamic(() => import("react-katex").then(m => m.InlineMath), {
+  ssr: false,
+  loading: () => <span className="font-serif animate-pulse">...</span>
+});
+
+const BlockMath = dynamic(() => import("react-katex").then(m => m.BlockMath), {
+  ssr: false,
+  loading: () => <div className="text-zinc-500 py-2 text-center animate-pulse">Loading equation...</div>
+});
 
 export interface Message {
   id: string;
@@ -205,6 +216,135 @@ export interface FlowItem {
   edges: FlowEdge[];
 }
 
+export interface ChemistryItem {
+  compound: string;
+  formula: string;
+  weight: string;
+  smiles: string;
+}
+
+export interface TimelineEvent {
+  date: string;
+  title: string;
+  description?: string;
+  category?: string;
+}
+
+export interface TimelineItem {
+  title: string;
+  events: TimelineEvent[];
+}
+
+export interface CalculatorItem {
+  type: "loan" | "compound" | "tax";
+  title: string;
+}
+
+export interface FunctionPlotItem {
+  formula: string;
+  minX?: number;
+  maxX?: number;
+}
+
+export const parseScienceAndHistory = (content: string) => {
+  if (!content) return { cleanContent: content, chemistry: null, timeline: null, calculator: null, plot: null };
+  
+  let cleanContent = content;
+  let chemistry: ChemistryItem | null = null;
+  let timeline: TimelineItem | null = null;
+  let calculator: CalculatorItem | null = null;
+  let plot: FunctionPlotItem | null = null;
+
+  // 1. Chemistry Tag: <Chemistry compound="..." formula="..." weight="..." smiles="..." />
+  const chemRegex = /<Chemistry\s+([^>]*?)\s*\/>/i;
+  const chemMatch = cleanContent.match(chemRegex);
+  if (chemMatch) {
+    const attrString = chemMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    chemistry = {
+      compound: getAttr("compound"),
+      formula: getAttr("formula"),
+      weight: getAttr("weight"),
+      smiles: getAttr("smiles")
+    };
+    cleanContent = cleanContent.replace(chemRegex, '').trim();
+  }
+
+  // 2. Timeline Tag: <Timeline title="..." events="..." />
+  const timelineRegex = /<Timeline\s+([^>]*?)\s*\/>/i;
+  const timelineMatch = cleanContent.match(timelineRegex);
+  if (timelineMatch) {
+    const attrString = timelineMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    const title = getAttr("title");
+    const rawEvents = getAttr("events");
+    let events: TimelineEvent[] = [];
+    if (rawEvents) {
+      const items = rawEvents.split("||");
+      items.forEach(ev => {
+        const parts = ev.split("|");
+        if (parts.length >= 2) {
+          events.push({
+            date: parts[0],
+            title: parts[1],
+            description: parts[2] && parts[2] !== "empty" ? parts[2] : undefined,
+            category: parts[3] && parts[3] !== "empty" ? parts[3] : undefined
+          });
+        }
+      });
+    }
+    if (title && events.length > 0) {
+      timeline = { title, events };
+    }
+    cleanContent = cleanContent.replace(timelineRegex, '').trim();
+  }
+
+  // 3. Calculator Tag: <Calculator type="..." title="..." />
+  const calcRegex = /<Calculator\s+([^>]*?)\s*\/>/i;
+  const calcMatch = cleanContent.match(calcRegex);
+  if (calcMatch) {
+    const attrString = calcMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    calculator = {
+      type: (getAttr("type") || "loan") as "loan" | "compound" | "tax",
+      title: getAttr("title")
+    };
+    cleanContent = cleanContent.replace(calcRegex, '').trim();
+  }
+
+  // 4. FunctionPlot Tag: <FunctionPlot formula="..." minX="..." maxX="..." />
+  const plotRegex = /<FunctionPlot\s+([^>]*?)\s*\/>/i;
+  const plotMatch = cleanContent.match(plotRegex);
+  if (plotMatch) {
+    const attrString = plotMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    plot = {
+      formula: getAttr("formula") || "x",
+      minX: getAttr("minX") ? parseFloat(getAttr("minX")) : undefined,
+      maxX: getAttr("maxX") ? parseFloat(getAttr("maxX")) : undefined
+    };
+    cleanContent = cleanContent.replace(plotRegex, '').trim();
+  }
+
+  return { cleanContent, chemistry, timeline, calculator, plot };
+};
+
 export const parseChartAndFlow = (content: string) => {
   if (!content) return { cleanContent: content, chart: null, flow: null };
   
@@ -393,7 +533,8 @@ export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
   const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
-  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noChartContent);
+  const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
+  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noScienceContent);
   
   let thinkingContent = "";
   let finalContent = cleanTextContent;
@@ -415,7 +556,7 @@ export const parseMessageContent = (content: string) => {
   if (finalContent) {
     finalContent = finalContent
       .replace(/^\s*---\s*$/gm, "")
-      .replace(/\s*--\s*/g, " – ")
+      .replace(/(?<!-)\s*--(?!>|[a-zA-Z0-9])\s*(?!-)/g, " – ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   }
@@ -423,12 +564,12 @@ export const parseMessageContent = (content: string) => {
   if (thinkingContent) {
     thinkingContent = thinkingContent
       .replace(/^\s*---\s*$/gm, "")
-      .replace(/\s*--\s*/g, " – ")
+      .replace(/(?<!-)\s*--(?!>|[a-zA-Z0-9])\s*(?!-)/g, " – ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow };
+  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot };
 };
 
 export function parseInlineElements(text: string) {
@@ -436,8 +577,8 @@ export function parseInlineElements(text: string) {
   let remaining = text;
   let tokenKey = 0;
 
-  // Regex matches URLs (http/https, www., and raw domains), bold (**text**), inline code (`code`), standard filenames (file.ext), or function signatures containing ()
-  const regex = /(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\))/gi;
+  // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, or function signatures
+  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)))/gi;
   let match;
   let lastIndex = 0;
 
@@ -449,10 +590,17 @@ export function parseInlineElements(text: string) {
       tokens.push(<React.Fragment key={tokenKey++}>{remaining.substring(lastIndex, matchIndex)}</React.Fragment>);
     }
 
-    // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
-    const isLink = matchStr.match(/^https?:\/\//i) || 
-                   matchStr.match(/^www\./i) || 
-                   matchStr.match(/^[a-zA-Z0-9-]+\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br)/i);
+    if (matchStr.startsWith("$") && matchStr.endsWith("$")) {
+      const mathText = matchStr.slice(1, -1);
+      tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
+    } else if (matchStr.startsWith("\\(") && matchStr.endsWith("\\)")) {
+      const mathText = matchStr.slice(2, -2);
+      tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
+    } else {
+      // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
+      const isLink = matchStr.match(/^https?:\/\//i) || 
+                     matchStr.match(/^www\./i) || 
+                     matchStr.match(/^[a-zA-Z0-9-]+\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br)/i);
 
     if (isLink) {
       const url = (!matchStr.match(/^https?:\/\//i)) ? `https://${matchStr}` : matchStr;
@@ -488,6 +636,7 @@ export function parseInlineElements(text: string) {
         </span>
       );
     }
+  }
 
     lastIndex = regex.lastIndex;
   }
@@ -534,12 +683,30 @@ export function renderTable(rows: string[][], key: string) {
 
 export function renderFormattedContent(content: string) {
   if (!content) return null;
-  const lines = content.split("\n");
+  
+  // Pre-process and auto-correct unbalanced single-line $$ blocks
+  const rawLines = content.split("\n");
+  const lines = rawLines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed.endsWith("$$") && !trimmed.startsWith("$$")) {
+      return "$$" + line;
+    }
+    if (trimmed.startsWith("$$") && !trimmed.endsWith("$$")) {
+      if (trimmed.length > 2 && !trimmed.substring(2).includes("$$")) {
+        return line + "$$";
+      }
+    }
+    return line;
+  });
+
   const renderedElements: React.ReactNode[] = [];
 
   let inTable = false;
   let tableRows: string[][] = [];
   let tableKey = 0;
+
+  let inBlockMath = false;
+  let blockMathContent = "";
 
   const isTableRow = (line: string) => {
     return line.trim().startsWith("|") && line.trim().endsWith("|");
@@ -556,6 +723,48 @@ export function renderFormattedContent(content: string) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    if (line.trim() === "") {
+      renderedElements.push(<div key={`space-${i}`} className="h-1.5" />);
+      continue;
+    }
+
+    // Check for single-line block math ($$ equation $$)
+    const trimmedLine = line.trim();
+    const isSingleLineBlock = trimmedLine.startsWith("$$") && trimmedLine.endsWith("$$") && trimmedLine.length > 4;
+    if (isSingleLineBlock) {
+      const math = trimmedLine.slice(2, -2);
+      renderedElements.push(
+        <div key={`blockmath-${i}`} className="w-full overflow-x-auto flex justify-center py-2 select-text">
+          <BlockMath math={math} errorColor="#d4d4d8" />
+        </div>
+      );
+      continue;
+    }
+
+    if (line.trim().startsWith("$$") || line.trim().startsWith("\\[") || line.trim().startsWith("\\]")) {
+      if (inBlockMath) {
+        renderedElements.push(
+          <div key={`blockmath-${i}`} className="w-full overflow-x-auto flex justify-center py-2 select-text">
+            <BlockMath math={blockMathContent} errorColor="#d4d4d8" />
+          </div>
+        );
+        blockMathContent = "";
+        inBlockMath = false;
+      } else {
+        inBlockMath = true;
+        const remaining = line.replace(/^\$\$/, "").replace(/^\\\[/, "").replace(/^\\\]/, "");
+        if (remaining.trim()) {
+          blockMathContent = remaining;
+        }
+      }
+      continue;
+    }
+
+    if (inBlockMath) {
+      blockMathContent += (blockMathContent ? "\n" : "") + line;
+      continue;
+    }
 
     if (isTableRow(line)) {
       const cells = parseRowCells(line);
@@ -615,6 +824,14 @@ export function renderFormattedContent(content: string) {
 
   if (inTable && tableRows.length > 0) {
     renderedElements.push(renderTable(tableRows, `table-${tableKey++}`));
+  }
+
+  if (inBlockMath && blockMathContent.trim()) {
+    renderedElements.push(
+      <div key="blockmath-end" className="w-full overflow-x-auto flex justify-center py-2 select-text">
+        <BlockMath math={blockMathContent} errorColor="#d4d4d8" />
+      </div>
+    );
   }
 
   return renderedElements;

@@ -25,6 +25,7 @@ import {
 } from "@/lib/chatHelpers";
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
+import ExpandableWrapper from "./ExpandableWrapper";
 
 const MapWidget = dynamic(() => import("./MapWidget"), {
   ssr: false,
@@ -59,6 +60,51 @@ const FlowWidget = dynamic(() => import("./FlowWidget"), {
   loading: () => (
     <div className="w-full h-[320px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
       Loading process flow diagram...
+    </div>
+  )
+});
+
+const ChemistryWidget = dynamic(() => import("./ChemistryWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[180px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading chemistry skeletal canvas...
+    </div>
+  )
+});
+
+const TimelineWidget = dynamic(() => import("./TimelineWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[160px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading timeline data...
+    </div>
+  )
+});
+
+const CalculatorWidget = dynamic(() => import("./CalculatorWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[160px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading finance modules...
+    </div>
+  )
+});
+
+const FunctionGraphWidget = dynamic(() => import("./FunctionGraphWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[200px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Loading graph plotter canvas...
+    </div>
+  )
+});
+
+const MermaidWidget = dynamic(() => import("./MermaidWidget"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-[200px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
+      Compiling flowchart canvas...
     </div>
   )
 });
@@ -154,7 +200,19 @@ export default function AssistantResponseBubble({
   }, [msg.status, msg.thinkingDuration]);
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent, sources, images, map, weather, chart, flow } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot } = parseMessageContent(msg.content);
+
+  // Extract Mermaid.js code blocks dynamically from finalContent if present
+  let mermaidChart: string | null = null;
+  let finalContent = rawFinalContent;
+  if (finalContent) {
+    const mermaidRegex = /```mermaid\n([\s\S]*?)\n```/i;
+    const mermaidMatch = finalContent.match(mermaidRegex);
+    if (mermaidMatch) {
+      mermaidChart = mermaidMatch[1];
+      finalContent = finalContent.replace(mermaidRegex, '').trim();
+    }
+  }
 
   // Fallback to logical default steps when no deep <think> reasoning blocks exist
   const thoughts = thinkingContent
@@ -313,37 +371,72 @@ export default function AssistantResponseBubble({
 
       {/* --- Dynamic Sliding Image Carousel --- */}
       {images && images.length > 0 && (
-        <div className="w-full max-w-[90%] select-none">
+        <ExpandableWrapper label="Image Gallery" className="w-full max-w-[90%] select-none">
           <ImageCarousel images={images} />
-        </div>
+        </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Map Widget --- */}
       {msg.status !== "thinking" && map && (
-        <div className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Map" className="w-full max-w-[90%] select-none flex justify-center">
           <MapWidget lat={map.lat} lng={map.lng} label={map.label} places={map.places} />
-        </div>
+        </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Weather Widget --- */}
       {msg.status !== "thinking" && weather && (
-        <div className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Weather" className="w-full max-w-[90%] select-none flex justify-center">
           <WeatherWidget lat={weather.lat} lng={weather.lng} />
-        </div>
+        </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Chart Widget --- */}
       {msg.status !== "thinking" && chart && (
-        <div className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Analytics Chart" className="w-full max-w-[90%] select-none flex justify-center">
           <ChartWidget type={chart.type} title={chart.title} xLabel={chart.xLabel} yLabel={chart.yLabel} data={chart.data} />
-        </div>
+        </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Flow Widget --- */}
       {msg.status !== "thinking" && flow && (
-        <div className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Process Flow" className="w-full max-w-[90%] select-none flex justify-center">
           <FlowWidget title={flow.title} nodes={flow.nodes} edges={flow.edges} />
-        </div>
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Chemistry Structure Widget --- */}
+      {msg.status !== "thinking" && chemistry && (
+        <ExpandableWrapper label="Chemical Structure" className="w-full max-w-[90%] select-none flex justify-center">
+          <ChemistryWidget compound={chemistry.compound} formula={chemistry.formula} weight={chemistry.weight} smiles={chemistry.smiles} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Timeline Widget --- */}
+      {msg.status !== "thinking" && timeline && (
+        <ExpandableWrapper label="Timeline" className="w-full max-w-[90%] select-none flex justify-center">
+          <TimelineWidget title={timeline.title} events={timeline.events} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Calculator Widget --- */}
+      {msg.status !== "thinking" && calculator && (
+        <ExpandableWrapper label="Calculator" className="w-full max-w-[90%] select-none flex justify-center">
+          <CalculatorWidget type={calculator.type} title={calculator.title} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Function Plotter Widget --- */}
+      {msg.status !== "thinking" && plot && (
+        <ExpandableWrapper label="Function Graph" className="w-full max-w-[90%] select-none flex justify-center">
+          <FunctionGraphWidget formula={plot.formula} minX={plot.minX} maxX={plot.maxX} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Mermaid Diagram Widget --- */}
+      {msg.status !== "thinking" && mermaidChart && (
+        <ExpandableWrapper label="CS Topology / Diagram" className="w-full max-w-[90%] select-none flex justify-center">
+          <MermaidWidget chart={mermaidChart} />
+        </ExpandableWrapper>
       )}
 
       {/* --- Consulted Web Search Sources Mini Row --- */}

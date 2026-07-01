@@ -44,3 +44,42 @@ body {
   animation: thinkingGlow 2s linear infinite;
 }
 
+/* ExpandableWrapper overlay animations */
+@keyframes vk-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes vk-scale-in {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* ─── Premium Dark Scrollbar ─────────────────────────────────────── */
+/* Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;          /* zinc-700 */
+  border-radius: 999px;
+  border: 1px solid #27272a;    /* zinc-800 inner border */
+  transition: background 0.15s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;          /* zinc-600 on hover */
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
