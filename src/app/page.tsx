@@ -1514,7 +1514,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={loginLoading}
-              className="w-full h-11 bg-[#cc785c] hover:bg-[#a9583e] text-white rounded-xl font-sans font-medium text-[14.5px] transition-all duration-200 cursor-pointer mt-4 flex items-center justify-center disabled:opacity-50"
+              className="w-full h-11 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white rounded-xl font-sans font-medium text-[14.5px] transition-all duration-200 cursor-pointer mt-4 flex items-center justify-center disabled:opacity-50"
             >
               {loginLoading ? "Authorizing..." : "Authorize Access"}
             </button>
@@ -1745,17 +1745,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Scroll to Bottom Button */}
-            {isChatActive && showScrollBottom && (
-              <button
-                type="button"
-                onClick={scrollToBottom}
-                className="absolute bottom-28 right-8 z-30 flex items-center justify-center w-9 h-9 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-xl transition-all duration-200 cursor-pointer animate-fadeIn"
-                aria-label="Scroll to bottom"
-              >
-                <ArrowDown className="w-5 h-5" />
-              </button>
-            )}
 
             {/* Landing Hero Title & Input (only visible when not active, centered vertically) */}
             {!isChatActive && (
@@ -1794,6 +1783,16 @@ export default function Home() {
               <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5">
                 {/* Content layers */}
                 <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
+                  {showScrollBottom && (
+                    <button
+                      type="button"
+                      onClick={scrollToBottom}
+                      className="flex items-center justify-center w-8 h-8 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-lg transition-all duration-200 cursor-pointer animate-fadeIn mb-1"
+                      aria-label="Scroll to bottom"
+                    >
+                      <ArrowDown className="w-4 h-4" />
+                    </button>
+                  )}
                   <PromptInput
                     onSubmit={handleSendMessage}
                     selectedModel={selectedModel}
@@ -1979,7 +1978,7 @@ export default function Home() {
               <button
                 type="button"
                 onClick={executeRenameSession}
-                className="px-4 py-2 rounded-xl bg-[#cc785c] text-[13.5px] hover:bg-[#a9583e] text-white transition-colors"
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
               >
                 Save
               </button>
