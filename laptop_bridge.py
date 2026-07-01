@@ -31,10 +31,10 @@ def get_jwt_token(backend_url):
             timeout=15.0
         )
         if response.status_code == 404:
-            # Try verification pathway if master-login isn't deployed yet
-            print("[-] master-login endpoint returned 404. Attempting OTP request pathway...")
-            # Fallback mock/dev token if no other options succeed
-            return f"mock-{master_key}"
+            print("[-] master-login endpoint returned 404.")
+            if "127.0.0.1" in backend_url or "localhost" in backend_url:
+                return f"mock-{master_key}"
+            raise Exception("Authentication endpoint not found on remote server.")
             
         response.raise_for_status()
         token = response.json().get("access_token")
@@ -42,8 +42,10 @@ def get_jwt_token(backend_url):
         return token
     except Exception as e:
         print(f"[-] Authentication failed: {e}")
-        print("[*] Falling back to default developer token...")
-        return f"mock-{master_key}"
+        if "127.0.0.1" in backend_url or "localhost" in backend_url:
+            print("[*] Local environment: Falling back to default developer token...")
+            return f"mock-{master_key}"
+        raise e
 
 async def handle_proxy_completion(websocket, data):
     request_id = data.get("request_id")
@@ -222,34 +224,39 @@ async def handle_execute_tool(websocket, data):
         except Exception:
             pass
 
-async def bridge_loop(ws_url, token):
-    url = f"{ws_url}/ws/laptop?token={token}"
-    print(f"[*] Connecting WebSocket bridge to: {url}...")
-    
-    async for websocket in websockets.connect(url, ping_interval=20, ping_timeout=20):
+async def bridge_loop(ws_url, backend_url):
+    print("[*] Starting bridge loop. Reconnects will dynamically acquire fresh auth tokens.")
+    while True:
         try:
-            print("[+] WebSocket connection active. Laptop Daemon is ONLINE and listening...")
-            async for message_str in websocket:
-                try:
-                    data = json.loads(message_str)
-                except Exception:
-                    continue
-                
-                msg_type = data.get("type")
-                action = data.get("action")
-                
-                if msg_type == "proxy_completion_request":
-                    asyncio.create_task(handle_proxy_completion(websocket, data))
-                elif action == "execute":
-                    cmd = data.get("command")
-                    asyncio.create_task(handle_execute_command(websocket, cmd))
-                elif action == "execute_tool":
-                    asyncio.create_task(handle_execute_tool(websocket, data))
+            # Dynamically acquire a fresh token every time we attempt to connect/reconnect
+            token = get_jwt_token(backend_url)
+            url = f"{ws_url}/ws/laptop?token={token}"
+            print(f"[*] Connecting WebSocket bridge to: {url}...")
+            
+            # Using ping_interval=10 to keep connection highly active through proxies
+            async with websockets.connect(url, ping_interval=10, ping_timeout=10) as websocket:
+                print("[+] WebSocket connection active. Laptop Daemon is ONLINE and listening...")
+                async for message_str in websocket:
+                    try:
+                        data = json.loads(message_str)
+                    except Exception:
+                        continue
+                    
+                    msg_type = data.get("type")
+                    action = data.get("action")
+                    
+                    if msg_type == "proxy_completion_request":
+                        asyncio.create_task(handle_proxy_completion(websocket, data))
+                    elif action == "execute":
+                        cmd = data.get("command")
+                        asyncio.create_task(handle_execute_command(websocket, cmd))
+                    elif action == "execute_tool":
+                        asyncio.create_task(handle_execute_tool(websocket, data))
         except websockets.ConnectionClosed as cc:
-            print(f"[-] Connection closed ({cc.code}): {cc.reason}. Reconnecting in 3s...")
+            print(f"[-] Connection closed ({cc.code}): {cc.reason or 'No reason provided'}. Reconnecting in 3s...")
             await asyncio.sleep(3)
         except Exception as e:
-            print(f"[-] Bridge error: {e}. Reconnecting in 3s...")
+            print(f"[-] Bridge error or auth failure: {e}. Reconnecting in 3s...")
             await asyncio.sleep(3)
 
 def main():
@@ -268,10 +275,8 @@ def main():
         backend_url = DEFAULT_BACKEND_URL
         ws_url = DEFAULT_WS_URL
         
-    token = get_jwt_token(backend_url)
-    
     try:
-        asyncio.run(bridge_loop(ws_url, token))
+        asyncio.run(bridge_loop(ws_url, backend_url))
     except KeyboardInterrupt:
         print("\n[+] Laptop Daemon Bridge shut down by user.")
 

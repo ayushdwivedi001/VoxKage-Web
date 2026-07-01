@@ -308,7 +308,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                         generated_title = generated_title.strip().strip('.')
                         if generated_title:
                             update_session_name(sid, uid, generated_title)
-                            await ws.send_text(json.dumps({"type": "rename", "name": generated_title}))
+                            if is_websocket_connected(ws):
+                                await ws.send_text(json.dumps({"type": "rename", "name": generated_title}))
                 except Exception as re_err:
                     print(f"Async Rename failed: {re_err}")
 
