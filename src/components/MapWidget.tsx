@@ -20,6 +20,7 @@ interface MapWidgetProps {
   lng: number;
   label?: string;
   places?: MapPlace[];
+  isExpanded?: boolean;
 }
 
 // Controller component to pan Leaflet map reactively
@@ -31,7 +32,7 @@ function MapController({ center, zoom }: { center: [number, number]; zoom: numbe
   return null;
 }
 
-export default function MapWidget({ lat, lng, label, places }: MapWidgetProps) {
+export default function MapWidget({ lat, lng, label, places, isExpanded = false }: MapWidgetProps) {
   const [customIcon, setCustomIcon] = useState<L.DivIcon | null>(null);
   const [isClient, setIsClient] = useState(false);
   const [mapTheme, setMapTheme] = useState<"dark" | "light">("dark");
@@ -107,7 +108,9 @@ export default function MapWidget({ lat, lng, label, places }: MapWidgetProps) {
         "--map-zoom-color": mapTheme === "dark" ? "#a1a1aa" : "#4b5563",
         "--map-zoom-border": mapTheme === "dark" ? "#27272a" : "#e4e4e7",
       } as React.CSSProperties}
-      className="relative w-full max-w-[850px] mx-auto my-4 rounded-2xl border border-zinc-850/60 bg-[#0e0e12]/80 backdrop-blur-md overflow-hidden flex flex-col group/map select-none shadow-2xl transition-all duration-300"
+      className={`relative w-full mx-auto rounded-2xl border border-zinc-850/60 bg-[#0e0e12]/80 backdrop-blur-md overflow-hidden flex flex-col group/map select-none shadow-2xl transition-all duration-300 ${
+        isExpanded ? "max-w-[1000px] my-0" : "max-w-[850px] my-4"
+      }`}
     >
       {/* Map Header Panel */}
       <div className="p-3.5 border-b border-zinc-850/40 bg-zinc-950/50 flex items-center gap-2 select-text">
@@ -140,7 +143,9 @@ export default function MapWidget({ lat, lng, label, places }: MapWidgetProps) {
       </div>
 
       {/* Main Split Content Area */}
-      <div className="flex flex-col md:flex-row h-[460px] relative w-full">
+      <div className={`flex flex-col md:flex-row relative w-full transition-all duration-300 ${
+        isExpanded ? "h-[620px]" : "h-[460px]"
+      }`}>
         {/* Map Panel (Left side 60% on desktop, full on mobile) */}
         <div className={`w-full ${hasPlaces ? "md:w-[60%]" : "w-full"} h-[280px] md:h-full relative bg-zinc-900/50 z-0`}>
           <MapContainer

@@ -5,9 +5,10 @@ import { Calendar, ChevronDown, ChevronUp } from "lucide-react";
 interface TimelineWidgetProps {
   title: string;
   events: TimelineEvent[];
+  isExpanded?: boolean;
 }
 
-export default function TimelineWidget({ title, events }: TimelineWidgetProps) {
+export default function TimelineWidget({ title, events, isExpanded = false }: TimelineWidgetProps) {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   const toggleExpand = (idx: number) => {
@@ -15,7 +16,9 @@ export default function TimelineWidget({ title, events }: TimelineWidgetProps) {
   };
 
   return (
-    <div className="w-full max-w-[540px] bg-[#0c0c0e]/95 border border-zinc-850/60 rounded-2xl p-4.5 flex flex-col gap-4 shadow-2xl mx-auto my-3 select-none">
+    <div className={`w-full mx-auto bg-[#0c0c0e]/95 border border-zinc-850/60 rounded-2xl p-4.5 flex flex-col gap-4 shadow-2xl select-none transition-all duration-300 ${
+      isExpanded ? "max-w-[800px] my-0 p-6 md:p-8" : "max-w-[540px] my-3"
+    }`}>
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
         <Calendar className="w-4 h-4 text-rose-400" />
@@ -25,7 +28,9 @@ export default function TimelineWidget({ title, events }: TimelineWidgetProps) {
       </div>
 
       {/* Events Stream Stack */}
-      <div className="relative border-l border-zinc-800 ml-3.5 pl-5 flex flex-col gap-5 py-1 select-text">
+      <div className={`relative border-l border-zinc-800 ml-3.5 pl-5 flex flex-col gap-5 py-1 select-text transition-all duration-300 ${
+        isExpanded ? "max-h-[60vh] overflow-y-auto pr-3 custom-scrollbar" : ""
+      }`}>
         {events.map((ev, idx) => {
           const isExpanded = expandedIndex === idx;
 

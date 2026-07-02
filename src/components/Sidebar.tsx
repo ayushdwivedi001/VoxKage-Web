@@ -79,14 +79,6 @@ export default function Sidebar({
               <span className="text-zinc-100 text-lg font-light tracking-[0.03em] font-sans select-none">
                 VoxKage
               </span>
-              <span 
-                className={`w-[6px] h-[6px] rounded-full mt-1 transition-colors duration-300 ${
-                  connectionStatus === "connected" ? "bg-emerald-500" :
-                  connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" :
-                  "bg-rose-500"
-                }`}
-                title={`Telemetry: ${connectionStatus}`}
-              />
             </div>
             <div className="flex items-center gap-1">
               <button

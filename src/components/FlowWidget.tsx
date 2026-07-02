@@ -18,9 +18,10 @@ interface FlowWidgetProps {
   title: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  isExpanded?: boolean;
 }
 
-export default function FlowWidget({ title, nodes, edges }: FlowWidgetProps) {
+export default function FlowWidget({ title, nodes, edges, isExpanded = false }: FlowWidgetProps) {
   // 1. Hierarchical Layout Algorithm
   const levels: { [id: string]: number } = {};
   nodes.forEach(n => levels[n.id] = 0);
@@ -42,8 +43,8 @@ export default function FlowWidget({ title, nodes, edges }: FlowWidgetProps) {
   });
 
   const maxLvl = Math.max(...Object.values(levels), 0);
-  const canvasWidth = 640;
-  const canvasHeight = 280;
+  const canvasWidth = isExpanded ? 1000 : 640;
+  const canvasHeight = isExpanded ? 500 : 280;
 
   // Node box sizes: width 110px, height 50px
   const nodeW = 120;
@@ -87,7 +88,9 @@ export default function FlowWidget({ title, nodes, edges }: FlowWidgetProps) {
   };
 
   return (
-    <div className="relative w-full max-w-[680px] mx-auto my-4 bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4 select-none">
+    <div className={`relative w-full mx-auto bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4 select-none transition-all duration-300 ${
+      isExpanded ? "max-w-[1000px] my-0 p-6 md:p-8" : "max-w-[680px] my-4"
+    }`}>
       {/* Title Header */}
       <div className="flex flex-col gap-1 select-text">
         <div className="flex items-center gap-1.5 text-zinc-550">

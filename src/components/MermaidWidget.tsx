@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from "react";
 
 interface MermaidWidgetProps {
   chart: string;
+  isExpanded?: boolean;
 }
 
-export default function MermaidWidget({ chart }: MermaidWidgetProps) {
+export default function MermaidWidget({ chart, isExpanded = false }: MermaidWidgetProps) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,12 +55,16 @@ export default function MermaidWidget({ chart }: MermaidWidgetProps) {
   }, [chart]);
 
   return (
-    <div className="w-full max-w-[620px] bg-[#0c0c0e]/95 border border-zinc-850/60 rounded-2xl p-4.5 flex flex-col gap-3 shadow-2xl mx-auto my-3 select-none">
+    <div className={`w-full mx-auto bg-[#0c0c0e]/95 border border-zinc-850/60 rounded-2xl p-4.5 flex flex-col gap-3 shadow-2xl select-none transition-all duration-300 ${
+      isExpanded ? "max-w-[1000px] my-0 p-6 md:p-8" : "max-w-[620px] my-3"
+    }`}>
       <div className="flex items-center justify-between border-b border-zinc-850 pb-2">
         <span className="text-[10px] font-mono tracking-wider uppercase text-blue-400 font-medium">CS Topology / Diagram</span>
       </div>
 
-      <div className="w-full overflow-x-auto flex justify-center py-2 bg-zinc-950/40 rounded-xl border border-zinc-900 custom-scrollbar relative min-h-[100px]">
+      <div className={`w-full overflow-auto flex justify-center bg-zinc-950/40 rounded-xl border border-zinc-900 custom-scrollbar relative transition-all duration-300 ${
+        isExpanded ? "min-h-[500px] max-h-[70vh] p-6" : "min-h-[100px] py-2"
+      }`}>
         {error ? (
           <div className="text-[12px] text-red-400 font-mono flex items-center justify-center p-4">
             {error}

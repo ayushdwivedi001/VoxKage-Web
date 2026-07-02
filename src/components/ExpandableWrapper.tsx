@@ -35,40 +35,36 @@ export default function ExpandableWrapper({ children, label, className = "" }: E
     return () => window.removeEventListener("keydown", handleKey);
   }, [isExpanded, close]);
 
+  const expandedChild = React.isValidElement(children)
+    ? React.cloneElement(children as React.ReactElement<any>, { isExpanded: true })
+    : children;
+
   const overlayContent = isExpanded ? (
     <div
-      className="fixed inset-0 z-[9999] flex items-start justify-center"
+      className="fixed inset-0 z-[9990] flex items-center justify-center p-4 sm:p-6 md:p-10 select-none"
       style={{ animation: "vk-fade-in 0.18s ease" }}
       onClick={close}
     >
       {/* Dimmed backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" />
+
+      {/* Floating Close Button in Top-Right */}
+      <button
+        onClick={close}
+        className="absolute top-6 right-6 z-[9999] flex items-center justify-center w-10 h-10 rounded-full bg-zinc-900/90 border border-zinc-800 text-zinc-400 hover:text-zinc-150 hover:bg-zinc-800/80 transition-all duration-150 cursor-pointer shadow-lg"
+        aria-label="Close expanded view"
+      >
+        <X className="w-5 h-5" />
+      </button>
 
       {/* Expanded content panel */}
       <div
         ref={contentRef}
-        className="relative z-10 w-full max-w-[92vw] mt-10 mb-10 overflow-y-auto max-h-[88vh] rounded-2xl"
+        className="relative z-10 w-full max-w-[95vw] md:max-w-[1100px] max-h-[85vh] overflow-y-auto custom-scrollbar flex items-center justify-center"
         style={{ animation: "vk-scale-in 0.2s ease" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close button row */}
-        <div className="flex items-center justify-between px-4 py-2.5 bg-[#121214] border border-zinc-800/70 rounded-t-2xl">
-          {label && (
-            <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-widest">{label}</span>
-          )}
-          <button
-            onClick={close}
-            className="ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 transition-colors duration-150 text-[12px] font-sans"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>Close</span>
-          </button>
-        </div>
-
-        {/* Cloned children in expanded view */}
-        <div className="bg-[#0d0d0f] border border-t-0 border-zinc-800/70 rounded-b-2xl p-4 overflow-auto">
-          {children}
-        </div>
+        {expandedChild}
       </div>
     </div>
   ) : null;

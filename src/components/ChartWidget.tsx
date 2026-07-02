@@ -26,9 +26,10 @@ interface ChartWidgetProps {
   xLabel?: string;
   yLabel?: string;
   data: ChartPoint[];
+  isExpanded?: boolean;
 }
 
-export default function ChartWidget({ type, title, xLabel, yLabel, data }: ChartWidgetProps) {
+export default function ChartWidget({ type, title, xLabel, yLabel, data, isExpanded = false }: ChartWidgetProps) {
   const [chartStyle, setChartStyle] = useState<"line" | "area" | "bar">(type);
 
   // Floating Glassmorphic Tooltip Card
@@ -51,7 +52,9 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data }: Chart
   const hasSecondary = data.some(pt => pt.secondary_value !== undefined);
 
   return (
-    <div className="relative w-full max-w-[680px] mx-auto my-4 bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4.5 select-none transition-all duration-300">
+    <div className={`relative w-full mx-auto bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4.5 select-none transition-all duration-300 ${
+      isExpanded ? "max-w-[1000px] my-0 p-6 md:p-8" : "max-w-[680px] my-4"
+    }`}>
       {/* Header and Style Switcher */}
       <div className="flex justify-between items-center select-text">
         <div className="flex flex-col gap-1 min-w-0">
@@ -103,7 +106,9 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data }: Chart
       </div>
 
       {/* Chart Canvas */}
-      <div className="w-full h-[240px] relative z-0">
+      <div className={`w-full relative z-0 transition-all duration-300 ${
+        isExpanded ? "h-[450px]" : "h-[240px]"
+      }`}>
         <ResponsiveContainer width="100%" height="100%">
           {chartStyle === "area" ? (
             <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
