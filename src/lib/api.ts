@@ -126,3 +126,75 @@ export async function fetchModels(): Promise<string[]> {
     return ["deepseek-v4-flash-free", "gemini-3.5-flash", "claude-sonnet-4", "mimo-v2.5-free"];
   }
 }
+
+export async function uploadSessionFile(sessionId: string, file: File) {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${BACKEND_URL}/sessions/${sessionId}/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (response.status === 401) {
+    clearToken();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("voxkage_unauthorized"));
+    }
+    throw new Error("Unauthorized");
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || response.statusText);
+  }
+
+  return response.json();
+}
+
+export async function deleteSessionFile(sessionId: string, filename: string) {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${BACKEND_URL}/sessions/${sessionId}/files/${filename}`, {
+    method: "DELETE",
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || response.statusText);
+  }
+
+  return response.json();
+}
+
+export async function adoptDraftFiles(sessionId: string, draftId: string) {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${BACKEND_URL}/sessions/${sessionId}/adopt-draft/${draftId}`, {
+    method: "POST",
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || response.statusText);
+  }
+
+  return response.json();
+}

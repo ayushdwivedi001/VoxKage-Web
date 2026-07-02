@@ -1,11 +1,20 @@
 import React, { useEffect, useState, useRef } from "react";
+import MessageAttachmentsRow, { parseMessageAttachments, Attachment } from "./MessageAttachmentsRow";
 
 const USER_BUBBLE_MAX_H = 180;
 
-export default function UserBubble({ content }: { content: string }) {
+interface UserBubbleProps {
+  content: string;
+  onImageClick: (url: string, rect: DOMRect) => void;
+  onDocumentClick?: (file: Attachment) => void;
+}
+
+export default function UserBubble({ content, onImageClick, onDocumentClick }: UserBubbleProps) {
   const [expanded, setExpanded] = useState(false);
   const [needsClamp, setNeedsClamp] = useState(false);
   const innerRef = useRef<HTMLDivElement | null>(null);
+
+  const { text, attachments } = parseMessageAttachments(content);
 
   useEffect(() => {
     const el = innerRef.current;
@@ -14,12 +23,20 @@ export default function UserBubble({ content }: { content: string }) {
     const natural = el.scrollHeight;
     el.style.maxHeight = "";
     setNeedsClamp(natural > USER_BUBBLE_MAX_H);
-  }, [content]);
+  }, [text]);
 
   return (
-    <div className="max-w-[85%] flex flex-col items-end text-zinc-300">
+    <div className="max-w-[85%] flex flex-col items-end text-zinc-300 w-full">
+      {attachments.length > 0 && (
+        <MessageAttachmentsRow 
+          attachments={attachments} 
+          onImageClick={onImageClick} 
+          onDocumentClick={onDocumentClick}
+        />
+      )}
+      
       <div
-        className="bg-[#202024] text-zinc-100 rounded-2xl px-4 pt-3 text-[15px] leading-relaxed font-sans border border-zinc-800/40 select-text w-full"
+        className="bg-[#202024] text-zinc-100 rounded-2xl px-4 pt-3 text-[15px] leading-relaxed font-sans border border-zinc-800/40 select-text w-fit max-w-full ml-auto"
         style={{ paddingBottom: needsClamp ? 0 : "10px" }}
       >
         <div
@@ -31,7 +48,7 @@ export default function UserBubble({ content }: { content: string }) {
             whiteSpace: "pre-wrap",
           }}
         >
-          <div ref={innerRef}>{content}</div>
+          <div ref={innerRef}>{text}</div>
           {needsClamp && !expanded && (
             <div
               aria-hidden="true"

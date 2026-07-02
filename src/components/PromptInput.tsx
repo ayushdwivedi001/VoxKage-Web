@@ -5,6 +5,10 @@ import { Plus, ChevronDown, Mic, ArrowUp, Square, X, CornerDownLeft } from "luci
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
+import { Attachment } from "./MessageAttachmentsRow";
+import { Monitor, FileUp } from "lucide-react";
+import PDFHoverCard from "./PDFHoverCard";
+
 interface ModelOption {
   name: string;
   desc: string;
@@ -27,6 +31,12 @@ interface PromptInputProps {
   onRemoveComment?: (id: string) => void;
   onClickComment?: (fileName: string, line: number) => void;
   contextPercent?: number;
+  attachments?: Attachment[];
+  uploadingStates?: Record<string, "uploading" | "failed">;
+  onUpload?: (file: File) => Promise<void>;
+  onRemoveAttachment?: (filename: string) => void;
+  onPreviewImage?: (url: string, rect: DOMRect) => void;
+  onPreviewDocument?: (file: Attachment) => void;
 }
 
 export default function PromptInput({
@@ -43,6 +53,12 @@ export default function PromptInput({
   onRemoveComment,
   onClickComment,
   contextPercent = 0,
+  attachments = [],
+  uploadingStates = {},
+  onUpload,
+  onRemoveAttachment,
+  onPreviewImage,
+  onPreviewDocument,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -51,12 +67,120 @@ export default function PromptInput({
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
+  // Plus button attachment menu states
+  const [plusPopupOpen, setPlusPopupOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const plusButtonRef = useRef<HTMLButtonElement | null>(null);
+  const plusPopupRef = useRef<HTMLDivElement | null>(null);
+
   // Hover states for Variant sub-popup
   const [isHoveringVariantRow, setIsHoveringVariantRow] = useState(false);
   const [isHoveringVariantPopup, setIsHoveringVariantPopup] = useState(false);
   const showVariantPopup = modelDropdownOpen && (isHoveringVariantRow || isHoveringVariantPopup);
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Click outside listener for plus button popup
+  useEffect(() => {
+    const handleClickOutsidePlus = (event: MouseEvent) => {
+      if (
+        plusPopupRef.current && 
+        !plusPopupRef.current.contains(event.target as Node) &&
+        plusButtonRef.current &&
+        !plusButtonRef.current.contains(event.target as Node)
+      ) {
+        setPlusPopupOpen(false);
+      }
+    };
+    if (plusPopupOpen) {
+      document.addEventListener("mousedown", handleClickOutsidePlus);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutsidePlus);
+    };
+  }, [plusPopupOpen]);
+
+  const handleTakeScreenshot = async () => {
+    try {
+      setPlusPopupOpen(false);
+      
+      const CaptureControllerClass = (window as any).CaptureController || (globalThis as any).CaptureController;
+      const controller = CaptureControllerClass ? new CaptureControllerClass() : null;
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: false,
+        ...(controller ? { controller } : {})
+      } as any);
+
+      if (controller && "setFocusBehavior" in controller) {
+        try {
+          controller.setFocusBehavior("no-focus-change");
+        } catch (focusErr) {
+          console.warn("Failed to set focus behavior:", focusErr);
+        }
+      }
+      
+      const video = document.createElement("video");
+      video.autoplay = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      
+      video.onloadedmetadata = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          
+          // Stop capturing tracks and return focus
+          stream.getTracks().forEach((track) => track.stop());
+          setTimeout(() => {
+            window.focus();
+            textareaRef.current?.focus();
+          }, 150);
+          
+          canvas.toBlob((blob) => {
+            if (blob && onUpload) {
+              const file = new File([blob], "screenshot.png", { type: "image/png" });
+              onUpload(file);
+            }
+          }, "image/png");
+        }
+      };
+    } catch (err) {
+      console.error("Screen capture screenshot failed:", err);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0 && onUpload) {
+      setPlusPopupOpen(false);
+      for (let i = 0; i < e.target.files.length; i++) {
+        onUpload(e.target.files[i]);
+      }
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    let fileFound = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file && onUpload) {
+          fileFound = true;
+          onUpload(file);
+        }
+      }
+    }
+    if (fileFound) {
+      e.preventDefault();
+    }
+  };
 
   // --- / Commands Popup States ---
   const commands = ["/compact", "/agents", "/drill"];
@@ -348,6 +472,71 @@ export default function PromptInput({
         </div>
       )}
 
+      {attachments.length > 0 && (
+        <div className="flex flex-row flex-nowrap overflow-x-auto overflow-y-hidden w-full max-w-full pb-2 pt-1.5 px-0.5 custom-horizontal-scrollbar gap-3 mb-2 animate-fadeIn select-none">
+          {attachments.map((file) => {
+            const isUploading = uploadingStates[file.filename] === "uploading";
+            const isFailed = uploadingStates[file.filename] === "failed";
+            const isImage = file.type.startsWith("image/");
+            const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://shinayush-voxkage-web-backend.hf.space";
+            const fileUrl = file.url.startsWith("http") ? file.url : `${backendUrl}${file.url}`;
+
+            if (isUploading) {
+              return (
+                <div key={file.filename} className="flex items-center justify-center rounded-xl bg-zinc-900/40 border border-zinc-850/60 w-[90px] h-[60px] animate-pulse flex-shrink-0">
+                  <div className="w-5 h-5 rounded bg-zinc-800" />
+                </div>
+              );
+            }
+
+            if (isFailed) {
+              return (
+                <div key={file.filename} className="relative group/failed w-[90px] h-[60px] flex-shrink-0 select-none">
+                  <div className="w-full h-full flex flex-col items-center justify-center rounded-xl bg-red-950/10 border border-red-900/30">
+                    <span className="text-[10px] font-mono font-bold text-red-400">ERR</span>
+                    <span className="text-[8.5px] text-zinc-550 truncate mt-0.5 w-full text-center px-1">
+                      Failed
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRemoveAttachment?.(file.filename);
+                    }}
+                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/failed:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              );
+            }
+
+            if (isImage) {
+              return (
+                <ImageAttachmentPreviewItem 
+                  key={file.filename}
+                  src={fileUrl}
+                  filename={file.filename}
+                  onRemove={onRemoveAttachment}
+                  onPreview={onPreviewImage}
+                />
+              );
+            }
+
+            return (
+              <DocumentAttachmentPreviewItem
+                key={file.filename}
+                file={file}
+                onRemove={onRemoveAttachment}
+                onClick={onPreviewDocument}
+              />
+            );
+          })}
+        </div>
+      )}
+
       {/* Input Field */}
       <div className="relative w-full min-h-[28px]">
         {/* Background highlight overlay */}
@@ -370,6 +559,7 @@ export default function PromptInput({
           onScroll={handleScroll}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          onPaste={handlePaste}
           rows={1}
           className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
             value ? "text-transparent" : "text-zinc-100"
@@ -384,13 +574,54 @@ export default function PromptInput({
       {/* Bottom Actions Bar */}
       <div className="flex items-center justify-between mt-4 pt-1 w-full border-t border-transparent">
         {/* Left Side: Plus Button */}
-        <button
-          type="button"
-          className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 active:scale-95"
-          aria-label="Add attachment"
-        >
-          <Plus className="w-[22px] h-[22px] stroke-[2.2]" />
-        </button>
+        <div className="relative">
+          <button
+            ref={plusButtonRef}
+            type="button"
+            onClick={() => setPlusPopupOpen(!plusPopupOpen)}
+            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 active:scale-95 cursor-pointer"
+            aria-label="Add attachment"
+          >
+            <Plus className={`w-[22px] h-[22px] stroke-[2.2] transition-transform duration-200 ${plusPopupOpen ? "rotate-45" : ""}`} />
+          </button>
+
+          {/* Hidden File Input */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            multiple 
+            style={{ display: "none" }} 
+          />
+
+          {/* Hovering Popup Menu */}
+          {plusPopupOpen && (
+            <div 
+              ref={plusPopupRef}
+              className="absolute bottom-11 left-0 bg-[#121215]/98 border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 w-[200px] flex flex-col animate-fadeIn select-none backdrop-blur-md"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  fileInputRef.current?.click();
+                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+              >
+                <FileUp className="w-4 h-4 text-zinc-400" />
+                <span>Add files or Images</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleTakeScreenshot}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+              >
+                <Monitor className="w-4 h-4 text-zinc-400" />
+                <span>Take a Screenshot</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Right Side: Options and Submit */}
         <div className="flex items-center gap-3">
@@ -499,7 +730,127 @@ export default function PromptInput({
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.28);
         }
+        .custom-horizontal-scrollbar::-webkit-scrollbar {
+          height: 4px;
+        }
+        .custom-horizontal-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-horizontal-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.08);
+          border-radius: 99px;
+        }
+        .custom-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.16);
+        }
       `}</style>
+    </div>
+  );
+}
+
+function DocumentAttachmentPreviewItem({
+  file,
+  onRemove,
+  onClick
+}: {
+  file: Attachment;
+  onRemove?: (filename: string) => void;
+  onClick?: (file: Attachment) => void;
+}) {
+  const isPDF = file.type === "application/pdf";
+  const ext = file.original_name.split(".").pop()?.toUpperCase() || "FILE";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://shinayush-voxkage-web-backend.hf.space";
+  const fileUrl = file.url.startsWith("http") ? file.url : `${backendUrl}${file.url}`;
+
+  return (
+    <div className="relative group/doc w-[90px] h-[60px] flex-shrink-0 select-none">
+      <div 
+        className="w-full h-full rounded-xl overflow-hidden border border-zinc-800/80 bg-zinc-950/40 cursor-pointer relative"
+        onClick={() => onClick?.(file)}
+      >
+        {isPDF ? (
+          <div className="w-full h-full relative overflow-hidden bg-zinc-950">
+            <iframe 
+              src={`${fileUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0`} 
+              className="w-full h-full pointer-events-none select-none opacity-80 scale-[1.3] origin-center"
+              title="PDF Thumbnail"
+              scrolling="no"
+            />
+            <div className="absolute inset-0 z-10 bg-transparent" />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-zinc-900/60">
+            <span className="text-[14px] font-bold text-zinc-550 font-mono tracking-wider">
+              .{ext.toLowerCase()}
+            </span>
+          </div>
+        )}
+
+        {/* Pill Badge */}
+        <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-850/70 text-[9.5px] font-mono font-bold text-zinc-350 pointer-events-none">
+          {ext}
+        </div>
+      </div>
+
+      {/* Remove button */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove?.(file.filename);
+        }}
+        className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/doc:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+      >
+        <X className="w-2.5 h-2.5" />
+      </button>
+    </div>
+  );
+}
+
+function ImageAttachmentPreviewItem({ 
+  src, 
+  filename, 
+  onRemove, 
+  onPreview 
+}: { 
+  src: string; 
+  filename: string; 
+  onRemove?: (filename: string) => void; 
+  onPreview?: (url: string, rect: DOMRect) => void;
+}) {
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (imgRef.current && onPreview) {
+      const rect = imgRef.current.getBoundingClientRect();
+      onPreview(src, rect);
+    }
+  };
+
+  return (
+    <div className="relative group/img w-[90px] h-[60px] flex-shrink-0 select-none">
+      <div className="w-full h-full rounded-xl overflow-hidden border border-zinc-800/80 bg-zinc-950/40">
+        <img
+          ref={imgRef}
+          src={src}
+          alt="Attachment Thumbnail"
+          className="w-full h-full object-cover cursor-zoom-in transition-all duration-300 hover:scale-105 group-hover/img:brightness-90"
+          onClick={handleClick}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onRemove?.(filename);
+        }}
+        className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/img:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+      >
+        <X className="w-2.5 h-2.5" />
+      </button>
     </div>
   );
 }

@@ -503,5 +503,20 @@ TOOLS_SCHEMA = [
                 "required": ["type", "title"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "index_document",
+            "description": "Index a previously uploaded document or image into the long-term memory RAG vector database so it can be recalled in future sessions.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The saved filename of the uploaded document (e.g. '1782785087867-resume.pdf')."},
+                    "original_name": {"type": "string", "description": "The original user-facing name of the document (e.g. 'resume.pdf')."}
+                },
+                "required": ["filename", "original_name"]
+            }
+        }
     }
 ]

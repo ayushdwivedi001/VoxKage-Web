@@ -10,8 +10,9 @@ import asyncio
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 
 from auth import create_access_token, get_current_user
@@ -24,6 +25,10 @@ from opencode_client import list_opencode_models
 from agent_loop import run_agentic_loop, LAPTOP_CHANNELS
 
 app = FastAPI(title="VoxKage Web API", version="2026.06.30")
+
+# Ensure uploads folder exists and mount it
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -162,9 +167,102 @@ def get_single_session(session_id: str, user: str = Depends(get_current_user)):
     percent = calculate_context_percent(messages)
     return {"session": session, "messages": messages, "context_percent": percent}
 
+@app.post("/sessions/{session_id}/upload")
+async def upload_session_file(
+    session_id: str,
+    file: UploadFile = File(...),
+    user: str = Depends(get_current_user)
+):
+    # Enforce 50MB size limit
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    if size > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds maximum limit of 50MB.")
+    
+    # Save file locally under uploads/{session_id}/{timestamp}-{filename}
+    import time
+    import uuid
+    timestamp = int(time.time())
+    unique_id = uuid.uuid4().hex[:6]
+    safe_filename = f"{timestamp}-{unique_id}-{file.filename}"
+    
+    session_dir = os.path.join("uploads", str(session_id))
+    os.makedirs(session_dir, exist_ok=True)
+    file_path = os.path.join(session_dir, safe_filename)
+    
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+        
+    # Calculate pages if it is a PDF
+    num_pages = None
+    _, ext = os.path.splitext(file.filename.lower())
+    if ext == ".pdf":
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(file_path)
+            num_pages = len(reader.pages)
+        except Exception as e:
+            print(f"Error reading PDF page count: {e}")
+            
+    url = f"/uploads/{session_id}/{safe_filename}"
+    
+    return {
+        "filename": safe_filename,
+        "original_name": file.filename,
+        "url": url,
+        "type": file.content_type or "application/octet-stream",
+        "size": size,
+        "num_pages": num_pages
+    }
+
+@app.delete("/sessions/{session_id}/files/{filename}")
+def delete_session_file(session_id: str, filename: str, user: str = Depends(get_current_user)):
+    file_path = os.path.join("uploads", str(session_id), filename)
+    if os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+            return {"status": "success", "detail": f"File {filename} deleted."}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to delete file: {e}")
+    raise HTTPException(status_code=404, detail="File not found.")
+
+@app.post("/sessions/{session_id}/adopt-draft/{draft_id}")
+def adopt_draft_files(session_id: str, draft_id: str, user: str = Depends(get_current_user)):
+    draft_dir = os.path.join("uploads", str(draft_id))
+    session_dir = os.path.join("uploads", str(session_id))
+    import shutil
+    if os.path.exists(draft_dir):
+        os.makedirs(session_dir, exist_ok=True)
+        for filename in os.listdir(draft_dir):
+            src = os.path.join(draft_dir, filename)
+            dst = os.path.join(session_dir, filename)
+            if os.path.exists(dst):
+                os.remove(dst)
+            shutil.move(src, dst)
+        try:
+            shutil.rmtree(draft_dir)
+        except Exception:
+            pass
+        return {"status": "success", "detail": "Draft files adopted successfully."}
+    return {"status": "success", "detail": "No draft files to adopt."}
+
 @app.delete("/sessions/{session_id}")
 def delete_single_session(session_id: str, user: str = Depends(get_current_user)):
-    return delete_session(session_id, user)
+    res = delete_session(session_id, user)
+    
+    # Clean up local uploads directory for this session
+    import shutil
+    session_dir = os.path.join("uploads", str(session_id))
+    if os.path.exists(session_dir):
+        try:
+            shutil.rmtree(session_dir)
+            print(f"[+] Cleaned up uploads folder for deleted session: {session_id}")
+        except Exception as e:
+            print(f"[-] Failed to delete uploads folder: {e}")
+            
+    return res
 
 @app.put("/sessions/{session_id}/rename")
 def rename_session(session_id: str, name: str, user: str = Depends(get_current_user)):
@@ -325,8 +423,53 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                     await websocket.send_text(json.dumps({"type": "done"}))
                 continue
 
+            # Parse attachments and construct enriched prompt
+            attachments = payload_data.get("attachments", [])
+            enriched_query_parts = []
+            
+            for att in attachments:
+                fn = att.get("filename")
+                on = att.get("original_name")
+                file_path = os.path.join("uploads", str(session_id), fn)
+                if not os.path.exists(file_path):
+                    file_path = os.path.join("uploads", fn)
+                if os.path.exists(file_path):
+                    try:
+                        from rag_parser import extract_text_async
+                        extracted_text = await extract_text_async(file_path, model=model_key)
+                        enriched_query_parts.append(
+                            f"--- ATTACHED FILE: {on} ---\n"
+                            f"{extracted_text}\n"
+                            f"--------------------------------------"
+                        )
+                    except Exception as extract_err:
+                        print(f"Error extracting text from attachment {fn}: {extract_err}")
+
+            if enriched_query_parts:
+                context_header = "\n\n".join(enriched_query_parts)
+                model_query = f"{context_header}\n\nUser Question:\n{query}"
+            else:
+                model_query = query
+
+            # Format database content with XML attachments tags
+            db_content = query
+            if attachments:
+                attachments_xml_parts = ["<attachments>"]
+                for att in attachments:
+                    fn_esc = att.get("filename", "").replace('"', '&quot;')
+                    on_esc = att.get("original_name", "").replace('"', '&quot;')
+                    url_esc = att.get("url", "").replace('"', '&quot;')
+                    tp_esc = att.get("type", "").replace('"', '&quot;')
+                    sz_esc = str(att.get("size", 0))
+                    pg_esc = str(att.get("num_pages", ""))
+                    attachments_xml_parts.append(
+                        f'  <attachment filename="{fn_esc}" original_name="{on_esc}" url="{url_esc}" type="{tp_esc}" size="{sz_esc}" num_pages="{pg_esc}" />'
+                    )
+                attachments_xml_parts.append("</attachments>")
+                db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
+
             # Log user query to database
-            log_message(session_id, "user", query)
+            log_message(session_id, "user", db_content)
 
             # Instantly kick off dynamic rename in background concurrently
             async def run_smart_rename(sid: str, q: str, m_key: str, uid: str, ws):
@@ -377,7 +520,7 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
             # Stream response
             full_response = ""
             async_generator = run_agentic_loop(
-                prompt=query,
+                prompt=model_query,
                 user_id=user,
                 session_id=session_id,
                 model_key=model_key,

@@ -33,6 +33,9 @@ import FileInspectorPanel from "@/components/FileInspectorPanel";
 import MoreModelsModal from "@/components/MoreModelsModal";
 import UserBubble from "@/components/UserBubble";
 import AssistantResponseBubble from "@/components/AssistantResponseBubble";
+import ZoomImagePreview from "@/components/ZoomImagePreview";
+import ZoomDocumentPreview from "@/components/ZoomDocumentPreview";
+import { Attachment } from "@/components/MessageAttachmentsRow";
 import { Message, computeSessionFiles } from "@/lib/chatHelpers";
 
 import {
@@ -50,7 +53,10 @@ import {
   fetchModels,
   getToken,
   clearToken,
-  WS_BACKEND_URL
+  WS_BACKEND_URL,
+  uploadSessionFile,
+  deleteSessionFile,
+  adoptDraftFiles
 } from "@/lib/api";
 
 export default function Home() {
@@ -85,6 +91,91 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+
+  // File Upload attachments states
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploadingStates, setUploadingStates] = useState<Record<string, "uploading" | "failed">>({});
+  const [draftSessionId, setDraftSessionId] = useState<string | null>(null);
+  
+  // Image Zoom preview states
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [zoomThumbnailRect, setZoomThumbnailRect] = useState<DOMRect | null>(null);
+
+  // Document Zoom preview state
+  const [zoomDocument, setZoomDocument] = useState<Attachment | null>(null);
+
+  const handleUploadAttachment = async (file: File) => {
+    // Determine target session or lazy draft session ID
+    let targetSessionId = currentSessionId;
+    if (!targetSessionId) {
+      if (draftSessionId) {
+        targetSessionId = draftSessionId;
+      } else {
+        targetSessionId = `draft-${Math.random().toString(36).substring(2, 9)}-${Date.now()}`;
+        setDraftSessionId(targetSessionId);
+      }
+    }
+
+    const tempName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}-${file.name}`;
+    setUploadingStates((prev) => ({ ...prev, [tempName]: "uploading" }));
+    
+    const placeholder: Attachment = {
+      filename: tempName,
+      original_name: file.name,
+      url: "",
+      type: file.type,
+      size: file.size
+    };
+    setAttachments((prev) => [...prev, placeholder]);
+
+    try {
+      const res = await uploadSessionFile(targetSessionId, file);
+      setAttachments((prev) => 
+        prev.map((att) => att.filename === tempName ? {
+          filename: res.filename,
+          original_name: res.original_name,
+          url: res.url,
+          type: res.type,
+          size: res.size,
+          num_pages: res.num_pages
+        } : att)
+      );
+      setUploadingStates((prev) => {
+        const copy = { ...prev };
+        delete copy[tempName];
+        return copy;
+      });
+    } catch (err) {
+      console.error("Attachment upload failed:", err);
+      setUploadingStates((prev) => ({ ...prev, [tempName]: "failed" }));
+      setTimeout(() => {
+        setAttachments((prev) => prev.filter((att) => att.filename !== tempName));
+        setUploadingStates((prev) => {
+          const copy = { ...prev };
+          delete copy[tempName];
+          return copy;
+        });
+      }, 3000);
+    }
+  };
+
+  const handleRemoveAttachment = async (filename: string) => {
+    setAttachments((prev) => prev.filter((att) => att.filename !== filename));
+    
+    const targetSessionId = currentSessionId || draftSessionId;
+    if (targetSessionId) {
+      try {
+        await deleteSessionFile(targetSessionId, filename);
+      } catch (err) {
+        console.warn("Failed to delete file from backend:", err);
+      }
+    }
+  };
+
+  const handlePreviewImage = (url: string, rect: DOMRect) => {
+    setZoomThumbnailRect(rect);
+    setZoomImage(url);
+  };
 
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -239,7 +330,20 @@ export default function Home() {
     }
   };
 
+  const cleanupDraft = async (draftId: string) => {
+    try {
+      await deleteSession(draftId);
+    } catch (e) {
+      console.warn("Failed to clean up draft uploads:", e);
+    }
+  };
+
   const handleSelectSession = (sessionId: string | null) => {
+    if (draftSessionId) {
+      cleanupDraft(draftSessionId);
+      setDraftSessionId(null);
+      setAttachments([]);
+    }
     if (sessionId) {
       loadSessionHistory(sessionId);
     } else {
@@ -250,6 +354,11 @@ export default function Home() {
   const handleCreateNewChat = () => {
     if (activeWsRef.current) {
       activeWsRef.current.close();
+    }
+    if (draftSessionId) {
+      cleanupDraft(draftSessionId);
+      setDraftSessionId(null);
+      setAttachments([]);
     }
     setCurrentSessionId(null);
     setMessages([]);
@@ -431,6 +540,7 @@ export default function Home() {
     if (!text.trim()) return;
 
     let sessionId = currentSessionId;
+    let finalAttachments = [...attachments];
     
     // Check if new transient session
     if (!sessionId) {
@@ -442,16 +552,47 @@ export default function Home() {
         setCurrentSessionId(sessionId);
         setChatTitle(defaultName);
         setSessionsList(prev => [newSess, ...prev]);
+
+        // Adopt draft files if they were uploaded
+        const activeDraftId = draftSessionId;
+        if (activeDraftId) {
+          try {
+            await adoptDraftFiles(newSess.id, activeDraftId);
+            finalAttachments = finalAttachments.map(att => ({
+              ...att,
+              url: att.url.replace(activeDraftId, newSess.id)
+            }));
+            setDraftSessionId(null);
+          } catch (adoptErr) {
+            console.error("Failed to adopt draft files:", adoptErr);
+          }
+        }
       } catch (e) {
         console.error("Failed to create session on message send", e);
         return;
       }
     }
 
+    let userMsgContent = text;
+    if (finalAttachments.length > 0) {
+      const xmlParts = ["<attachments>"];
+      finalAttachments.forEach((att) => {
+        const fn = att.filename.replace(/"/g, "&quot;");
+        const on = att.original_name.replace(/"/g, "&quot;");
+        const url = att.url.replace(/"/g, "&quot;");
+        const tp = att.type.replace(/"/g, "&quot;");
+        const sz = String(att.size);
+        const pg = att.num_pages ? String(att.num_pages) : "";
+        xmlParts.push(`  <attachment filename="${fn}" original_name="${on}" url="${url}" type="${tp}" size="${sz}" num_pages="${pg}" />`);
+      });
+      xmlParts.push("</attachments>");
+      userMsgContent = `${text}\n\n${xmlParts.join("\n")}`;
+    }
+
     const userMsg: Message = {
       id: `user-${Date.now()}`,
       role: "user",
-      content: text,
+      content: userMsgContent,
     };
 
     const assistantMsg: Message = {
@@ -464,6 +605,9 @@ export default function Home() {
       thinkingSteps: []
     };
 
+    setAttachments([]);
+    setComments([]);
+
     setIsChatActive(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
@@ -475,7 +619,7 @@ export default function Home() {
 
     const connectAndSend = (retryCount: number) => {
       const token = getToken() || "";
-      const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId}?token=${token}`;
+      const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId!}?token=${token}`;
       const socket = new WebSocket(wsUrl);
       activeWsRef.current = socket;
       
@@ -486,12 +630,10 @@ export default function Home() {
           message: promptText,
           model: modelNameToKey(selectedModel),
           variant: selectedVariant,
-          client_time: new Date().toLocaleString()
+          client_time: new Date().toLocaleString(),
+          attachments: finalAttachments
         };
         socket.send(json_stringify_safe(payload));
-        if (retryCount === 0) {
-          setComments([]);
-        }
       };
 
       socket.onmessage = (event) => {
@@ -960,7 +1102,11 @@ export default function Home() {
                       {msg.role === "user" ? (
                         /* User Bubble (aligned right) */
                         <div className="flex flex-col items-end w-full">
-                          <UserBubble content={msg.content} />
+                          <UserBubble 
+                            content={msg.content} 
+                            onImageClick={handlePreviewImage} 
+                            onDocumentClick={setZoomDocument}
+                          />
                         </div>
                       ) : (
                         /* Assistant Response (aligned left) */
@@ -1010,6 +1156,12 @@ export default function Home() {
                       setShowArtifactsPanel(false);
                     }
                   }}
+                  attachments={attachments}
+                  uploadingStates={uploadingStates}
+                  onUpload={handleUploadAttachment}
+                  onRemoveAttachment={handleRemoveAttachment}
+                  onPreviewImage={handlePreviewImage}
+                  onPreviewDocument={setZoomDocument}
                 />
               </div>
             )}
@@ -1050,6 +1202,12 @@ export default function Home() {
                         setShowArtifactsPanel(false);
                       }
                     }}
+                    attachments={attachments}
+                    uploadingStates={uploadingStates}
+                    onUpload={handleUploadAttachment}
+                    onRemoveAttachment={handleRemoveAttachment}
+                    onPreviewImage={handlePreviewImage}
+                    onPreviewDocument={setZoomDocument}
                   />
 
                   <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">
@@ -1226,6 +1384,24 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {zoomImage && (
+        <ZoomImagePreview
+          src={zoomImage}
+          thumbnailRect={zoomThumbnailRect}
+          onClose={() => {
+            setZoomImage(null);
+            setZoomThumbnailRect(null);
+          }}
+        />
+      )}
+
+      {zoomDocument && (
+        <ZoomDocumentPreview
+          file={zoomDocument}
+          onClose={() => setZoomDocument(null)}
+        />
       )}
 
       {/* CSS custom scrollbar style tag */}

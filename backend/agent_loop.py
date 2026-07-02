@@ -59,6 +59,8 @@ def get_tool_label(name: str, args: dict) -> str:
         return "List RAG Docs"
     elif name == "delete_indexed_document":
         return "Delete RAG Doc"
+    elif name == "index_document":
+        return f"Indexing {args.get('original_name') or args.get('filename') or ''}..."
     else:
         return name.replace("_", " ").title()
 
@@ -472,6 +474,24 @@ async def execute_tool_call_v2(
             await send_to_client({"type": "hud_log", "content": f"Deleting document: {filename_to_del or doc_id_to_del}..."})
             res = delete_rag_document(user_id, document_id=doc_id_to_del, filename=filename_to_del)
             tool_output = json.dumps(res)
+        elif name == "index_document":
+            filename = args.get("filename")
+            original_name = args.get("original_name")
+            await send_to_client({"type": "hud_log", "content": f"Indexing {original_name or filename}..."})
+            file_path = os.path.join("uploads", str(session_id), filename)
+            if not os.path.exists(file_path):
+                file_path = os.path.join("uploads", filename)
+            if os.path.exists(file_path):
+                from rag_engine import index_file_in_rag
+                res = await index_file_in_rag(
+                    file_path=file_path,
+                    filename=original_name or filename,
+                    user_id=user_id,
+                    model=model_key
+                )
+                tool_output = json.dumps(res)
+            else:
+                tool_output = f"Error: Uploaded file '{filename}' not found on server disk. Cannot index."
 
         # --- Route Memories & Problems ---
         elif name == "remember_user":
