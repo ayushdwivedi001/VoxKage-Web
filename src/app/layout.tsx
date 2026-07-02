@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Lovable",
+  title: "VoxKage Web",
   description: "What should we build, Ayush?",
+  icons: {
+    icon: "/assets/voxkage_logo.png?v=3",
+  },
 };
 
 export default function RootLayout({

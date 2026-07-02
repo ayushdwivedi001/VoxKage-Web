@@ -249,7 +249,9 @@ export default function PromptInput({
   // Auto-resize height based on value
   const adjustHeight = () => {
     const textarea = textareaRef.current;
+    const overlay = overlayRef.current;
     if (textarea) {
+      const savedScrollTop = textarea.scrollTop;
       textarea.style.height = "auto";
       const scrollHeight = textarea.scrollHeight;
       const maxHeight = 220; // Maximum height in pixels before showing scrollbar
@@ -257,9 +259,33 @@ export default function PromptInput({
       if (scrollHeight > maxHeight) {
         textarea.style.height = `${maxHeight}px`;
         textarea.style.overflowY = "auto";
+        
+        if (overlay) {
+          overlay.style.overflowY = "scroll";
+          overlay.classList.add("custom-scrollbar-overlay");
+          overlay.classList.remove("overflow-y-hidden");
+        }
+
+        // Auto-scroll to bottom if typing at the end of the text
+        if (textarea.selectionStart === textarea.value.length) {
+          textarea.scrollTop = textarea.scrollHeight;
+        } else {
+          textarea.scrollTop = savedScrollTop;
+        }
       } else {
         textarea.style.height = `${scrollHeight}px`;
         textarea.style.overflowY = "hidden";
+        
+        if (overlay) {
+          overlay.style.overflowY = "hidden";
+          overlay.classList.remove("custom-scrollbar-overlay");
+          overlay.classList.add("overflow-y-hidden");
+        }
+      }
+
+      // Sync overlay scroll position
+      if (overlay) {
+        overlay.scrollTop = textarea.scrollTop;
       }
     }
   };
@@ -542,7 +568,7 @@ export default function PromptInput({
         {/* Background highlight overlay */}
         <div
           ref={overlayRef}
-          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-relaxed p-0 overflow-y-hidden"
+          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-relaxed p-0 overflow-y-hidden prompt-overlay"
           style={{
             minHeight: "28px",
           }}
@@ -563,7 +589,7 @@ export default function PromptInput({
           rows={1}
           className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
             value ? "text-transparent" : "text-zinc-100"
-          } caret-zinc-200 placeholder-zinc-500 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10`}
+          } caret-zinc-200 placeholder-zinc-500 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10 prompt-textarea`}
           placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
             minHeight: "28px",
@@ -742,6 +768,39 @@ export default function PromptInput({
         }
         .custom-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.16);
+        }
+        .custom-scrollbar-overlay::-webkit-scrollbar {
+          width: 5px;
+        }
+        .custom-scrollbar-overlay::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar-overlay::-webkit-scrollbar-thumb {
+          background: transparent;
+        }
+        textarea::selection {
+          background: rgba(37, 99, 235, 0.4);
+          color: transparent;
+        }
+        textarea::-moz-selection {
+          background: rgba(37, 99, 235, 0.4);
+          color: transparent;
+        }
+        .prompt-textarea, .prompt-overlay {
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+          font-size: 17px !important;
+          line-height: 27.625px !important;
+          padding: 0px !important;
+          margin: 0px !important;
+          border: 0px !important;
+          letter-spacing: normal !important;
+          word-break: break-word !important;
+          white-space: pre-wrap !important;
+          overflow-wrap: break-word !important;
+          box-sizing: border-box !important;
+        }
+        .prompt-overlay {
+          transform: translateY(-2px);
         }
       `}</style>
     </div>
