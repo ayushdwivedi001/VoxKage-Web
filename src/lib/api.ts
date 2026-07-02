@@ -206,11 +206,24 @@ export async function prepareSessionPayload(
   model: string,
   variant: string
 ) {
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  };
+  const clientTime = new Intl.DateTimeFormat('en-US', options).format(new Date()).replace(" at ", ", ");
+
   return apiRequest(`/sessions/${sessionId}/prepare`, "POST", {
     message: query,
     attachments,
     model,
-    variant
+    variant,
+    client_time: clientTime
   });
 }
 

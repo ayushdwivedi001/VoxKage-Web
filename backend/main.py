@@ -154,6 +154,7 @@ class PreparePayloadRequest(BaseModel):
     attachments: Optional[List[dict]] = []
     model: Optional[str] = "deepseek-flash"
     variant: Optional[str] = "High"
+    client_time: Optional[str] = None
 
 class ExecuteToolsRequest(BaseModel):
     tool_calls: List[dict]
@@ -444,7 +445,7 @@ async def prepare_agent_payload(
     # Retrieve history
     messages_history = get_session_messages(session_id)
     soul_context = recall_user(user, "")
-    current_time_str = datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
+    current_time_str = req.client_time or datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
 
     system_prompt = get_system_prompt()
     system_prompt += (

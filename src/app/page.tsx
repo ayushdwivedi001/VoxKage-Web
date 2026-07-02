@@ -198,6 +198,23 @@ export default function Home() {
   const [modelsList, setModelsList] = useState<any[]>([]);
   const [contextPercent, setContextPercent] = useState(0);
 
+  // Update context percent dynamically based on total message tokens
+  useEffect(() => {
+    if (messages.length === 0) {
+      setContextPercent(0);
+      return;
+    }
+    let totalChars = 30000; // Production-ready system prompt & tools schema baseline
+    messages.forEach((msg) => {
+      totalChars += (msg.role || "").length;
+      totalChars += (msg.content || "").length;
+    });
+    const estimatedTokens = Math.ceil(totalChars / 4);
+    const limit = 1000000; // 1M context window limit
+    const pct = Math.min(Math.round((estimatedTokens / limit) * 100), 100);
+    setContextPercent(pct);
+  }, [messages]);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
 
@@ -988,6 +1005,8 @@ export default function Home() {
           const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
           if (idx !== -1) {
             copy[idx].status = "completed";
+            const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
+            copy[idx].thinkingDuration = Math.max(elapsed, 0.1);
           }
           return copy;
         });
@@ -1006,6 +1025,8 @@ export default function Home() {
           if (idx !== -1) {
             copy[idx].content = `[System Error: ${errMsg}]`;
             copy[idx].status = "completed";
+            const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
+            copy[idx].thinkingDuration = Math.max(elapsed, 0.1);
           }
           return copy;
         });

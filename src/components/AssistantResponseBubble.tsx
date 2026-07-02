@@ -109,6 +109,15 @@ const MermaidWidget = dynamic(() => import("./MermaidWidget"), {
   )
 });
 
+const ROTATING_STATUSES = [
+  "Analyzing query...",
+  "Understanding user intent...",
+  "Recalling user profile memories...",
+  "Assembling workspace details...",
+  "Structuring response path...",
+  "Formulating response..."
+];
+
 interface AssistantResponseBubbleProps {
   msg: Message;
   setActiveFile: (file: { name: string; code: string } | null) => void;
@@ -131,6 +140,7 @@ export default function AssistantResponseBubble({
   const [dots, setDots] = useState(".");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const [rotatingIndex, setRotatingIndex] = useState(0);
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -176,9 +186,16 @@ export default function AssistantResponseBubble({
     setIsSpeaking(true);
   };
 
-  // If currently thinking, run a local timer
+  const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
+
+  // Parse message content to extract thinking, final output, and consulted web sources
+  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot } = parseMessageContent(msg.content);
+
+  const hasActualThoughts = !!thinkingContent || (msg.thinkingSteps && msg.thinkingSteps.length > 0);
+
+  // If currently running, run a local timer
   useEffect(() => {
-    if (msg.status !== "thinking") {
+    if (msg.status === "completed") {
       setElapsedSeconds(msg.thinkingDuration || 0);
       return;
     }
@@ -187,7 +204,7 @@ export default function AssistantResponseBubble({
       setDots((prev) => (prev === "..." ? "." : prev + "."));
     }, 600);
 
-    const start = Date.now();
+    const start = msg.thinkingStart || Date.now();
     const timerInterval = setInterval(() => {
       const elapsed = Math.round((Date.now() - start) / 1000);
       setElapsedSeconds(elapsed);
@@ -197,10 +214,17 @@ export default function AssistantResponseBubble({
       clearInterval(dotsInterval);
       clearInterval(timerInterval);
     };
-  }, [msg.status, msg.thinkingDuration]);
+  }, [msg.status, msg.thinkingDuration, msg.thinkingStart]);
 
-  // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot } = parseMessageContent(msg.content);
+  // Rotate initial interactive status words
+  useEffect(() => {
+    if (isMsgRunning && !hasActualThoughts) {
+      const interval = setInterval(() => {
+        setRotatingIndex((prev) => (prev + 1) % ROTATING_STATUSES.length);
+      }, 1500);
+      return () => clearInterval(interval);
+    }
+  }, [isMsgRunning, hasActualThoughts]);
 
   // Extract Mermaid.js code blocks dynamically from finalContent if present
   let mermaidChart: string | null = null;
@@ -214,20 +238,34 @@ export default function AssistantResponseBubble({
     }
   }
 
-  // Fallback to logical default steps when no deep <think> reasoning blocks exist
-  const thoughts = thinkingContent
-    ? thinkingContent.split("\n").filter(line => line.trim().length > 0).map((line, idx) => ({
-        id: `think-${idx}`,
-        label: line.replace(/^-\s*/, "").trim(),
+  // Split deep thoughts to keep them clean (not paragraphs worth of lines)
+  let thoughts: any[] = [];
+  if (thinkingContent) {
+    const rawLines = thinkingContent
+      .split("\n")
+      .map(line => line.replace(/^-\s*/, "").trim())
+      .filter(line => line.length > 0);
+      
+    const sliced = rawLines.slice(0, 4);
+    thoughts = sliced.map((line, idx) => ({
+      id: `think-${idx}`,
+      label: line.length > 65 ? line.substring(0, 62) + "..." : line,
+      status: "success" as const
+    }));
+    if (rawLines.length > 4) {
+      thoughts.push({
+        id: "think-more",
+        label: "Analyzing remaining response path...",
         status: "success" as const
-      }))
-    : msg.thinkingSteps && msg.thinkingSteps.length > 0
-      ? msg.thinkingSteps
-      : [
-          { id: "step-1", label: "Analyzing prompt...", status: "success" as const },
-          { id: "step-2", label: "Retrieving context and profile...", status: "success" as const },
-          { id: "step-3", label: "Formulating response...", status: "success" as const }
-        ];
+      });
+    }
+  } else if (msg.thinkingSteps && msg.thinkingSteps.length > 0) {
+    thoughts = msg.thinkingSteps;
+  } else if (isMsgRunning) {
+    thoughts = [
+      { id: "init-step", label: ROTATING_STATUSES[rotatingIndex], status: "pending" as const }
+    ];
+  }
 
   // If streaming and there is an active code block being written, append "Writing [filename]..." step
   const extracted = extractFilesFromContent(finalContent);
@@ -303,35 +341,43 @@ export default function AssistantResponseBubble({
     }
   };
 
-  const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
   
   const activeStep = processedThoughts.find(t => t.status === "pending") || (isMsgRunning ? processedThoughts[processedThoughts.length - 1] : null);
+  
+  const formatDuration = (sec: number) => {
+    if (!sec) return "0s";
+    return sec % 1 === 0 ? `${sec}s` : `${sec.toFixed(1)}s`;
+  };
+
   const displayLabel = isMsgRunning
     ? (activeStep ? activeStep.label : `Thinking${dots}`)
-    : `Thought for ${msg.thinkingDuration || elapsedSeconds || 3}s`;
+    : `Thought for ${formatDuration(msg.thinkingDuration || elapsedSeconds || 1)}`;
 
   const showGlow = isMsgRunning;
+  const shouldShowAccordion = isMsgRunning || hasActualThoughts;
 
   return (
     <div className="flex flex-col items-start w-full">
       {/* --- Clickable Thinking Accordion Header --- */}
       <div className="flex flex-col mb-1.5 w-full">
-        <div
-          onClick={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
-          className="flex items-center gap-2 py-1.5 text-zinc-500 hover:text-zinc-200 transition-colors duration-200 cursor-pointer select-none group/thought w-fit"
-        >
-          <ChevronRight
-            className={`w-3.5 h-3.5 transition-all duration-200 ${
-              isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
-            }`}
-          />
-          <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
-            {displayLabel}
-          </span>
-          {isMsgRunning && (
-            <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
-          )}
-        </div>
+        {shouldShowAccordion && (
+          <div
+            onClick={() => setIsThoughtsExpanded(!isThoughtsExpanded)}
+            className="flex items-center gap-2 py-1.5 text-zinc-500 hover:text-zinc-200 transition-colors duration-200 cursor-pointer select-none group/thought w-fit"
+          >
+            <ChevronRight
+              className={`w-3.5 h-3.5 transition-all duration-200 ${
+                isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
+              }`}
+            />
+            <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
+              {displayLabel}
+            </span>
+            {isMsgRunning && (
+              <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
+            )}
+          </div>
+        )}
 
         {/* Expanded Step Timeline */}
         {isThoughtsExpanded && processedThoughts.length > 0 && (
