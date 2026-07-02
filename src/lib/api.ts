@@ -80,7 +80,10 @@ export async function createSession(name: string = "New Chat") {
 
 export async function fetchSessionMessages(sessionId: string) {
   const res = await apiRequest(`/sessions/${sessionId}`);
-  return res.messages || [];
+  return {
+    messages: res.messages || [],
+    contextPercent: res.context_percent || 0
+  };
 }
 
 export async function deleteSession(sessionId: string) {

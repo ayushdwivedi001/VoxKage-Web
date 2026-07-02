@@ -159,7 +159,8 @@ def post_session(name: str = "New Chat", user: str = Depends(get_current_user)):
 def get_single_session(session_id: str, user: str = Depends(get_current_user)):
     session = get_session(session_id, user)
     messages = get_session_messages(session_id)
-    return {"session": session, "messages": messages}
+    percent = calculate_context_percent(messages)
+    return {"session": session, "messages": messages, "context_percent": percent}
 
 @app.delete("/sessions/{session_id}")
 def delete_single_session(session_id: str, user: str = Depends(get_current_user)):
@@ -268,6 +269,60 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
             variant = payload_data.get("variant", "High")
 
             if not query:
+                continue
+
+            # Intercept manual compaction query
+            if query == "/compact":
+                try:
+                    # 1. Log user query "/compact"
+                    log_message(session_id, "user", "/compact")
+                    
+                    # 2. Send "Compacting..." step status start
+                    await websocket.send_text(json.dumps({
+                        "type": "hud_log",
+                        "content": "Compacting..."
+                    }))
+                    
+                    # 3. Call compaction service
+                    from compaction import compact_session_history
+                    summary = await compact_session_history(
+                        session_id=session_id,
+                        user_id=user,
+                        model_key=model_key,
+                        manager_ref=manager,
+                        client_websocket=websocket
+                    )
+                    
+                    # 4. Fetch updated messages and calculate new percent
+                    messages_history = get_session_messages(session_id)
+                    new_percent = calculate_context_percent(messages_history)
+                    
+                    # 5. Send compaction completion status
+                    await websocket.send_text(json.dumps({"type": "tool_success"}))
+                    
+                    # 6. Stream final compaction summary response to client
+                    confirm_header = "\n[Chat history has been successfully compacted.]\n\n**Compaction Summary Brief:**\n"
+                    confirm_footer = "\n"
+                    
+                    # Log assistant response to DB
+                    log_message(session_id, "assistant", f"{confirm_header}{summary}{confirm_footer}")
+                    
+                    # Send token chunk confirmation
+                    await websocket.send_text(json.dumps({"type": "token", "content": confirm_header}))
+                    await websocket.send_text(json.dumps({"type": "token", "content": summary}))
+                    await websocket.send_text(json.dumps({"type": "token", "content": confirm_footer}))
+                    
+                    # Sync new context percentage
+                    await websocket.send_text(json.dumps({"type": "context_sync", "percent": new_percent}))
+                    await websocket.send_text(json.dumps({"type": "done"}))
+                    
+                except Exception as ex:
+                    print(f"[-] Compaction failed: {ex}")
+                    err_msg = f"\n[Compaction Error: {str(ex)}]\n"
+                    log_message(session_id, "assistant", err_msg)
+                    await websocket.send_text(json.dumps({"type": "tool_failed"}))
+                    await websocket.send_text(json.dumps({"type": "token", "content": err_msg}))
+                    await websocket.send_text(json.dumps({"type": "done"}))
                 continue
 
             # Log user query to database

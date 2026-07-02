@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, ChevronDown, Mic, ArrowUp, Square, X } from "lucide-react";
+import { Plus, ChevronDown, Mic, ArrowUp, Square, X, CornerDownLeft } from "lucide-react";
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
@@ -26,6 +26,7 @@ interface PromptInputProps {
   comments?: Array<{ id: string; fileName: string; line: number; text: string }>;
   onRemoveComment?: (id: string) => void;
   onClickComment?: (fileName: string, line: number) => void;
+  contextPercent?: number;
 }
 
 export default function PromptInput({
@@ -41,10 +42,12 @@ export default function PromptInput({
   comments = [],
   onRemoveComment,
   onClickComment,
+  contextPercent = 0,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
@@ -54,6 +57,29 @@ export default function PromptInput({
   const showVariantPopup = modelDropdownOpen && (isHoveringVariantRow || isHoveringVariantPopup);
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // --- / Commands Popup States ---
+  const commands = ["/compact", "/agents", "/drill"];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  const getActiveCommandQuery = (text: string) => {
+    if (!text) return null;
+    const words = text.split(/\s+/);
+    const lastWord = words[words.length - 1];
+    if (lastWord.startsWith("/") && lastWord.length > 0) {
+      return lastWord;
+    }
+    return null;
+  };
+
+  const query = getActiveCommandQuery(value);
+  const filtered = query ? commands.filter((c) => c.startsWith(query)) : [];
+  const showPopup = query !== null && filtered.length > 0;
+
+  // Reset selection index when filtered list changes
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [filtered.length]);
 
   // Click outside listener for main dropdown
   useEffect(() => {
@@ -100,9 +126,7 @@ export default function PromptInput({
   const adjustHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
-      // Reset height to let the browser recalculate the correct scrollHeight
       textarea.style.height = "auto";
-      
       const scrollHeight = textarea.scrollHeight;
       const maxHeight = 220; // Maximum height in pixels before showing scrollbar
       
@@ -134,7 +158,6 @@ export default function PromptInput({
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.focus();
-      // Set cursor to the end
       textarea.setSelectionRange(value.length, value.length);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -150,14 +173,100 @@ export default function PromptInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value);
+    const textarea = e.target;
+    let val = textarea.value;
+    const originalSelectionStart = textarea.selectionStart;
+    
+    // Auto-spacing around command keywords:
+    const prevLen = val.length;
+    val = val.replace(/(?<!\s)(\/(?:agents|drill|compact))/g, " $1");
+    val = val.replace(/(\/(?:agents|drill|compact))(?!\s|$)/g, "$1 ");
+    const newLen = val.length;
+
+    setValue(val);
+
+    // Adjust caret position based on added spaces to prevent cursor jumps
+    if (prevLen !== newLen) {
+      const difference = newLen - prevLen;
+      const newSelectionStart = originalSelectionStart + difference;
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.setSelectionRange(newSelectionStart, newSelectionStart);
+        }
+      }, 0);
+    }
+  };
+
+  const handleSelectCommand = (command: string) => {
+    const words = value.split(/\s+/);
+    // Replace the last word (which was the query) with the selected command
+    words[words.length - 1] = command;
+    const newValue = words.join(" ") + " ";
+    setValue(newValue);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      adjustHeight();
+    }, 0);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showPopup) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % filtered.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleSelectCommand(filtered[selectedIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        const words = value.split(/\s+/);
+        if (words[words.length - 1].startsWith("/")) {
+          words[words.length - 1] = "";
+          setValue(words.join(" ").trim());
+        }
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
+  };
+
+  const handleScroll = () => {
+    if (textareaRef.current && overlayRef.current) {
+      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
+
+  const renderHighlightedText = (text: string) => {
+    if (!text) return null;
+    const cmdList = ["/compact", "/agents", "/drill"];
+    const parts = text.split(/(\/(?:compact|agents|drill))\b/g);
+    
+    return parts.map((part, index) => {
+      if (cmdList.includes(part)) {
+        return (
+          <span
+            key={index}
+            className="text-blue-400 font-medium"
+          >
+            {part}
+          </span>
+        );
+      }
+      return <span key={index} className="text-zinc-100">{part}</span>;
+    });
   };
 
   const hasText = value.trim().length > 0;
@@ -166,8 +275,45 @@ export default function PromptInput({
     <div
       className={`w-full max-w-[720px] bg-[#18181c]/90 border transition-all duration-300 ${
         isFocused ? "border-zinc-700 shadow-lg shadow-black/20" : "border-zinc-800/80"
-      } rounded-[28px] p-5 pb-4 flex flex-col backdrop-blur-md`}
+      } rounded-[28px] p-5 pb-4 flex flex-col backdrop-blur-md relative`}
     >
+      {/* / Commands Popup */}
+      {showPopup && (
+        <div 
+          className="absolute bottom-full left-0 right-0 mb-3 bg-[#131316]/98 border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn"
+          style={{
+            width: "100%",
+          }}
+        >
+          <div className="px-4 py-2 border-b border-zinc-800/50 flex justify-between items-center select-none bg-[#0e0e11]/50">
+            <span className="text-[11px] font-mono text-zinc-550 uppercase tracking-wider">Available Commands</span>
+            <span className="text-[10px] text-zinc-600 font-sans">Use arrow keys & enter to select</span>
+          </div>
+          <div className="flex flex-col max-h-[220px] overflow-y-auto p-1.5 custom-scrollbar">
+            {filtered.map((cmd, idx) => {
+              const isSelected = idx === selectedIndex;
+              return (
+                <div
+                  key={cmd}
+                  onClick={() => handleSelectCommand(cmd)}
+                  onMouseEnter={() => setSelectedIndex(idx)}
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[14.5px] cursor-pointer transition-all duration-150 ${
+                    isSelected 
+                      ? "bg-blue-600/10 border border-blue-500/20 text-white" 
+                      : "border border-transparent text-zinc-300 hover:bg-zinc-850/40 hover:text-zinc-100"
+                  }`}
+                >
+                  <span className="font-mono font-medium">{cmd}</span>
+                  {isSelected && (
+                    <CornerDownLeft className="w-3.5 h-3.5 text-blue-400 stroke-[2.5] animate-pulse" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Pinned Comments Context Attachment Pills inside Prompt Box */}
       {comments.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3.5 animate-fadeIn">
@@ -203,19 +349,33 @@ export default function PromptInput({
       )}
 
       {/* Input Field */}
-      <div className="relative w-full">
+      <div className="relative w-full min-h-[28px]">
+        {/* Background highlight overlay */}
+        <div
+          ref={overlayRef}
+          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-relaxed p-0 overflow-y-hidden"
+          style={{
+            minHeight: "28px",
+          }}
+        >
+          {renderHighlightedText(value)}
+        </div>
+
+        {/* Front textarea */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onScroll={handleScroll}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           rows={1}
-          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-[17px] text-zinc-100 placeholder-zinc-500 font-sans tracking-wide leading-relaxed resize-none p-0 custom-scrollbar"
-          placeholder="Ask VoxKage, type / for commands"
+          className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
+            value ? "text-transparent" : "text-zinc-100"
+          } caret-zinc-200 placeholder-zinc-500 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10`}
+          placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
-            caretColor: "#e4e4e7", // zinc-200 cursor
             minHeight: "28px",
           }}
         />
@@ -268,6 +428,24 @@ export default function PromptInput({
                 onMouseLeave={handleMouseLeaveVariantPopup}
               />
             )}
+          </div>
+
+          {/* Context Window HUD indicator */}
+          <div className="relative group/hud flex items-center">
+            <div 
+              className={`flex items-center justify-center px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/80 text-[12.5px] font-mono select-none cursor-help transition-all duration-200 ${
+                contextPercent >= 85 
+                  ? "text-red-500 border-red-900/40 bg-red-950/10 font-bold" 
+                  : "text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+              }`}
+            >
+              <span>{contextPercent}%</span>
+            </div>
+            
+            {/* Tooltip */}
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 bg-[#121214] border border-zinc-850 text-zinc-350 text-[11px] font-sans px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50">
+              Context window. Run <span className="font-mono text-blue-400">/compact</span> to compact the context window.
+            </div>
           </div>
 
           {/* Voice Input Button */}

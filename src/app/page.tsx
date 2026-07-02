@@ -93,6 +93,7 @@ export default function Home() {
   const [selectedVariant, setSelectedVariant] = useState("Max");
   const [moreModelsModalOpen, setMoreModelsModalOpen] = useState(false);
   const [modelsList, setModelsList] = useState<any[]>([]);
+  const [contextPercent, setContextPercent] = useState(0);
 
   const activeWsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -214,7 +215,7 @@ export default function Home() {
     }
 
     try {
-      const history = await fetchSessionMessages(sessionId);
+      const { messages: history, contextPercent: loadedPercent } = await fetchSessionMessages(sessionId);
       const mapped = history.map((m: any) => ({
         id: m.id,
         role: m.role,
@@ -226,6 +227,7 @@ export default function Home() {
       setCurrentSessionId(prevId => {
         if (prevId === sessionId) {
           setMessages(mapped);
+          setContextPercent(loadedPercent);
           setTimeout(scrollToBottom, 50);
         }
         return prevId;
@@ -253,6 +255,7 @@ export default function Home() {
     setMessages([]);
     setIsChatActive(false);
     setChatTitle("Greeting");
+    setContextPercent(0);
   };
 
   const handleToggleStar = async (sessionId: string, starred: boolean) => {
@@ -594,6 +597,9 @@ export default function Home() {
               }
               return copy;
             });
+          }
+          else if (data.type === "context_sync") {
+            setContextPercent(data.percent);
           }
           else if (data.type === "rename") {
             setChatTitle(data.name);
@@ -994,6 +1000,7 @@ export default function Home() {
                   isStreaming={isStreaming}
                   onStop={handleStopGeneration}
                   comments={comments}
+                  contextPercent={contextPercent}
                   onRemoveComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
                   onClickComment={(fileName, line) => {
                     const matchingFile = sessionArtifacts.find(f => f.name === fileName);
@@ -1033,6 +1040,7 @@ export default function Home() {
                     isStreaming={isStreaming}
                     onStop={handleStopGeneration}
                     comments={comments}
+                    contextPercent={contextPercent}
                     onRemoveComment={(id) => setComments(prev => prev.filter(c => c.id !== id))}
                     onClickComment={(fileName, line) => {
                       const matchingFile = sessionArtifacts.find(f => f.name === fileName);
