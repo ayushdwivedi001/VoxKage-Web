@@ -54,9 +54,13 @@ import {
   getToken,
   clearToken,
   WS_BACKEND_URL,
+  BACKEND_URL,
   uploadSessionFile,
   deleteSessionFile,
-  adoptDraftFiles
+  adoptDraftFiles,
+  prepareSessionPayload,
+  executeBackendTools,
+  logAssistantResponse
 } from "@/lib/api";
 
 export default function Home() {
@@ -91,6 +95,14 @@ export default function Home() {
   const [renameValue, setRenameValue] = useState("");
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [openCodeApiKey, setOpenCodeApiKey] = useState("");
+  const [customProxyUrl, setCustomProxyUrl] = useState("");
+  const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected">("disconnected");
+  
+  const telemetryWsRef = useRef<WebSocket | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // File Upload attachments states
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -186,7 +198,6 @@ export default function Home() {
   const [modelsList, setModelsList] = useState<any[]>([]);
   const [contextPercent, setContextPercent] = useState(0);
 
-  const activeWsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
 
@@ -208,6 +219,118 @@ export default function Home() {
       window.removeEventListener("voxkage_unauthorized", handleUnauthorized);
     };
   }, []);
+
+  // Load settings on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+      const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
+      if (savedProxy) {
+        setCustomProxyUrl(savedProxy);
+      }
+    }
+  }, []);
+
+  const initializeTelemetryWS = (sessionId: string) => {
+    if (telemetryWsRef.current) {
+      telemetryWsRef.current.close();
+      telemetryWsRef.current = null;
+    }
+
+    setConnectionStatus("connecting");
+    const token = getToken() || "";
+    const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId}?token=${token}`;
+    const socket = new WebSocket(wsUrl);
+    telemetryWsRef.current = socket;
+
+    socket.onopen = () => {
+      setConnectionStatus("connected");
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "ping") {
+          socket.send(JSON.stringify({ type: "pong" }));
+          return;
+        }
+        if (data.type === "hud_log") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant") {
+              const steps = last.thinkingSteps || [];
+              const exists = steps.some(s => s.label === data.content);
+              if (!exists) {
+                const stepId = `step-${steps.length + 1}`;
+                copy[lastIdx] = {
+                  ...last,
+                  thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
+                };
+              }
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "tool_success") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant" && last.thinkingSteps) {
+              copy[lastIdx] = {
+                ...last,
+                thinkingSteps: last.thinkingSteps.map(s => {
+                  if (s.status === "pending") {
+                    return { ...s, status: "success" };
+                  }
+                  return s;
+                })
+              };
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "tool_failed") {
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const lastIdx = copy.length - 1;
+            const last = copy[lastIdx];
+            if (last && last.role === "assistant" && last.thinkingSteps) {
+              copy[lastIdx] = {
+                ...last,
+                thinkingSteps: last.thinkingSteps.map(s => {
+                  if (s.status === "pending") {
+                    return { ...s, status: "failed" };
+                  }
+                  return s;
+                })
+              };
+            }
+            return copy;
+          });
+        }
+        else if (data.type === "rename") {
+          setChatTitle(data.name);
+          loadInitialData();
+        }
+      } catch (err) {
+        console.warn("Failed to parse telemetry socket message:", err);
+      }
+    };
+
+    socket.onclose = () => {
+      setConnectionStatus("disconnected");
+    };
+
+    socket.onerror = () => {
+      setConnectionStatus("disconnected");
+    };
+  };
 
   // Sync current active session messages with cache
   useEffect(() => {
@@ -275,6 +398,10 @@ export default function Home() {
   };
 
   const handleLogout = () => {
+    if (telemetryWsRef.current) {
+      telemetryWsRef.current.close();
+      telemetryWsRef.current = null;
+    }
     clearToken();
     setIsLoggedIn(false);
     setMessages([]);
@@ -284,6 +411,7 @@ export default function Home() {
   };
 
   const loadSessionHistory = async (sessionId: string) => {
+    initializeTelemetryWS(sessionId);
     const cached = messagesCache[sessionId];
     if (cached) {
       setMessages(cached);
@@ -352,8 +480,9 @@ export default function Home() {
   };
 
   const handleCreateNewChat = () => {
-    if (activeWsRef.current) {
-      activeWsRef.current.close();
+    if (telemetryWsRef.current) {
+      telemetryWsRef.current.close();
+      telemetryWsRef.current = null;
     }
     if (draftSessionId) {
       cleanupDraft(draftSessionId);
@@ -513,9 +642,9 @@ export default function Home() {
   }, []);
 
   const handleStopGeneration = () => {
-    if (activeWsRef.current) {
-      activeWsRef.current.close();
-      activeWsRef.current = null;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     setMessages((prev) => {
       if (prev.length === 0) return prev;
@@ -617,217 +746,275 @@ export default function Home() {
       promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
     }
 
-    const connectAndSend = (retryCount: number) => {
-      const token = getToken() || "";
-      const wsUrl = `${WS_BACKEND_URL}/ws/chat/${sessionId!}?token=${token}`;
-      const socket = new WebSocket(wsUrl);
-      activeWsRef.current = socket;
-      
-      let gotDoneEvent = false;
+    const runClientAgentLoop = async () => {
+      let finalAssistantContent = "";
+      let activeAssistantMsgId = assistantMsg.id;
 
-      socket.onopen = () => {
-        const payload = {
-          message: promptText,
-          model: modelNameToKey(selectedModel),
-          variant: selectedVariant,
-          client_time: new Date().toLocaleString(),
-          attachments: finalAttachments
-        };
-        socket.send(json_stringify_safe(payload));
-      };
+      try {
+        // 1. Call Backend /prepare
+        const prepRes = await prepareSessionPayload(
+          sessionId!,
+          promptText,
+          finalAttachments,
+          modelNameToKey(selectedModel),
+          selectedVariant
+        );
+        
+        let messagesPayload = prepRes.messages; // system + history + user query
+        const modelId = prepRes.model; // e.g. "deepseek-v4-flash-free"
+        const tools = prepRes.tools; // schemas
+        const variantOverrides = prepRes.variant_overrides; // temperature, max_tokens, etc.
 
-      socket.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === "hud_log") {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                const steps = last.thinkingSteps || [];
-                const exists = steps.some(s => s.label === data.content);
-                if (!exists) {
-                  const stepId = `step-${steps.length + 1}`;
-                  copy[lastIdx] = {
-                    ...last,
-                    thinkingSteps: [...steps, { id: stepId, label: data.content, status: "pending" }]
-                  };
+        // Get API Key and Proxy URL
+        const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
+        const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
+
+        if (!openCodeKey) {
+          throw new Error("OpenCode API Key is missing. Please set it in Settings.");
+        }
+
+        // Standard header for API
+        let targetUrl = "/api/completions/proxy";
+        if (customProxyUrl && customProxyUrl.trim() !== "" && !customProxyUrl.includes("voxkage-proxy.ayushdwivedi001.workers.dev")) {
+          targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
+        }
+        
+        let loopCount = 0;
+        const maxLoop = 12;
+        
+        // Setup abort controller
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
+        while (loopCount < maxLoop) {
+          loopCount++;
+          
+          // Construct the body
+          const body: any = {
+            model: modelId,
+            messages: messagesPayload,
+            stream: true,
+            ...variantOverrides
+          };
+          
+          const isAgentic = (selectedVariant || "High").toUpperCase() in { "HIGH": 1, "XHIGH": 1, "MAX": 1 };
+          if (isAgentic && tools && tools.length > 0) {
+            body.tools = tools;
+            body.tool_choice = "auto";
+          }
+
+          // Trigger stream request
+          const res = await fetch(targetUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${openCodeKey}`
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`OpenCode API Error (HTTP ${res.status}): ${errText}`);
+          }
+
+          const reader = res.body?.getReader();
+          if (!reader) {
+            throw new Error("Failed to get response stream reader.");
+          }
+
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          let currentToolCalls: any[] = [];
+          let currentContent = "";
+
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+            if (idx !== -1) {
+              copy[idx].status = "streaming";
+            }
+            return copy;
+          });
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              const cleanLine = line.trim();
+              if (!cleanLine) continue;
+              if (cleanLine === "data: [DONE]") break;
+              
+              if (cleanLine.startsWith("data:")) {
+                const sseData = cleanLine.substring(5).trim();
+                if (!sseData) continue;
+                
+                if (sseData.startsWith("Error")) {
+                  throw new Error(sseData);
+                }
+                
+                try {
+                  const parsed = JSON.parse(sseData);
+                  const delta = parsed.choices?.[0]?.delta;
+                  if (!delta) continue;
+
+                  if (delta.content) {
+                    currentContent += delta.content;
+                    finalAssistantContent += delta.content;
+                    
+                    // Update UI in real-time
+                    setMessages((prev) => {
+                      if (prev.length === 0) return prev;
+                      const copy = [...prev];
+                      const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+                      if (idx !== -1) {
+                        copy[idx].content = finalAssistantContent;
+                      }
+                      return copy;
+                    });
+                  }
+
+                  if (delta.tool_calls) {
+                    delta.tool_calls.forEach((tc: any) => {
+                      const tcIdx = tc.index ?? 0;
+                      while (currentToolCalls.length <= tcIdx) {
+                        currentToolCalls.push({ id: "", type: "function", function: { name: "", arguments: "" } });
+                      }
+                      if (tc.id) currentToolCalls[tcIdx].id = tc.id;
+                      if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
+                      if (tc.function?.arguments) currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
+                    });
+                  }
+                } catch (jsonErr) {
+                  // Ignore JSON parse errors for non-JSON SSE lines
                 }
               }
-              return copy;
-            });
+            }
           }
-          else if (data.type === "clear_tokens") {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                const cleanContent = last.content.endsWith(data.content)
-                  ? last.content.substring(0, last.content.length - data.content.length)
-                  : last.content.replace(data.content, "");
-                copy[lastIdx] = {
-                  ...last,
-                  content: cleanContent.trim()
-                };
-              }
-              return copy;
-            });
-          }
-          else if (data.type === "tool_success") {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant" && last.thinkingSteps) {
-                copy[lastIdx] = {
-                  ...last,
-                  thinkingSteps: last.thinkingSteps.map(s => {
-                    if (s.status === "pending") {
-                      return { ...s, status: "success" };
-                    }
-                    return s;
-                  })
-                };
-              }
-              return copy;
-            });
-          }
-          else if (data.type === "tool_failed") {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant" && last.thinkingSteps) {
-                copy[lastIdx] = {
-                  ...last,
-                  thinkingSteps: last.thinkingSteps.map(s => {
-                    if (s.status === "pending") {
-                      return { ...s, status: "failed" };
-                    }
-                    return s;
-                  })
-                };
-              }
-              return copy;
-            });
-          }
-          else if (data.type === "token") {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                const isThinking = last.status === "thinking";
-                const newStatus = isThinking ? "streaming" : last.status;
-                const newDuration = isThinking && last.thinkingStart
-                  ? Math.max(1, Math.round((Date.now() - last.thinkingStart) / 1000))
-                  : last.thinkingDuration;
 
-                copy[lastIdx] = {
-                  ...last,
-                  status: newStatus,
-                  thinkingDuration: newDuration,
-                  content: last.content + data.content
-                };
-              }
-              return copy;
-            });
-          }
-          else if (data.type === "context_sync") {
-            setContextPercent(data.percent);
-          }
-          else if (data.type === "rename") {
-            setChatTitle(data.name);
-            loadInitialData();
-          }
-          else if (data.type === "done") {
-            gotDoneEvent = true;
+          // If there are tool calls, we execute them
+          if (currentToolCalls.length > 0) {
+            // Update UI with pending tool steps
             setMessages((prev) => {
               if (prev.length === 0) return prev;
               const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                copy[lastIdx] = {
-                  ...last,
-                  status: "completed"
-                };
+              const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+              if (idx !== -1) {
+                const steps = copy[idx].thinkingSteps || [];
+                const newSteps = [...steps];
+                currentToolCalls.forEach((tc) => {
+                  const label = tc.function.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  newSteps.push({ id: tc.id, label: `Executing tool: ${label}`, status: "pending" });
+                });
+                copy[idx].thinkingSteps = newSteps;
+                copy[idx].status = "thinking";
               }
               return copy;
             });
-            socket.close();
-          }
-        } catch (err) {
-          console.error("Error parsing WS packet", err);
-        }
-      };
 
-      socket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
+            // Call backend /execute-tools
+            const toolExecRes = await executeBackendTools(sessionId!, currentToolCalls);
+            
+            // Append assistant message with tool calls to prompt history
+            messagesPayload.push({
+              role: "assistant",
+              content: currentContent || null,
+              tool_calls: currentToolCalls
+            });
 
-      socket.onclose = () => {
-        if (activeWsRef.current === socket && !gotDoneEvent) {
-          if (retryCount < 3) {
+            // Append all tool outputs to prompt history
+            toolExecRes.results.forEach((r: any) => {
+              messagesPayload.push(r);
+            });
+
+            // Update UI tool steps to success/failed
             setMessages((prev) => {
               if (prev.length === 0) return prev;
               const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                const steps = last.thinkingSteps || [];
-                const stepId = `retry-${retryCount + 1}`;
-                const stepLabel = `Connection dropped. Reconnecting (attempt ${retryCount + 1}/3)...`;
-                copy[lastIdx] = {
-                  ...last,
-                  status: "thinking",
-                  content: "",
-                  thinkingSteps: [...steps, { id: stepId, label: stepLabel, status: "pending" }]
-                };
+              const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+              if (idx !== -1) {
+                const steps = copy[idx].thinkingSteps || [];
+                copy[idx].thinkingSteps = steps.map(s => {
+                  const match = toolExecRes.results.find((r: any) => r.tool_call_id === s.id);
+                  if (match) {
+                    const isError = match.content.startsWith("Error");
+                    return { ...s, status: isError ? "failed" : "success" };
+                  }
+                  return s;
+                });
               }
               return copy;
             });
-            setTimeout(() => {
-              connectAndSend(retryCount + 1);
-            }, 1500);
+
+            // If we generated any specialty UI tags (maps, charts, etc) during tool execution, we append them
+            const tags = toolExecRes.tags;
+            if (tags.map_tag) finalAssistantContent += `\n\n${tags.map_tag}`;
+            if (tags.weather_tag) finalAssistantContent += `\n\n${tags.weather_tag}`;
+            if (tags.chart_tag) finalAssistantContent += `\n\n${tags.chart_tag}`;
+            if (tags.flow_tag) finalAssistantContent += `\n\n${tags.flow_tag}`;
+            if (tags.chemistry_tag) finalAssistantContent += `\n\n${tags.chemistry_tag}`;
+            if (tags.timeline_tag) finalAssistantContent += `\n\n${tags.timeline_tag}`;
+            if (tags.calculator_tag) finalAssistantContent += `\n\n${tags.calculator_tag}`;
+
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+              if (idx !== -1) {
+                copy[idx].content = finalAssistantContent;
+              }
+              return copy;
+            });
+
           } else {
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const lastIdx = copy.length - 1;
-              const last = copy[lastIdx];
-              if (last && last.role === "assistant") {
-                const steps = last.thinkingSteps || [];
-                copy[lastIdx] = {
-                  ...last,
-                  status: "completed",
-                  thinkingSteps: [...steps.map(s => s.status === "pending" ? { ...s, status: "failed" as const } : s), {
-                    id: "retry-failed",
-                    label: "Reconnection failed. Please check your network connection.",
-                    status: "failed"
-                  }]
-                };
-              }
-              return copy;
-            });
-            activeWsRef.current = null;
-          }
-        } else {
-          if (activeWsRef.current === socket) {
-            activeWsRef.current = null;
+            // No tool calls, generation is completed
+            break;
           }
         }
-      };
+
+        // 4. Log the finalized assistant message to the database
+        await logAssistantResponse(sessionId!, finalAssistantContent);
+
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const copy = [...prev];
+          const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+          if (idx !== -1) {
+            copy[idx].status = "completed";
+          }
+          return copy;
+        });
+
+      } catch (err: any) {
+        if (err.name === "AbortError") {
+          console.log("Completions generation aborted by user.");
+          return;
+        }
+        console.error("Client agent loop failed:", err);
+        const errMsg = err.message || String(err);
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const copy = [...prev];
+          const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+          if (idx !== -1) {
+            copy[idx].content = `[System Error: ${errMsg}]`;
+            copy[idx].status = "completed";
+          }
+          return copy;
+        });
+      } finally {
+        abortControllerRef.current = null;
+      }
     };
 
-    connectAndSend(0);
+    runClientAgentLoop();
   };
 
   const json_stringify_safe = (val: any) => {
@@ -923,7 +1110,6 @@ export default function Home() {
       {/* Animated mesh gradient background (prop driven to slide down) */}
       <GradientBackground isChatActive={isChatActive} />
 
-      {/* Claude-style Premium Sidebar */}
       <Sidebar 
         isExpanded={sidebarExpanded} 
         setIsExpanded={setSidebarExpanded}
@@ -935,6 +1121,15 @@ export default function Home() {
         onToggleStar={handleToggleStar}
         onRenameSession={handleRenameSessionClick}
         onDeleteSession={handleDeleteSession}
+        onOpenSettings={() => {
+          setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+          const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
+          if (savedProxy) {
+            setCustomProxyUrl(savedProxy);
+          }
+          setShowSettingsModal(true);
+        }}
+        connectionStatus={connectionStatus}
       />
 
       {/* Main content workspace container */}
@@ -1380,6 +1575,64 @@ export default function Home() {
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
               >
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settings Dialog */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div 
+            onClick={() => setShowSettingsModal(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-200" 
+          />
+          <div className="relative w-full max-w-md bg-[#121216] border border-zinc-800 rounded-2xl p-6 shadow-2xl z-10 flex flex-col gap-4 font-sans text-zinc-300 animate-fadeIn">
+            <h3 className="text-zinc-100 text-base font-semibold">VoxKage Settings</h3>
+            
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] font-medium text-zinc-400">OpenCode Zen API Key</label>
+              <input
+                type="password"
+                value={openCodeApiKey}
+                onChange={(e) => setOpenCodeApiKey(e.target.value)}
+                placeholder="Enter OpenCode API Key"
+                className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700"
+              />
+              <span className="text-[11px] text-zinc-500">Stored locally in your browser. Originates requests directly from your IP.</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] font-medium text-zinc-400">Cloudflare CORS Proxy URL</label>
+              <input
+                type="text"
+                value={customProxyUrl}
+                onChange={(e) => setCustomProxyUrl(e.target.value)}
+                placeholder="https://voxkage-proxy.yourname.workers.dev"
+                className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700"
+              />
+              <span className="text-[11px] text-zinc-500">Personal proxy to bypass browser CORS headers. Default public workers pool used if empty.</span>
+            </div>
+
+            <div className="flex gap-2 justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="px-4 py-2 rounded-xl border border-zinc-800 text-[13.5px] hover:bg-zinc-800/80 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
+                  localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
+                  setShowSettingsModal(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
+              >
+                Save Settings
               </button>
             </div>
           </div>

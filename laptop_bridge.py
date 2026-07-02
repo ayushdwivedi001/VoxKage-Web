@@ -243,6 +243,9 @@ async def bridge_loop(ws_url, backend_url):
                         continue
                     
                     msg_type = data.get("type")
+                    if msg_type == "ping":
+                        await websocket.send(json.dumps({"type": "pong"}))
+                        continue
                     action = data.get("action")
                     
                     if msg_type == "proxy_completion_request":

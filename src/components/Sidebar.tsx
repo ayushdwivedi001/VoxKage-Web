@@ -17,7 +17,8 @@ import {
   MoreHorizontal,
   Star,
   Edit3,
-  Trash2
+  Trash2,
+  Settings
 } from "lucide-react";
 
 interface SidebarProps {
@@ -31,6 +32,8 @@ interface SidebarProps {
   onToggleStar: (sessionId: string, starred: boolean) => void;
   onRenameSession: (sessionId: string, currentName: string) => void;
   onDeleteSession: (sessionId: string) => void;
+  onOpenSettings: () => void;
+  connectionStatus: "connected" | "connecting" | "disconnected";
 }
 
 export default function Sidebar({
@@ -44,6 +47,8 @@ export default function Sidebar({
   onToggleStar,
   onRenameSession,
   onDeleteSession,
+  onOpenSettings,
+  connectionStatus,
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
 
@@ -70,9 +75,19 @@ export default function Sidebar({
       >
         {isExpanded ? (
           <>
-            <span className="text-zinc-100 text-lg font-light tracking-[0.03em] font-sans select-none animate-fadeIn">
-              VoxKage
-            </span>
+            <div className="flex items-center gap-1.5 animate-fadeIn">
+              <span className="text-zinc-100 text-lg font-light tracking-[0.03em] font-sans select-none">
+                VoxKage
+              </span>
+              <span 
+                className={`w-[6px] h-[6px] rounded-full mt-1 transition-colors duration-300 ${
+                  connectionStatus === "connected" ? "bg-emerald-500" :
+                  connectionStatus === "connecting" ? "bg-amber-500 animate-pulse" :
+                  "bg-rose-500"
+                }`}
+                title={`Telemetry: ${connectionStatus}`}
+              />
+            </div>
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -392,6 +407,15 @@ export default function Sidebar({
               aria-label="Download app"
             >
               <Download className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] transition-all duration-200 cursor-pointer"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Settings className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"

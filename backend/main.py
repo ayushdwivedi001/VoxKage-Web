@@ -10,7 +10,7 @@ import asyncio
 from typing import List, Dict, Optional
 from datetime import datetime
 
-from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
@@ -117,6 +117,27 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+async def websocket_heartbeat_loop():
+    while True:
+        await asyncio.sleep(20)
+        # Ping active chats
+        for user, wss in list(manager._active_chats.items()):
+            for ws in list(wss):
+                try:
+                    await ws.send_text(json.dumps({"type": "ping"}))
+                except Exception:
+                    pass
+        # Ping active laptops
+        for user, ws in list(manager._active_laptops.items()):
+            try:
+                await ws.send_text(json.dumps({"type": "ping"}))
+            except Exception:
+                pass
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(websocket_heartbeat_loop())
+
 # --- Auth Helper Models ---
 class MasterLoginRequest(BaseModel):
     email: EmailStr
@@ -127,6 +148,19 @@ class SaveFavoritesRequest(BaseModel):
 
 class SaveSettingsProfileRequest(BaseModel):
     settings_profile: dict
+
+class PreparePayloadRequest(BaseModel):
+    message: str
+    attachments: Optional[List[dict]] = []
+    model: Optional[str] = "deepseek-flash"
+    variant: Optional[str] = "High"
+
+class ExecuteToolsRequest(BaseModel):
+    tool_calls: List[dict]
+
+class LogAssistantResponseRequest(BaseModel):
+    content: str
+
 
 # --- Root & Health Endpoints ---
 @app.get("/")
@@ -301,6 +335,251 @@ def save_settings_profile(
 def get_models(user: str = Depends(get_current_user)):
     return list_opencode_models()
 
+# --- Client-Side Agent Loop Endpoints ---
+
+@app.post("/sessions/{session_id}/prepare")
+async def prepare_agent_payload(
+    session_id: str,
+    req: PreparePayloadRequest,
+    user: str = Depends(get_current_user)
+):
+    from opencode_client import get_opencode_model, sanitize_history_roles, get_system_prompt
+    from memory_engine import recall_user
+    
+    # 1. Handle user query and extract text from attachments
+    query = req.message.strip()
+    enriched_query_parts = []
+    
+    for att in req.attachments:
+        fn = att.get("filename")
+        on = att.get("original_name")
+        file_path = os.path.join("uploads", str(session_id), fn)
+        if not os.path.exists(file_path):
+            file_path = os.path.join("uploads", fn)
+        if os.path.exists(file_path):
+            try:
+                from rag_parser import extract_text_async
+                extracted_text = await extract_text_async(file_path, model=req.model)
+                enriched_query_parts.append(
+                    f"--- ATTACHED FILE: {on} ---\n"
+                    f"{extracted_text}\n"
+                    f"--------------------------------------"
+                )
+            except Exception as extract_err:
+                print(f"Error extracting text from attachment {fn}: {extract_err}")
+
+    if enriched_query_parts:
+        context_header = "\n\n".join(enriched_query_parts)
+        model_query = f"{context_header}\n\nUser Question:\n{query}"
+    else:
+        model_query = query
+
+    # Format database content with XML attachments tags
+    db_content = query
+    if req.attachments:
+        attachments_xml_parts = ["<attachments>"]
+        for att in req.attachments:
+            fn_esc = att.get("filename", "").replace('"', '&quot;')
+            on_esc = att.get("original_name", "").replace('"', '&quot;')
+            url_esc = att.get("url", "").replace('"', '&quot;')
+            tp_esc = att.get("type", "").replace('"', '&quot;')
+            sz_esc = str(att.get("size", 0))
+            pg_esc = str(att.get("num_pages", ""))
+            attachments_xml_parts.append(
+                f'  <attachment filename="{fn_esc}" original_name="{on_esc}" url="{url_esc}" type="{tp_esc}" size="{sz_esc}" num_pages="{pg_esc}" />'
+            )
+        attachments_xml_parts.append("</attachments>")
+        db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
+
+    # Log user query to database
+    log_message(session_id, "user", db_content)
+
+    # Instantly kick off dynamic rename in background concurrently
+    async def run_smart_rename(sid: str, q: str, m_key: str, uid: str):
+        try:
+            db_msgs = get_session_messages(sid)
+            user_msgs = [m for m in db_msgs if m["role"] == "user"]
+            if len(user_msgs) <= 1:
+                from opencode_proxy import query_opencode_proxy
+                from opencode_client import get_opencode_model
+                title_prompt = f"Summarize this query into a short, creative 3-5 word title for a chat thread (do not include quotes or markdown): '{q}'"
+                title_payload = {
+                    "model": get_opencode_model(m_key),
+                    "messages": [{"role": "user", "content": title_prompt}],
+                    "temperature": 0.7
+                }
+                title_chunks = []
+                async for chunk in query_opencode_proxy(
+                    payload=title_payload,
+                    manager_ref=manager,
+                    user_id=uid,
+                    client_websocket=None,
+                    timeout=15.0
+                ):
+                    if isinstance(chunk, dict):
+                        err_msg = chunk.get("content")
+                        if err_msg and err_msg.startswith("Error:"):
+                            continue
+                        content = chunk.get("content", "")
+                        if content:
+                            title_chunks.append(content)
+                generated_title = "".join(title_chunks).strip()
+                for char in ['"', "'", '`', '*', '#']:
+                    generated_title = generated_title.replace(char, '')
+                generated_title = generated_title.strip().strip('.')
+                if generated_title:
+                    update_session_name(sid, uid, generated_title)
+                    # Notify browser active chats of renaming
+                    chat_sockets = manager._active_chats.get(uid, [])
+                    for s in chat_sockets:
+                        try:
+                            await s.send_text(json.dumps({"type": "rename", "name": generated_title}))
+                        except:
+                            pass
+        except Exception as re_err:
+            print(f"Async Rename failed: {re_err}")
+
+    asyncio.create_task(run_smart_rename(session_id, query, req.model, user))
+
+    # Retrieve history
+    messages_history = get_session_messages(session_id)
+    soul_context = recall_user(user, "")
+    current_time_str = datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
+
+    system_prompt = get_system_prompt()
+    system_prompt += (
+        f"\n\n--- DYNAMIC SESSION CONTEXT ---\n"
+        f"The current local date and time is {current_time_str}. Use this exact timestamp when answering any queries. Never guess the time.\n"
+        f"--- USER SOUL PROFILE MEMORIES ---\n{soul_context}\n\n"
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    formatted_history = []
+    # Include all previous logs from DB history except the very last user message we just logged (as we will send the enriched version)
+    for msg in messages_history[:-1]:
+        formatted_history.append({"role": msg["role"], "content": msg["content"]})
+        
+    for msg in sanitize_history_roles(formatted_history):
+        messages.append({"role": msg["role"], "content": msg["content"]})
+        
+    # Append the current enriched query
+    messages.append({"role": "user", "content": model_query})
+
+    model_id = get_opencode_model(req.model)
+    from agent_loop import get_variant_overrides
+    from tool_schemas import TOOLS_SCHEMA
+    
+    # Return everything needed by the browser client
+    return {
+        "model": model_id,
+        "messages": messages,
+        "tools": TOOLS_SCHEMA,
+        "variant_overrides": get_variant_overrides(req.variant)
+    }
+
+@app.post("/sessions/{session_id}/execute-tools")
+async def execute_agent_tools(
+    session_id: str,
+    req: ExecuteToolsRequest,
+    user: str = Depends(get_current_user)
+):
+    from agent_loop import execute_tool_call_v2
+    tool_context = {
+        "web_search_called": False,
+        "consulted_sources": [],
+        "map_tag": None,
+        "weather_tag": None,
+        "chart_tag": None,
+        "flow_tag": None,
+        "chemistry_tag": None,
+        "timeline_tag": None,
+        "calculator_tag": None
+    }
+    
+    tasks = [
+        execute_tool_call_v2(
+            tc=tc,
+            user_id=user,
+            session_id=session_id,
+            client_websocket=None,
+            manager_ref=manager,
+            client_time=datetime.now().isoformat(),
+            model_key="deepseek-flash",
+            tool_context=tool_context
+        ) for tc in req.tool_calls
+    ]
+    
+    results = await asyncio.gather(*tasks)
+    
+    response_list = []
+    for tc_id, out, success in results:
+        response_list.append({
+            "role": "tool",
+            "tool_call_id": tc_id,
+            "content": out
+        })
+        
+    # Extra tags context if any map, chart, weather etc tags were generated
+    tags = {
+        "map_tag": tool_context.get("map_tag"),
+        "weather_tag": tool_context.get("weather_tag"),
+        "chart_tag": tool_context.get("chart_tag"),
+        "flow_tag": tool_context.get("flow_tag"),
+        "chemistry_tag": tool_context.get("chemistry_tag"),
+        "timeline_tag": tool_context.get("timeline_tag"),
+        "calculator_tag": tool_context.get("calculator_tag")
+    }
+    
+    return {
+        "results": response_list,
+        "tags": tags
+    }
+
+@app.post("/completions/proxy")
+async def completions_proxy(
+    body: dict,
+    authorization: Optional[str] = Header(None)
+):
+    import httpx
+    from fastapi.responses import StreamingResponse
+    
+    if not authorization:
+        raise HTTPException(status_code=400, detail="Missing Authorization header")
+        
+    async def stream_generator():
+        async with httpx.AsyncClient() as client:
+            try:
+                async with client.stream(
+                    "POST",
+                    "https://opencode.ai/zen/v1/chat/completions",
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": authorization
+                    },
+                    json=body,
+                    timeout=60.0
+                ) as response:
+                    if response.status_code != 200:
+                        err_bytes = await response.aread()
+                        yield f"data: Error (HTTP {response.status_code}): {err_bytes.decode(errors='ignore')}\n\n".encode()
+                        return
+                    async for chunk in response.aiter_bytes():
+                        yield chunk
+            except Exception as e:
+                yield f"data: Error (Proxy Exception): {str(e)}\n\n".encode()
+
+    return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+@app.post("/sessions/{session_id}/log")
+def log_agent_response(
+    session_id: str,
+    req: LogAssistantResponseRequest,
+    user: str = Depends(get_current_user)
+):
+    log_message(session_id, "assistant", req.content)
+    return {"status": "success"}
+
+
 # --- WebSocket Chat Streaming ---
 async def chat_ws_reader(websocket: WebSocket, receive_queue: asyncio.Queue):
     from opencode_proxy import PROXY_REQUESTS
@@ -310,6 +589,8 @@ async def chat_ws_reader(websocket: WebSocket, receive_queue: asyncio.Queue):
             try:
                 payload_data = json.loads(data)
                 msg_type = payload_data.get("type")
+                if msg_type == "pong":
+                    continue
                 if msg_type in ("proxy_completion_chunk", "proxy_completion_done", "proxy_completion_error"):
                     request_id = payload_data.get("request_id")
                     if request_id and request_id in PROXY_REQUESTS:
@@ -585,6 +866,8 @@ async def websocket_laptop_endpoint(websocket: WebSocket, token: str = Query(...
                 payload_data = json.loads(data)
                 
                 msg_type = payload_data.get("type")
+                if msg_type == "pong":
+                    continue
                 if msg_type in ("proxy_completion_chunk", "proxy_completion_done", "proxy_completion_error"):
                     from opencode_proxy import PROXY_REQUESTS
                     request_id = payload_data.get("request_id")

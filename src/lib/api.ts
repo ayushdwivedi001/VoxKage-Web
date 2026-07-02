@@ -198,3 +198,31 @@ export async function adoptDraftFiles(sessionId: string, draftId: string) {
 
   return response.json();
 }
+
+export async function prepareSessionPayload(
+  sessionId: string,
+  query: string,
+  attachments: any[],
+  model: string,
+  variant: string
+) {
+  return apiRequest(`/sessions/${sessionId}/prepare`, "POST", {
+    message: query,
+    attachments,
+    model,
+    variant
+  });
+}
+
+export async function executeBackendTools(sessionId: string, toolCalls: any[]) {
+  return apiRequest(`/sessions/${sessionId}/execute-tools`, "POST", {
+    tool_calls: toolCalls
+  });
+}
+
+export async function logAssistantResponse(sessionId: string, content: string) {
+  return apiRequest(`/sessions/${sessionId}/log`, "POST", {
+    content
+  });
+}
+
