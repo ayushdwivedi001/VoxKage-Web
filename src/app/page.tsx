@@ -104,6 +104,9 @@ export default function Home() {
   const [customProxyUrl, setCustomProxyUrl] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected">("disconnected");
 
+  // User profile
+  const [userName, setUserName] = useState("");
+
   // Dynamic greeting
   const [greeting, setGreeting] = useState("Ready to build, Ayush?");
   const hasVisitedRef = useRef(false);
@@ -252,6 +255,7 @@ export default function Home() {
       if (savedProxy) {
         setCustomProxyUrl(savedProxy);
       }
+      setUserName(localStorage.getItem("voxkage_user_name") || "");
     }
   }, []);
 
@@ -365,19 +369,21 @@ export default function Home() {
 
   // Generate a dynamic greeting on mount and when email changes
   useEffect(() => {
-    const name = loginEmail ? extractNameFromEmail(loginEmail) : "";
+    const storedName = localStorage.getItem("voxkage_user_name") || "";
+    const name = storedName || (loginEmail ? extractNameFromEmail(loginEmail) : "");
     const now = new Date();
     setGreeting(getGreeting(name, now.getHours(), now.getDay(), false));
-  }, [loginEmail]);
+  }, [loginEmail, userName]);
 
   // Refresh greeting when returning after sending a message
   useEffect(() => {
     if (hasVisitedRef.current && !isChatActive) {
-      const name = loginEmail ? extractNameFromEmail(loginEmail) : "";
+      const storedName = localStorage.getItem("voxkage_user_name") || "";
+      const name = storedName || (loginEmail ? extractNameFromEmail(loginEmail) : "");
       const now = new Date();
       setGreeting(getGreeting(name, now.getHours(), now.getDay(), true));
     }
-  }, [isChatActive, loginEmail]);
+  }, [isChatActive, loginEmail, userName]);
 
   const loadInitialData = async () => {
     try {
@@ -1524,6 +1530,7 @@ export default function Home() {
           if (savedProxy) {
             setCustomProxyUrl(savedProxy);
           }
+          setUserName(localStorage.getItem("voxkage_user_name") || "");
           setShowSettingsModal(true);
         }}
         connectionStatus={connectionStatus}
@@ -1727,7 +1734,7 @@ export default function Home() {
             {!isChatActive && (
               <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20">
                 <h1
-                  className="text-white text-3xl sm:text-[40px] md:text-[44px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
+                  className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
                 >
                   {greeting}
                 </h1>
@@ -1991,7 +1998,19 @@ export default function Home() {
           />
           <div className="relative w-full max-w-md bg-[#121216] border border-zinc-800 rounded-2xl p-6 shadow-2xl z-10 flex flex-col gap-4 font-sans text-zinc-300 animate-fadeIn">
             <h3 className="text-zinc-100 text-base font-semibold">VoxKage Settings</h3>
-            
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12.5px] font-medium text-zinc-400">Display Name</label>
+              <input
+                type="text"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                placeholder="Enter your name"
+                className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 text-zinc-200 text-[14.5px] focus:outline-none focus:border-zinc-700"
+              />
+              <span className="text-[11px] text-zinc-500">Shown in greetings and across the interface.</span>
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <label className="text-[12.5px] font-medium text-zinc-400">OpenCode Zen API Key</label>
               <input
@@ -2029,6 +2048,7 @@ export default function Home() {
                 onClick={() => {
                   localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
                   localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
+                  localStorage.setItem("voxkage_user_name", userName.trim());
                   setShowSettingsModal(false);
                 }}
                 className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
