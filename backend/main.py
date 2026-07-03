@@ -19,7 +19,8 @@ from auth import create_access_token, get_current_user
 from database import (
     create_session, list_sessions, get_session, update_session_name, delete_session,
     log_message, get_session_messages, get_user_favorites, save_user_favorites,
-    get_user_settings_profile, save_user_settings_profile, toggle_session_star
+    get_user_settings_profile, save_user_settings_profile, toggle_session_star,
+    edit_message_and_truncate, log_message_feedback_db
 )
 from opencode_client import list_opencode_models
 from agent_loop import run_agentic_loop, LAPTOP_CHANNELS
@@ -161,6 +162,13 @@ class ExecuteToolsRequest(BaseModel):
 
 class LogAssistantResponseRequest(BaseModel):
     content: str
+
+class EditMessageRequest(BaseModel):
+    new_content: str
+
+class FeedbackRequest(BaseModel):
+    feedback_type: str
+    comments: Optional[str] = None
 
 
 # --- Root & Health Endpoints ---
@@ -579,6 +587,24 @@ def log_agent_response(
 ):
     log_message(session_id, "assistant", req.content)
     return {"status": "success"}
+
+@app.put("/sessions/{session_id}/messages/{message_id}/edit")
+def edit_session_message(
+    session_id: str,
+    message_id: str,
+    req: EditMessageRequest,
+    user: str = Depends(get_current_user)
+):
+    return edit_message_and_truncate(session_id, message_id, req.new_content)
+
+@app.post("/sessions/{session_id}/messages/{message_id}/feedback")
+def log_message_feedback(
+    session_id: str,
+    message_id: str,
+    req: FeedbackRequest,
+    user: str = Depends(get_current_user)
+):
+    return log_message_feedback_db(session_id, message_id, req.feedback_type, req.comments)
 
 
 # --- WebSocket Chat Streaming ---

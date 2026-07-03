@@ -239,3 +239,21 @@ export async function logAssistantResponse(sessionId: string, content: string) {
   });
 }
 
+export async function editSessionMessage(sessionId: string, messageId: string, newContent: string) {
+  return apiRequest(`/sessions/${sessionId}/messages/${messageId}/edit`, "PUT", {
+    new_content: newContent
+  });
+}
+
+export async function logMessageFeedback(
+  sessionId: string,
+  messageId: string,
+  feedbackType: "thumbs_up" | "thumbs_down",
+  comments?: string
+) {
+  return apiRequest(`/sessions/${sessionId}/messages/${messageId}/feedback`, "POST", {
+    feedback_type: feedbackType,
+    comments
+  });
+}
+

@@ -51,6 +51,7 @@ export default function Sidebar({
   connectionStatus,
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
+  const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
 
   return (
     <aside
@@ -268,48 +269,85 @@ export default function Sidebar({
                       onClick={(e) => {
                         e.stopPropagation();
                         setActivePopupSessionId(null);
+                        setConfirmDeleteSessionId(null);
                       }}
                     />
-                    <div className="absolute right-2 top-[38px] w-[140px] bg-[#121215] border border-zinc-800 rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleStar(session.id, !isStarred);
-                          setActivePopupSessionId(null);
-                        }}
-                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
-                      >
-                        <Star className={`w-3.5 h-3.5 ${isStarred ? "fill-white text-white" : "text-zinc-400"}`} />
-                        <span>{isStarred ? "Remove Star" : "Star"}</span>
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActivePopupSessionId(null);
-                          onRenameSession(session.id, session.name);
-                        }}
-                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
-                        <span>Rename</span>
-                      </button>
-                      
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActivePopupSessionId(null);
-                          onDeleteSession(session.id);
-                        }}
-                        className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
+
+                    {confirmDeleteSessionId === session.id ? (
+                      /* ── Delete confirmation inline ── */
+                      <div className="absolute right-2 top-[38px] w-[196px] bg-[#121215] border border-zinc-700/60 rounded-xl p-3 shadow-2xl z-50 flex flex-col gap-3 animate-fadeIn">
+                        <p className="text-[12.5px] text-zinc-300 leading-snug">
+                          Delete <span className="font-semibold text-white">&ldquo;{session.name}&rdquo;</span>?{" "}
+                          <span className="text-zinc-500">This can&apos;t be undone.</span>
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteSessionId(null);
+                              setActivePopupSessionId(null);
+                            }}
+                            className="flex-1 py-1.5 rounded-lg text-[12px] font-medium text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 border border-zinc-700/40 transition-colors cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmDeleteSessionId(null);
+                              setActivePopupSessionId(null);
+                              onDeleteSession(session.id);
+                            }}
+                            className="flex-1 py-1.5 rounded-lg text-[12px] font-medium text-white bg-red-600/80 hover:bg-red-600 border border-red-500/30 transition-colors cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── Normal options menu ── */
+                      <div className="absolute right-2 top-[38px] w-[140px] bg-[#121215] border border-zinc-800 rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleStar(session.id, !isStarred);
+                            setActivePopupSessionId(null);
+                          }}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                        >
+                          <Star className={`w-3.5 h-3.5 ${isStarred ? "fill-white text-white" : "text-zinc-400"}`} />
+                          <span>{isStarred ? "Remove Star" : "Star"}</span>
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActivePopupSessionId(null);
+                            onRenameSession(session.id, session.name);
+                          }}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                          <span>Rename</span>
+                        </button>
+                        
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDeleteSessionId(session.id);
+                          }}
+                          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                          <span>Delete</span>
+                        </button>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

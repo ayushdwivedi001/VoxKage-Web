@@ -104,6 +104,77 @@ def get_session_messages(session_id: str) -> list:
     res = execute_with_retry(db.table("messages").select("*").eq("session_id", session_id).order("timestamp", desc=False))
     return res.data or []
 
+def edit_message_and_truncate(session_id: str, message_id: str, new_content: str) -> dict:
+    import re
+    db = get_db()
+    
+    # 1. Retrieve target message to get its timestamp
+    res = execute_with_retry(db.table("messages").select("*").eq("id", message_id).eq("session_id", session_id))
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Message not found.")
+    target_msg = res.data[0]
+    target_timestamp = target_msg["timestamp"]
+
+    # 2. Find and delete files of any messages that will be truncated
+    later_res = execute_with_retry(
+        db.table("messages")
+        .select("content")
+        .eq("session_id", session_id)
+        .gt("timestamp", target_timestamp)
+    )
+    
+    files_to_delete = []
+    if later_res.data:
+        for msg in later_res.data:
+            content = msg.get("content") or ""
+            if "<attachments>" in content:
+                try:
+                    filenames = re.findall(r'filename="([^"]+)"', content)
+                    files_to_delete.extend(filenames)
+                except Exception as e:
+                    print(f"Error parsing filenames for deletion: {e}")
+
+    for fn in files_to_delete:
+        file_path = os.path.join("uploads", str(session_id), fn)
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                print(f"[+] Deleted orphaned file: {file_path}")
+            except Exception as e:
+                print(f"[-] Failed to delete orphaned file {file_path}: {e}")
+
+    # 3. Truncate subsequent messages in database
+    execute_with_retry(
+        db.table("messages")
+        .delete()
+        .eq("session_id", session_id)
+        .gt("timestamp", target_timestamp)
+    )
+
+    # 4. Update the target message's content
+    update_res = execute_with_retry(
+        db.table("messages")
+        .update({"content": new_content})
+        .eq("id", message_id)
+        .eq("session_id", session_id)
+    )
+    if not update_res.data:
+        raise HTTPException(status_code=500, detail="Failed to update message.")
+    return update_res.data[0]
+
+def log_message_feedback_db(session_id: str, message_id: str, feedback_type: str, comments: str | None) -> dict:
+    db = get_db()
+    data = {
+        "message_id": message_id,
+        "session_id": session_id,
+        "feedback_type": feedback_type,
+        "comments": comments
+    }
+    res = execute_with_retry(db.table("feedback").insert(data))
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to log feedback.")
+    return res.data[0]
+
 # --- Projects Management (Workspace) ---
 def save_playground_project(user_id: str, project_id: str | None, name: str, html: str, css: str, js: str, files: dict | None = None) -> dict:
     db = get_db()

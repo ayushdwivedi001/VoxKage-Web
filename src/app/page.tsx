@@ -60,7 +60,9 @@ import {
   adoptDraftFiles,
   prepareSessionPayload,
   executeBackendTools,
-  logAssistantResponse
+  logAssistantResponse,
+  editSessionMessage,
+  logMessageFeedback
 } from "@/lib/api";
 
 export default function Home() {
@@ -545,7 +547,6 @@ export default function Home() {
   };
 
   const handleDeleteSession = async (sessionId: string) => {
-    if (!confirm("Are you sure you want to delete this session?")) return;
     setSessionsList(prev => prev.filter(s => s.id !== sessionId));
     setMessagesCache(prev => {
       const copy = { ...prev };
@@ -1038,6 +1039,342 @@ export default function Home() {
     runClientAgentLoop();
   };
 
+  const resubmitUserMessage = async (userMsgId: string, updatedContent?: string) => {
+    const idx = messages.findIndex((m) => m.id === userMsgId);
+    if (idx === -1) return;
+
+    const originalUserMsg = messages[idx];
+    const newText = updatedContent !== undefined ? updatedContent : originalUserMsg.content;
+
+    try {
+      // 1. Call backend edit endpoint to update the DB content and truncate all messages after userMsgId
+      let finalContent = newText;
+      const attachmentsXmlStart = originalUserMsg.content.indexOf("\n\n<attachments>");
+      if (attachmentsXmlStart !== -1) {
+        finalContent = `${newText}${originalUserMsg.content.substring(attachmentsXmlStart)}`;
+      }
+
+      await editSessionMessage(currentSessionId!, userMsgId, finalContent);
+
+      // 2. Update local state: truncate all messages from idx + 1 onwards
+      const truncatedMessages = messages.slice(0, idx + 1);
+      
+      // Update the content of the user message in local state
+      truncatedMessages[idx] = {
+        ...originalUserMsg,
+        content: finalContent
+      };
+
+      // 3. Append a new assistant message at the end
+      const newAssistantMsg: Message = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content: "",
+        status: "thinking",
+        thinkingDuration: 0,
+        thinkingStart: Date.now(),
+        thinkingSteps: []
+      };
+
+      setMessages([...truncatedMessages, newAssistantMsg]);
+
+      // 4. Run client agent loop
+      const runClientAgentLoop = async () => {
+        let finalAssistantContent = "";
+        let activeAssistantMsgId = newAssistantMsg.id;
+
+        try {
+          // Parse attachments if any
+          const finalAttachments: any[] = [];
+          if (attachmentsXmlStart !== -1) {
+            const xmlBlock = originalUserMsg.content.substring(attachmentsXmlStart);
+            const attachmentsRegex = /<attachment filename="([^"]+)" original_name="([^"]+)" url="([^"]+)" type="([^"]+)" size="([^"]+)"(?: num_pages="([^"]+)")? \/>/g;
+            let match;
+            while ((match = attachmentsRegex.exec(xmlBlock)) !== null) {
+              finalAttachments.push({
+                filename: match[1],
+                original_name: match[2],
+                url: match[3],
+                type: match[4],
+                size: parseInt(match[5], 10),
+                num_pages: match[6] ? parseInt(match[6], 10) : undefined
+              });
+            }
+          }
+
+          const prepRes = await prepareSessionPayload(
+            currentSessionId!,
+            newText,
+            finalAttachments,
+            modelNameToKey(selectedModel),
+            selectedVariant
+          );
+          
+          let messagesPayload = prepRes.messages;
+          const modelId = prepRes.model;
+          const tools = prepRes.tools;
+          const variantOverrides = prepRes.variant_overrides;
+
+          const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
+          const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
+
+          if (!openCodeKey) {
+            throw new Error("OpenCode API Key is missing. Please set it in Settings.");
+          }
+
+          let targetUrl = "/api/completions/proxy";
+          if (customProxyUrl && customProxyUrl.trim() !== "" && !customProxyUrl.includes("voxkage-proxy.ayushdwivedi001.workers.dev")) {
+            targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
+          }
+          
+          let loopCount = 0;
+          const maxLoop = 12;
+          const controller = new AbortController();
+          abortControllerRef.current = controller;
+
+          while (loopCount < maxLoop) {
+            loopCount++;
+            
+            const body: any = {
+              model: modelId,
+              messages: messagesPayload,
+              stream: true,
+              ...variantOverrides
+            };
+            
+            const isAgentic = (selectedVariant || "High").toUpperCase() in { "HIGH": 1, "XHIGH": 1, "MAX": 1 };
+            if (isAgentic && tools && tools.length > 0) {
+              body.tools = tools;
+              body.tool_choice = "auto";
+            }
+
+            const res = await fetch(targetUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${openCodeKey}`
+              },
+              body: JSON.stringify(body),
+              signal: controller.signal
+            });
+
+            if (!res.ok) {
+              const errText = await res.text();
+              throw new Error(`OpenCode API Error (HTTP ${res.status}): ${errText}`);
+            }
+
+            const reader = res.body?.getReader();
+            if (!reader) {
+              throw new Error("Failed to get response stream reader.");
+            }
+
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+            let currentToolCalls: any[] = [];
+            let currentContent = "";
+
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+              if (idx !== -1) {
+                copy[idx].status = "streaming";
+              }
+              return copy;
+            });
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                const cleanLine = line.trim();
+                if (!cleanLine) continue;
+                if (cleanLine === "data: [DONE]") break;
+                
+                if (cleanLine.startsWith("data:")) {
+                  const sseData = cleanLine.substring(5).trim();
+                  if (!sseData) continue;
+                  
+                  if (sseData.startsWith("Error")) {
+                    throw new Error(sseData);
+                  }
+                  
+                  try {
+                    const parsed = JSON.parse(sseData);
+                    const delta = parsed.choices?.[0]?.delta;
+                    if (!delta) continue;
+
+                    if (delta.content) {
+                      currentContent += delta.content;
+                      finalAssistantContent += delta.content;
+                      
+                      setMessages((prev) => {
+                        if (prev.length === 0) return prev;
+                        const copy = [...prev];
+                        const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+                        if (idx !== -1) {
+                          copy[idx].content = finalAssistantContent;
+                        }
+                        return copy;
+                      });
+                    }
+
+                    if (delta.tool_calls) {
+                      delta.tool_calls.forEach((tc: any) => {
+                        const tcIdx = tc.index ?? 0;
+                        while (currentToolCalls.length <= tcIdx) {
+                          currentToolCalls.push({ id: "", type: "function", function: { name: "", arguments: "" } });
+                        }
+                        if (tc.id) currentToolCalls[tcIdx].id = tc.id;
+                        if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
+                        if (tc.function?.arguments) currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
+                      });
+                    }
+                  } catch (jsonErr) {}
+                }
+              }
+            }
+
+            if (currentToolCalls.length > 0) {
+              setMessages((prev) => {
+                if (prev.length === 0) return prev;
+                const copy = [...prev];
+                const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+                if (idx !== -1) {
+                  const steps = copy[idx].thinkingSteps || [];
+                  const newSteps = [...steps];
+                  currentToolCalls.forEach((tc) => {
+                    const label = tc.function.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                    newSteps.push({ id: tc.id, label: `Executing tool: ${label}`, status: "pending" });
+                  });
+                  copy[idx].thinkingSteps = newSteps;
+                  copy[idx].status = "thinking";
+                }
+                return copy;
+              });
+
+              const toolExecRes = await executeBackendTools(currentSessionId!, currentToolCalls);
+              
+              messagesPayload.push({
+                role: "assistant",
+                content: currentContent || null,
+                tool_calls: currentToolCalls
+              });
+
+              toolExecRes.results.forEach((r: any) => {
+                messagesPayload.push(r);
+              });
+
+              setMessages((prev) => {
+                if (prev.length === 0) return prev;
+                const copy = [...prev];
+                const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+                if (idx !== -1) {
+                  const steps = copy[idx].thinkingSteps || [];
+                  copy[idx].thinkingSteps = steps.map(s => {
+                    const match = toolExecRes.results.find((r: any) => r.tool_call_id === s.id);
+                    if (match) {
+                      const isError = match.content.startsWith("Error");
+                      return { ...s, status: isError ? "failed" : "success" };
+                    }
+                    return s;
+                  });
+                }
+                return copy;
+              });
+
+              const tags = toolExecRes.tags;
+              if (tags.map_tag) finalAssistantContent += `\n\n${tags.map_tag}`;
+              if (tags.weather_tag) finalAssistantContent += `\n\n${tags.weather_tag}`;
+              if (tags.chart_tag) finalAssistantContent += `\n\n${tags.chart_tag}`;
+              if (tags.flow_tag) finalAssistantContent += `\n\n${tags.flow_tag}`;
+              if (tags.chemistry_tag) finalAssistantContent += `\n\n${tags.chemistry_tag}`;
+              if (tags.timeline_tag) finalAssistantContent += `\n\n${tags.timeline_tag}`;
+              if (tags.calculator_tag) finalAssistantContent += `\n\n${tags.calculator_tag}`;
+
+              setMessages((prev) => {
+                if (prev.length === 0) return prev;
+                const copy = [...prev];
+                const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+                if (idx !== -1) {
+                  copy[idx].content = finalAssistantContent;
+                }
+                return copy;
+              });
+
+            } else {
+              break;
+            }
+          }
+
+          await logAssistantResponse(currentSessionId!, finalAssistantContent);
+
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+            if (idx !== -1) {
+              copy[idx].status = "completed";
+              const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
+              copy[idx].thinkingDuration = Math.max(elapsed, 0.1);
+            }
+            return copy;
+          });
+
+        } catch (err: any) {
+          if (err.name === "AbortError") return;
+          console.error("Client agent loop failed:", err);
+          const errMsg = err.message || String(err);
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const idx = copy.findIndex(m => m.id === activeAssistantMsgId);
+            if (idx !== -1) {
+              copy[idx].content = `[System Error: ${errMsg}]`;
+              copy[idx].status = "completed";
+              const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
+              copy[idx].thinkingDuration = Math.max(elapsed, 0.1);
+            }
+            return copy;
+          });
+        } finally {
+          abortControllerRef.current = null;
+        }
+      };
+
+      runClientAgentLoop();
+
+    } catch (e) {
+      console.error("Failed to edit or retry session:", e);
+    }
+  };
+
+  const handleUserMessageEdit = async (messageId: string, newText: string) => {
+    await resubmitUserMessage(messageId, newText);
+  };
+
+  const handleAssistantRetry = async (assistantMsgId: string) => {
+    const idx = messages.findIndex((m) => m.id === assistantMsgId);
+    if (idx === -1) return;
+    const precedingUserMsg = messages[idx - 1];
+    if (precedingUserMsg && precedingUserMsg.role === "user") {
+      await resubmitUserMessage(precedingUserMsg.id);
+    }
+  };
+
+  const handleAssistantFeedback = async (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => {
+    try {
+      await logMessageFeedback(currentSessionId!, messageId, feedbackType, comments);
+    } catch (e) {
+      console.error("Failed to log message feedback:", e);
+    }
+  };
+
   const json_stringify_safe = (val: any) => {
     try {
       return JSON.stringify(val);
@@ -1319,9 +1656,11 @@ export default function Home() {
                         /* User Bubble (aligned right) */
                         <div className="flex flex-col items-end w-full">
                           <UserBubble 
+                            messageId={msg.id}
                             content={msg.content} 
                             onImageClick={handlePreviewImage} 
                             onDocumentClick={setZoomDocument}
+                            onEditSave={handleUserMessageEdit}
                           />
                         </div>
                       ) : (
@@ -1333,6 +1672,8 @@ export default function Home() {
                           messages={messages}
                           activeFileVersions={activeFileVersions}
                           setActiveFileVersions={setActiveFileVersions}
+                          onFeedback={handleAssistantFeedback}
+                          onRetry={handleAssistantRetry}
                         />
                       )}
                     </div>

@@ -214,6 +214,8 @@ interface AssistantResponseBubbleProps {
   messages: Message[];
   activeFileVersions: { [name: string]: number };
   setActiveFileVersions: React.Dispatch<React.SetStateAction<{ [name: string]: number }>>;
+  onFeedback?: (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => Promise<void>;
+  onRetry?: (messageId: string) => void;
 }
 
 export default function AssistantResponseBubble({
@@ -223,6 +225,8 @@ export default function AssistantResponseBubble({
   messages,
   activeFileVersions,
   setActiveFileVersions,
+  onFeedback,
+  onRetry,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(msg.thinkingDuration || 0);
@@ -230,6 +234,11 @@ export default function AssistantResponseBubble({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
   const [activeWord, setActiveWord] = useState("Thinking");
+  const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
+  const [feedbackChoice, setFeedbackChoice] = useState<"thumbs_up" | "thumbs_down" | null>(null);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackComments, setFeedbackComments] = useState("");
+  const [copied, setCopied] = useState(false);
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -273,6 +282,57 @@ export default function AssistantResponseBubble({
     utteranceRef.current = utterance;
     synthRef.current.speak(utterance);
     setIsSpeaking(true);
+  };
+
+  const handleThumbsUp = async () => {
+    if (feedbackChoice === "thumbs_up") return;
+    setFeedbackChoice("thumbs_up");
+    if (onFeedback) {
+      await onFeedback(msg.id, "thumbs_up");
+    }
+    triggerFeedbackToast();
+  };
+
+  const triggerFeedbackToast = () => {
+    setFeedbackToast("Thank you for your Feedback! This helps VoxKage get better.");
+    setTimeout(() => {
+      setFeedbackToast(null);
+    }, 3000);
+  };
+
+  const handleThumbsDownClick = () => {
+    setFeedbackComments("");
+    setShowFeedbackModal(true);
+  };
+
+  const handleFeedbackSubmit = async () => {
+    setFeedbackChoice("thumbs_down");
+    if (onFeedback) {
+      await onFeedback(msg.id, "thumbs_down", feedbackComments);
+    }
+    setShowFeedbackModal(false);
+    triggerFeedbackToast();
+  };
+
+  const handleFeedbackDismiss = () => {
+    setShowFeedbackModal(false);
+    triggerFeedbackToast();
+  };
+
+  const handleRetry = () => {
+    if (onRetry) {
+      onRetry(msg.id);
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(rawFinalContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy response:", err);
+    }
   };
 
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
@@ -662,45 +722,82 @@ export default function AssistantResponseBubble({
 
       {/* --- Response actions block --- */}
       {msg.status === "completed" && (
-        <div className="flex items-center gap-4 mt-3 text-zinc-500 select-none mb-2 animate-fadeIn">
-          <button
-            type="button"
-            className="hover:text-zinc-300 transition-colors"
-            aria-label="Copy response"
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={handleSpeak}
-            className={`transition-colors duration-200 ${
-              isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
-            }`}
-            aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            className="hover:text-zinc-300 transition-colors"
-            aria-label="Thumbs up"
-          >
-            <ThumbsUp className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            className="hover:text-zinc-300 transition-colors"
-            aria-label="Thumbs down"
-          >
-            <ThumbsDown className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            className="hover:text-zinc-300 transition-colors"
-            aria-label="Retry response"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+        <div className="relative mt-3 mb-2 font-sans select-none">
+          <div className="flex items-center gap-4 text-zinc-500 animate-fadeIn">
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="hover:text-zinc-300 transition-colors cursor-pointer"
+              aria-label="Copy response"
+              title="Copy response"
+            >
+              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={handleSpeak}
+              className={`transition-colors duration-200 cursor-pointer ${
+                isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
+              }`}
+              aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
+              title="Speak response"
+            >
+              <Volume2 className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={handleThumbsUp}
+              className={`transition-colors cursor-pointer ${
+                feedbackChoice === "thumbs_up"
+                  ? "text-white"
+                  : "hover:text-zinc-300"
+              }`}
+              aria-label="Thumbs up"
+              title="Thumbs up"
+            >
+              {feedbackChoice === "thumbs_up" ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M7.493 18.5c-.425 0-.82-.236-.975-.632A7.48 7.48 0 0 1 6 15.125c0-1.75.599-3.358 1.602-4.634.151-.192.373-.309.6-.397.473-.183.89-.514 1.212-.924a9.042 9.042 0 0 1 2.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 0 0 .322-1.672V3a.75.75 0 0 1 .75-.75 2.25 2.25 0 0 1 2.25 2.25c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282m0 0h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 0 1-2.649 7.521c-.388.482-.987.729-1.605.729H14.23c-.483 0-.964-.078-1.423-.23l-3.114-1.04a4.501 4.501 0 0 0-1.423-.23h-.777ZM2.331 10.727a11.969 11.969 0 0 0-.831 4.398 12 12 0 0 0 .52 3.507C2.28 19.482 3.105 20 3.996 20H4.5c.324 0 .638-.09.902-.266a.75.75 0 0 0 .348-.638v-7.5a.75.75 0 0 0-.35-.64 2.985 2.985 0 0 1-.646-.51c-.345-.376-.7-.822-.955-1.215-.241-.37-.558-.65-.918-.65h-.082a1.5 1.5 0 0 0-1.468 1.55Z" />
+                </svg>
+              ) : (
+                <ThumbsUp className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleThumbsDownClick}
+              className={`transition-colors cursor-pointer ${
+                feedbackChoice === "thumbs_down"
+                  ? "text-white"
+                  : "hover:text-zinc-300"
+              }`}
+              aria-label="Thumbs down"
+              title="Thumbs down"
+            >
+              {feedbackChoice === "thumbs_down" ? (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M15.73 5.5h1.035A7.465 7.465 0 0 1 18 9.625a7.465 7.465 0 0 1-1.235 4.125h-.148c-.806 0-1.534.446-2.031 1.08a9.04 9.04 0 0 1-2.861 2.4c-.723.384-1.35.956-1.653 1.715a4.499 4.499 0 0 0-.322 1.672v.633A.75.75 0 0 1 9 21a2.25 2.25 0 0 1-2.25-2.25c0-1.152.26-2.243.723-3.218.266-.558-.107-1.282-.725-1.282H3.622c-1.026 0-1.945-.694-2.054-1.715A12.137 12.137 0 0 1 1.5 12.25c0-2.848.992-5.464 2.649-7.521C4.537 4.247 5.136 4 5.754 4H9.77a4.5 4.5 0 0 1 1.423.23l3.114 1.04a4.5 4.5 0 0 0 1.423.23ZM21.669 14.023c.536-1.362.831-2.845.831-4.398 0-1.22-.182-2.398-.52-3.507-.26-.85-1.084-1.368-1.975-1.368H19.5c-.325 0-.638.09-.902.266a.75.75 0 0 0-.348.638v7.5c0 .258.126.495.348.637.473.297.898.686 1.08 1.188.012.032.023.065.033.098.12.33.267.65.436.958a.75.75 0 0 0 1.335-.683 9.88 9.88 0 0 1-.433-.948Z" />
+                </svg>
+              ) : (
+                <ThumbsDown className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleRetry}
+              className="hover:text-zinc-300 transition-colors cursor-pointer"
+              aria-label="Retry response"
+              title="Retry response"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+          
+          {feedbackToast && (
+            <div className="absolute left-0 mt-2 text-[12.5px] text-zinc-400 font-sans animate-fadeIn select-none bg-zinc-900/80 backdrop-blur-sm border border-zinc-800 px-3 py-1.5 rounded-lg z-10 shadow-lg">
+              {feedbackToast}
+            </div>
+          )}
         </div>
       )}
 
@@ -760,6 +857,46 @@ export default function AssistantResponseBubble({
                   );
                 })}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ThumbsDown Feedback Modal Overlay */}
+      {showFeedbackModal && (
+        <div 
+          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-[100] animate-fadeIn"
+          onClick={handleFeedbackDismiss}
+        >
+          <div 
+            className="w-full max-w-md bg-[#0e0e11] border border-zinc-850 rounded-2xl p-6 shadow-2xl relative mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-white text-lg font-medium font-sans mb-1.5" style={{ fontFamily: "Copernicus, Tiempos, Georgia, serif" }}>
+              Give negative feedback
+            </h3>
+            <p className="text-zinc-400 text-[13px] font-sans mb-4">
+              What was unsatisfying about this response?
+            </p>
+            <textarea
+              value={feedbackComments}
+              onChange={(e) => setFeedbackComments(e.target.value)}
+              className="w-full h-32 bg-zinc-900 border border-zinc-800 focus:border-zinc-700 rounded-xl p-3 text-zinc-100 text-[14px] leading-relaxed font-sans focus:outline-none resize-none mb-5"
+              placeholder="Please provide details (optional)"
+              autoFocus
+            />
+            <div className="flex items-center justify-end gap-2.5 font-sans">
+              <button
+                onClick={() => setShowFeedbackModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#28282c] hover:bg-[#343438] text-white text-[13px] font-medium transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFeedbackSubmit}
+                className="px-4 py-2 rounded-xl bg-white hover:bg-zinc-100 text-black text-[13px] font-medium transition-colors cursor-pointer"
+              >
+                Submit
+              </button>
             </div>
           </div>
         </div>
