@@ -111,33 +111,71 @@ const MermaidWidget = dynamic(() => import("./MermaidWidget"), {
 
 const LoaderStyles = () => (
   <style>{`
-    @keyframes voxkage-rotate-cube {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
+    @keyframes voxkage-spin-orbit-1 {
+      0% { transform: rotate(45deg); }
+      100% { transform: rotate(405deg); }
     }
-    .animate-voxkage-cube {
-      animation: voxkage-rotate-cube 2.5s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+    @keyframes voxkage-spin-orbit-2 {
+      0% { transform: rotate(-45deg); }
+      100% { transform: rotate(315deg); }
+    }
+    @keyframes voxkage-spin-rev {
+      0% { transform: rotate(360deg); }
+      100% { transform: rotate(0deg); }
+    }
+    .animate-voxkage-orbit-1 {
+      animation: voxkage-spin-orbit-1 3s linear infinite;
+      transform-origin: center;
+    }
+    .animate-voxkage-orbit-2 {
+      animation: voxkage-spin-orbit-2 3s linear infinite;
+      transform-origin: center;
+    }
+    .animate-voxkage-rev {
+      animation: voxkage-spin-rev 2s linear infinite;
       transform-origin: center;
     }
   `}</style>
 );
 
 const VoxKageLoader = () => (
-  <span className="inline-flex items-center justify-center">
+  <span className="inline-flex items-center justify-center w-5 h-5">
     <LoaderStyles />
     <svg 
-      className="w-[20px] h-[20px] text-zinc-100" 
+      className="w-[18px] h-[18px] text-zinc-100" 
       viewBox="0 0 24 24" 
       fill="none" 
       xmlns="http://www.w3.org/2000/svg"
     >
-      <path
-        d="M12,3 L20,7.6 L20,16.4 L12,21 L4,16.4 L4,7.6 Z M12,12 L12,3 M12,12 L20,16.4 M12,12 L4,16.4"
-        stroke="currentColor" 
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="animate-voxkage-cube"
+      {/* Outer Orbit 1 */}
+      <ellipse
+        cx="12"
+        cy="12"
+        rx="9"
+        ry="3.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        className="animate-voxkage-orbit-1"
+      />
+      {/* Outer Orbit 2 */}
+      <ellipse
+        cx="12"
+        cy="12"
+        rx="9"
+        ry="3.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        className="animate-voxkage-orbit-2"
+      />
+      {/* Inner Core Dashed Ring */}
+      <circle
+        cx="12"
+        cy="12"
+        r="2.5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeDasharray="2 2"
+        className="animate-voxkage-rev"
       />
     </svg>
   </span>
