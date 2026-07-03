@@ -1277,8 +1277,20 @@ export default function Home() {
                   const steps = copy[idx].thinkingSteps || [];
                   const newSteps = [...steps];
                   currentToolCalls.forEach((tc) => {
-                    const label = tc.function.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-                    newSteps.push({ id: tc.id, label: `Executing tool: ${label}`, status: "pending" });
+                    let label = tc.function.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                    try {
+                      const args = JSON.parse(tc.function.arguments);
+                      if (tc.function.name === "web_search" || tc.function.name === "web_search_deep") {
+                        label = args.query || label;
+                      } else if (tc.function.name === "web_search_parallel") {
+                        label = args.queries && args.queries.length > 0 ? args.queries.join(", ") : label;
+                      } else if (tc.function.name === "web_fetch" && args.url) {
+                        label = `Fetch: ${args.url}`;
+                      } else if (tc.function.name === "web_fetch_parallel" && args.urls) {
+                        label = `Fetching ${args.urls.length} resources`;
+                      }
+                    } catch (e) {}
+                    newSteps.push({ id: tc.id, label, status: "pending" });
                   });
                   copy[idx].thinkingSteps = newSteps;
                   copy[idx].status = "thinking";
@@ -1308,7 +1320,17 @@ export default function Home() {
                     const match = toolExecRes.results.find((r: any) => r.tool_call_id === s.id);
                     if (match) {
                       const isError = match.content.startsWith("Error");
-                      return { ...s, status: isError ? "failed" : "success" };
+                      let parsedResults = null;
+                      try {
+                        if (!isError) {
+                          parsedResults = JSON.parse(match.content);
+                        }
+                      } catch (e) {}
+                      return { 
+                        ...s, 
+                        status: isError ? "failed" : "success",
+                        resultContent: parsedResults
+                      };
                     }
                     return s;
                   });
@@ -1324,6 +1346,12 @@ export default function Home() {
               if (tags.chemistry_tag) finalAssistantContent += `\n\n${tags.chemistry_tag}`;
               if (tags.timeline_tag) finalAssistantContent += `\n\n${tags.timeline_tag}`;
               if (tags.calculator_tag) finalAssistantContent += `\n\n${tags.calculator_tag}`;
+              
+              if (tags.sources_tag) {
+                // Strip previous <Sources /> tags to prevent duplicates
+                finalAssistantContent = finalAssistantContent.replace(/<Sources[\s\S]*?\/>/gi, "").trim();
+                finalAssistantContent += `\n\n${tags.sources_tag}`;
+              }
 
               setMessages((prev) => {
                 if (prev.length === 0) return prev;

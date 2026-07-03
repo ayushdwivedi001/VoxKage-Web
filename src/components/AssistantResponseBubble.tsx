@@ -367,7 +367,7 @@ export default function AssistantResponseBubble({
 
   // Rotate initial interactive status words randomly
   useEffect(() => {
-    if (isMsgRunning && !hasActualThoughts) {
+    if (msg.status === "thinking" && !hasActualThoughts) {
       const pickRandom = () => {
         const rand = ROTATING_STATUSES[Math.floor(Math.random() * ROTATING_STATUSES.length)];
         return `${rand}...`;
@@ -378,7 +378,7 @@ export default function AssistantResponseBubble({
       }, 1500);
       return () => clearInterval(interval);
     }
-  }, [isMsgRunning, hasActualThoughts]);
+  }, [msg.status, hasActualThoughts]);
 
   // Extract Mermaid.js code blocks dynamically from finalContent if present
   let mermaidChart: string | null = null;
@@ -415,7 +415,7 @@ export default function AssistantResponseBubble({
     }
   } else if (msg.thinkingSteps && msg.thinkingSteps.length > 0) {
     thoughts = msg.thinkingSteps;
-  } else if (isMsgRunning) {
+  } else if (msg.status === "thinking") {
     thoughts = [
       { id: "init-step", label: activeWord, status: "pending" as const }
     ];
@@ -436,6 +436,41 @@ export default function AssistantResponseBubble({
         status: "pending" as const
       });
     }
+  }
+
+  // Fallback to dynamic step reconstruction for completed or streaming messages
+  // This preserves the visual flow even after reload or if telemetry disconnected
+  if (processedThoughts.length === 0 && (msg.status === "completed" || msg.status === "streaming")) {
+    processedThoughts.push({ id: "init-step", label: "Initialized chat session", status: "success" as const });
+    processedThoughts.push({ id: "proc-query", label: "Processed user context query", status: "success" as const });
+    if (sources && sources.length > 0) {
+      processedThoughts.push({ id: "src-consult", label: `Consulted ${sources.length} web sources`, status: "success" as const });
+    }
+    if (map) {
+      processedThoughts.push({ id: "render-map", label: "Rendered interactive map viewport", status: "success" as const });
+    }
+    if (weather) {
+      processedThoughts.push({ id: "render-weather", label: "Fetched current weather conditions", status: "success" as const });
+    }
+    if (chart) {
+      processedThoughts.push({ id: "render-chart", label: "Compiled analytics chart", status: "success" as const });
+    }
+    if (flow) {
+      processedThoughts.push({ id: "render-flow", label: "Rendered logic flow diagram", status: "success" as const });
+    }
+    if (images && images.length > 0) {
+      processedThoughts.push({ id: "render-images", label: `Rendered ${images.length} generated images`, status: "success" as const });
+    }
+    if (extracted.length > 0) {
+      extracted.forEach((file, idx) => {
+        processedThoughts.push({ id: `file-write-${idx}`, label: `Created file: ${file.name}`, status: "success" as const });
+      });
+    }
+    processedThoughts.push({
+      id: "final-res",
+      label: msg.status === "completed" ? "Generated final response" : "Streaming completions...",
+      status: msg.status === "completed" ? ("success" as const) : ("pending" as const)
+    });
   }
 
   const renderStepIcon = (status: "pending" | "success" | "failed", label: string) => {
@@ -503,12 +538,13 @@ export default function AssistantResponseBubble({
     return sec % 1 === 0 ? `${sec}s` : `${sec.toFixed(1)}s`;
   };
 
-  const displayLabel = isMsgRunning
+  const isThinkingActive = msg.status === "thinking" || msg.status === "streaming";
+  const displayLabel = isThinkingActive
     ? (activeStep ? activeStep.label : `Thinking${dots}`)
     : `Thought for ${formatDuration(msg.thinkingDuration || elapsedSeconds || 1)}`;
 
-  const showGlow = isMsgRunning;
-  const shouldShowAccordion = isMsgRunning || hasActualThoughts;
+  const showGlow = isThinkingActive;
+  const shouldShowAccordion = isMsgRunning || hasActualThoughts || processedThoughts.length > 0;
 
   return (
     <div className="flex flex-col items-start w-full">
@@ -524,11 +560,11 @@ export default function AssistantResponseBubble({
                 isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
               }`}
             />
-            {isMsgRunning && <VoxKageLoader />}
+            {isThinkingActive && <VoxKageLoader />}
             <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
               {displayLabel}
             </span>
-            {isMsgRunning && (
+            {isThinkingActive && (
               <span className="text-[11.5px] text-zinc-600 font-mono">({elapsedSeconds}s)</span>
             )}
           </div>
@@ -536,26 +572,74 @@ export default function AssistantResponseBubble({
 
         {/* Expanded Step Timeline */}
         {isThoughtsExpanded && processedThoughts.length > 0 && (
-          <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[90%]">
+          <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn max-w-[95%]">
             {processedThoughts.map((step, idx) => {
               const isLast = idx === processedThoughts.length - 1;
               return (
-                <div key={idx} className="relative flex items-start gap-3.5 pb-4 last:pb-1">
-                  {!isLast && (
-                    <div className="absolute left-[10px] top-6 bottom-0 w-[1px] bg-zinc-800" />
-                  )}
+                <div key={idx} className="relative flex flex-col items-start pb-4 last:pb-1 w-full">
+                  <div className="flex items-start gap-3.5 w-full">
+                    {!isLast && (
+                      <div className="absolute left-[10px] top-6 bottom-0 w-[1px] bg-zinc-800" />
+                    )}
 
-                  <div
-                    className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 bg-zinc-950/60 border-zinc-800 transition-colors duration-200`}
-                  >
-                    {renderStepIcon(step.status, step.label)}
+                    <div
+                      className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 bg-zinc-950/60 border-zinc-800 transition-colors duration-200`}
+                    >
+                      {renderStepIcon(step.status, step.label)}
+                    </div>
+
+                    <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate ${
+                      step.status === "pending" ? "text-zinc-300 font-medium animate-pulse" : "text-zinc-500"
+                    }`}>
+                      {step.label}
+                    </span>
                   </div>
 
-                  <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate ${
-                    step.status === "pending" ? "text-zinc-300 font-medium animate-pulse" : "text-zinc-500"
-                  }`}>
-                    {step.label}
-                  </span>
+                  {/* Render Search Results Box if resultContent exists */}
+                  {step.resultContent && (() => {
+                    const flatResults = Array.isArray(step.resultContent)
+                      ? step.resultContent
+                      : (Array.isArray(step.resultContent[0]) ? (step.resultContent as any[]).flat() : []);
+                    
+                    const validResults = Array.isArray(flatResults) ? flatResults.filter(r => r && (r.title || r.url)) : [];
+                    if (validResults.length === 0) return null;
+
+                    return (
+                      <div className="ml-9 mt-2 w-full max-w-[95%] bg-[#0c0c0e] border border-zinc-850 rounded-xl p-2.5 flex flex-col gap-2 select-text">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500 font-sans border-b border-zinc-900 pb-1.5 mb-1 px-1">
+                          <span>Search Results</span>
+                          <span>{validResults.length} results</span>
+                        </div>
+                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
+                          {validResults.slice(0, 8).map((res: any, rIdx: number) => {
+                            let domain = "";
+                            try {
+                              const matchDomain = res.url?.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
+                              domain = matchDomain ? matchDomain[1] : res.url || "";
+                            } catch {
+                              domain = res.url || "";
+                            }
+                            return (
+                              <a
+                                key={rIdx}
+                                href={res.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between gap-4 p-1.5 rounded-lg hover:bg-zinc-900/50 transition-colors duration-150 text-[12.5px] group"
+                              >
+                                <span className="text-zinc-300 group-hover:text-white transition-colors truncate flex-grow text-left">
+                                  {res.title || res.url}
+                                </span>
+                                <span className="text-zinc-600 group-hover:text-zinc-400 font-mono text-[11px] flex-shrink-0">
+                                  {domain}
+                                </span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -566,7 +650,7 @@ export default function AssistantResponseBubble({
       {/* --- Assistant Response Text content --- */}
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
-          {renderFormattedContent(removeCodeBlocks(finalContent))}
+          {renderFormattedContent(removeCodeBlocks(finalContent), sources)}
         </div>
       )}
 

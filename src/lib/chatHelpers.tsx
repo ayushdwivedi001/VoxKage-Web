@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
 
 const InlineMath = dynamic(() => import("react-katex").then(m => m.InlineMath), {
@@ -11,6 +11,45 @@ const BlockMath = dynamic(() => import("react-katex").then(m => m.BlockMath), {
   loading: () => <div className="text-zinc-500 py-2 text-center animate-pulse">Loading equation...</div>
 });
 
+const CitationPill = ({ source, index }: { source: any; index: number }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  let shortLabel = source.domain || "";
+  if (shortLabel.startsWith("www.")) {
+    shortLabel = shortLabel.substring(4);
+  }
+  if (shortLabel) {
+    shortLabel = shortLabel.split('.')[0];
+    shortLabel = shortLabel.charAt(0).toUpperCase() + shortLabel.slice(1);
+  } else {
+    shortLabel = `[${index}]`;
+  }
+
+  return (
+    <span className="relative inline-block mx-0.5 align-middle select-none">
+      <a
+        href={source.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-sans font-medium bg-[#1e293b]/70 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-150 cursor-pointer"
+      >
+        {shortLabel} ↗
+      </a>
+      {showTooltip && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#0c0c0e] border border-zinc-800 rounded-xl shadow-2xl z-50 text-[12px] text-zinc-300 font-sans leading-normal pointer-events-none animate-fadeIn block text-left">
+          <span className="block text-white font-medium mb-1 line-clamp-2">
+            {source.title || "Consulted Source"}
+          </span>
+          <span className="block text-zinc-500 font-mono text-[10px] truncate">
+            {source.url}
+          </span>
+        </span>
+      )}
+    </span>
+  );
+};
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -19,8 +58,9 @@ export interface Message {
   status?: "thinking" | "streaming" | "completed";
   thinkingDuration?: number;
   thinkingStart?: number;
-  thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed" }>;
+  thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed"; resultContent?: any }>;
 }
+
 
 export const extractFilesFromContent = (content: string) => {
   const files: Array<{ name: string; type: string; code: string }> = [];
@@ -572,13 +612,13 @@ export const parseMessageContent = (content: string) => {
   return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot };
 };
 
-export function parseInlineElements(text: string) {
+export function parseInlineElements(text: string, sources: any[] = []) {
   const tokens: React.ReactNode[] = [];
   let remaining = text;
   let tokenKey = 0;
 
-  // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, or function signatures
-  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)))/gi;
+  // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, function signatures, or bracketed citations [1] / [ESPN]
+  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)|\[\d+\]|\[[a-zA-Z0-9\s.\-&]{2,}(?: ↗)?\]))/gi;
   let match;
   let lastIndex = 0;
 
@@ -596,47 +636,71 @@ export function parseInlineElements(text: string) {
     } else if (matchStr.startsWith("\\(") && matchStr.endsWith("\\)")) {
       const mathText = matchStr.slice(2, -2);
       tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
+    } else if (matchStr.startsWith("[") && matchStr.endsWith("]")) {
+      const cleanLabel = matchStr.slice(1, -1).replace(/ ↗$/, "").trim();
+      const numIdx = parseInt(cleanLabel);
+      let matchedSource = null;
+
+      if (!isNaN(numIdx) && sources && sources[numIdx - 1]) {
+        matchedSource = sources[numIdx - 1];
+      } else if (sources && sources.length > 0) {
+        matchedSource = sources.find(s => {
+          const dom = (s.domain || "").toLowerCase();
+          const tit = (s.title || "").toLowerCase();
+          const lbl = cleanLabel.toLowerCase();
+          return dom.includes(lbl) || lbl.includes(dom.replace("www.", "")) || tit.includes(lbl);
+        });
+      }
+
+      if (matchedSource) {
+        const sourceIndex = sources.indexOf(matchedSource) + 1;
+        tokens.push(
+          <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
+        );
+      } else {
+        tokens.push(<React.Fragment key={tokenKey++}>{matchStr}</React.Fragment>);
+      }
     } else {
       // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
       const isLink = matchStr.match(/^https?:\/\//i) || 
                      matchStr.match(/^www\./i) || 
                      matchStr.match(/^[a-zA-Z0-9-]+\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br)/i);
 
-    if (isLink) {
-      const url = (!matchStr.match(/^https?:\/\//i)) ? `https://${matchStr}` : matchStr;
-      tokens.push(
-        <a 
-          key={tokenKey++} 
-          href={url} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="text-blue-400 hover:text-blue-350 underline font-medium break-all select-text"
-        >
-          {matchStr}
-        </a>
-      );
-    } else if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
-      const boldText = matchStr.slice(2, -2);
-      tokens.push(
-        <strong key={tokenKey++} className="font-bold text-zinc-100">
-          {boldText}
-        </strong>
-      );
-    } else if (matchStr.startsWith("`") && matchStr.endsWith("`")) {
-      const codeText = matchStr.slice(1, -1);
-      tokens.push(
-        <code key={tokenKey++} className="bg-zinc-850/60 text-zinc-200 border border-zinc-700/50 px-1.5 py-0.5 rounded font-mono text-[13.5px] mx-0.5">
-          {codeText}
-        </code>
-      );
-    } else {
-      tokens.push(
-        <span key={tokenKey++} className="text-blue-450 font-mono font-medium hover:underline cursor-help">
-          {matchStr}
-        </span>
-      );
+      if (isLink) {
+        const url = (!matchStr.match(/^https?:\/\//i)) ? `https://${matchStr}` : matchStr;
+        tokens.push(
+          <a 
+            key={tokenKey++} 
+            href={url} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-blue-400 hover:text-blue-350 underline font-medium break-all select-text"
+          >
+            {matchStr}
+          </a>
+        );
+      } else if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
+        const boldText = matchStr.slice(2, -2);
+        tokens.push(
+          <strong key={tokenKey++} className="font-bold text-zinc-100">
+            {boldText}
+          </strong>
+        );
+      } else if (matchStr.startsWith("`") && matchStr.endsWith("`")) {
+        const codeText = matchStr.slice(1, -1);
+        tokens.push(
+          <code key={tokenKey++} className="bg-zinc-850/60 text-zinc-200 border border-zinc-700/50 px-1.5 py-0.5 rounded font-mono text-[13.5px] mx-0.5">
+            {codeText}
+          </code>
+        );
+      } else {
+        tokens.push(
+          <span key={tokenKey++} className="text-blue-450 font-mono font-medium hover:underline cursor-help">
+            {matchStr}
+          </span>
+        );
+      }
     }
-  }
 
     lastIndex = regex.lastIndex;
   }
@@ -648,7 +712,7 @@ export function parseInlineElements(text: string) {
   return tokens.length > 0 ? tokens : text;
 }
 
-export function renderTable(rows: string[][], key: string) {
+export function renderTable(rows: string[][], key: string, sources: any[] = []) {
   if (rows.length === 0) return null;
   const headers = rows[0];
   const bodyRows = rows.slice(1);
@@ -660,7 +724,7 @@ export function renderTable(rows: string[][], key: string) {
           <tr className="border-b border-zinc-800/80 bg-zinc-900/10">
             {headers.map((h, idx) => (
               <th key={idx} className="px-4 py-2.5 text-[13px] font-semibold text-zinc-300 tracking-wide font-sans">
-                {parseInlineElements(h)}
+                {parseInlineElements(h, sources)}
               </th>
             ))}
           </tr>
@@ -670,7 +734,7 @@ export function renderTable(rows: string[][], key: string) {
             <tr key={rowIdx} className="hover:bg-zinc-900/10 transition-colors duration-150">
               {row.map((cell, cellIdx) => (
                 <td key={cellIdx} className="px-4 py-2.5 text-[13px] text-zinc-400 font-sans leading-relaxed">
-                  {parseInlineElements(cell)}
+                  {parseInlineElements(cell, sources)}
                 </td>
               ))}
             </tr>
@@ -681,7 +745,7 @@ export function renderTable(rows: string[][], key: string) {
   );
 }
 
-export function renderFormattedContent(content: string) {
+export function renderFormattedContent(content: string, sources: any[] = []) {
   if (!content) return null;
   
   // Pre-process and auto-correct unbalanced single-line $$ blocks
@@ -791,7 +855,7 @@ export function renderFormattedContent(content: string) {
       if (isTableRow(line) && i === lines.length - 1) {
         tableRows.push(parseRowCells(line));
       }
-      renderedElements.push(renderTable(tableRows, `table-${tableKey++}`));
+      renderedElements.push(renderTable(tableRows, `table-${tableKey++}`, sources));
       inTable = false;
       tableRows = [];
       if (isTableRow(line)) continue;
@@ -809,13 +873,13 @@ export function renderFormattedContent(content: string) {
             : "text-[17px] font-bold text-zinc-100 mt-3 mb-1 block";
         renderedElements.push(
           <span key={`h-${i}`} className={headingClass}>
-            {parseInlineElements(headingText)}
+            {parseInlineElements(headingText, sources)}
           </span>
         );
       } else {
         renderedElements.push(
           <div key={`p-${i}`} className="min-h-[1.5em] mb-1">
-            {parseInlineElements(line)}
+            {parseInlineElements(line, sources)}
           </div>
         );
       }
@@ -823,7 +887,7 @@ export function renderFormattedContent(content: string) {
   }
 
   if (inTable && tableRows.length > 0) {
-    renderedElements.push(renderTable(tableRows, `table-${tableKey++}`));
+    renderedElements.push(renderTable(tableRows, `table-${tableKey++}`, sources));
   }
 
   if (inBlockMath && blockMathContent.trim()) {

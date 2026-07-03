@@ -529,6 +529,22 @@ async def execute_agent_tools(
         })
         
     # Extra tags context if any map, chart, weather etc tags were generated
+    consulted_sources = tool_context.get("consulted_sources") or []
+    web_search_called = tool_context.get("web_search_called") or False
+    sources_tag = None
+    if web_search_called or consulted_sources:
+        if not consulted_sources:
+            consulted_sources.append({"title": "Google Search", "url": "https://www.google.com"})
+        seen_urls = set()
+        unique_sources = []
+        for s in consulted_sources:
+            if s.get("url") and s["url"] not in seen_urls:
+                seen_urls.add(s["url"])
+                unique_sources.append(s)
+        if unique_sources:
+            sources_str = "||".join([f"{s['title'].replace('|', '-').replace('<', '').replace('>', '')}|{s['url']}" for s in unique_sources])
+            sources_tag = f'<Sources data="{sources_str}" />'
+
     tags = {
         "map_tag": tool_context.get("map_tag"),
         "weather_tag": tool_context.get("weather_tag"),
@@ -536,7 +552,8 @@ async def execute_agent_tools(
         "flow_tag": tool_context.get("flow_tag"),
         "chemistry_tag": tool_context.get("chemistry_tag"),
         "timeline_tag": tool_context.get("timeline_tag"),
-        "calculator_tag": tool_context.get("calculator_tag")
+        "calculator_tag": tool_context.get("calculator_tag"),
+        "sources_tag": sources_tag
     }
     
     return {
