@@ -109,13 +109,64 @@ const MermaidWidget = dynamic(() => import("./MermaidWidget"), {
   )
 });
 
+const LoaderStyles = () => (
+  <style>{`
+    @keyframes voxkage-rotate-cube {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .animate-voxkage-cube {
+      animation: voxkage-rotate-cube 2.5s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+      transform-origin: center;
+    }
+  `}</style>
+);
+
+const VoxKageLoader = () => (
+  <span className="inline-flex items-center justify-center">
+    <LoaderStyles />
+    <svg 
+      className="w-[20px] h-[20px] text-zinc-100" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M12,3 L20,7.6 L20,16.4 L12,21 L4,16.4 L4,7.6 Z M12,12 L12,3 M12,12 L20,16.4 M12,12 L4,16.4"
+        stroke="currentColor" 
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="animate-voxkage-cube"
+      />
+    </svg>
+  </span>
+);
+
 const ROTATING_STATUSES = [
-  "Analyzing query...",
-  "Understanding user intent...",
-  "Recalling user profile memories...",
-  "Assembling workspace details...",
-  "Structuring response path...",
-  "Formulating response..."
+  "Accomplishing", "Actioning", "Actualizing", "Architecting",
+  "Baking", "Beaming", "Beboppin'", "Befuddling", "Billowing", "Blanching", "Bloviating", "Boogieing", "Boondoggling", "Booping", "Bootstrapping", "Brewing", "Bunning", "Burrowing",
+  "Calculating", "Canoodling", "Caramelizing", "Cascading", "Catapulting", "Cerebrating", "Channeling", "Channelling", "Choreographing", "Churning", "Clauding", "Coalescing", "Cogitating", "Combobulating", "Composing", "Computing", "Concocting", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Crystallizing", "Cultivating",
+  "Deciphering", "Deliberating", "Determining", "Dilly-dallying", "Discombobulating", "Doing", "Doodling", "Drizzling",
+  "Ebbing", "Effecting", "Elucidating", "Embellishing", "Enchanting", "Envisioning", "Evaporating",
+  "Fermenting", "Fiddle-faddling", "Finagling", "Flambéing", "Flibbertigibbeting", "Flowing", "Flummoxing", "Fluttering", "Forging", "Forming", "Frolicking", "Frosting",
+  "Gallivanting", "Galloping", "Garnishing", "Generating", "Germinating", "Gesticulating", "Gitifying", "Grooving", "Gusting",
+  "Harmonizing", "Hashing", "Hatching", "Herding", "Honking", "Hullaballooing", "Hyperspacing",
+  "Ideating", "Imagining", "Improvising", "Incubating", "Inferring", "Infusing", "Ionizing",
+  "Jitterbugging", "Julienning", "Kneading",
+  "Leavening", "Levitating", "Lollygagging",
+  "Manifesting", "Marinating", "Meandering", "Metamorphosing", "Misting", "Moonwalking", "Moseying", "Mulling", "Mustering", "Musing",
+  "Nebulizing", "Nesting", "Newspapering", "Noodling", "Nucleating",
+  "Orbiting", "Orchestrating", "Osmosing",
+  "Perambulating", "Percolating", "Perusing", "Philosophising", "Photosynthesizing", "Pollinating", "Pondering", "Pontificating", "Pouncing", "Precipitating", "Prestidigitating", "Processing", "Proofing", "Propagating", "Puttering", "Puzzling",
+  "Quantumizing",
+  "Razzle-dazzling", "Razzmatazzing", "Recombobulating", "Reticulating", "Roosting", "Ruminating",
+  "Sautéing", "Scampering", "Schlepping", "Scurrying", "Seasoning", "Shenaniganing", "Shimmying", "Simmering", "Skedaddling", "Sketching", "Slithering", "Smooshing", "Sock-hopping", "Spelunking", "Spinning", "Sprouting", "Stewing", "Sublimating", "Swirling", "Swooping", "Symbioting", "Synthesizing",
+  "Tempering", "Thinking", "Thundering", "Tinkering", "Tomfoolering", "Topsy-turvying", "Transfiguring", "Transmuting", "Twisting",
+  "Undulating", "Unfurling", "Unravelling",
+  "Vibing",
+  "Waddling", "Wandering", "Warping", "Whatchamacalliting", "Whirlpooling", "Whirring", "Whisking", "Wibbling", "Working", "Wrangling",
+  "Zesting", "Zigzagging"
 ];
 
 interface AssistantResponseBubbleProps {
@@ -140,7 +191,7 @@ export default function AssistantResponseBubble({
   const [dots, setDots] = useState(".");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
-  const [rotatingIndex, setRotatingIndex] = useState(0);
+  const [activeWord, setActiveWord] = useState("Thinking");
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -216,11 +267,16 @@ export default function AssistantResponseBubble({
     };
   }, [msg.status, msg.thinkingDuration, msg.thinkingStart]);
 
-  // Rotate initial interactive status words
+  // Rotate initial interactive status words randomly
   useEffect(() => {
     if (isMsgRunning && !hasActualThoughts) {
+      const pickRandom = () => {
+        const rand = ROTATING_STATUSES[Math.floor(Math.random() * ROTATING_STATUSES.length)];
+        return `${rand}...`;
+      };
+      setActiveWord(pickRandom());
       const interval = setInterval(() => {
-        setRotatingIndex((prev) => (prev + 1) % ROTATING_STATUSES.length);
+        setActiveWord(pickRandom());
       }, 1500);
       return () => clearInterval(interval);
     }
@@ -263,7 +319,7 @@ export default function AssistantResponseBubble({
     thoughts = msg.thinkingSteps;
   } else if (isMsgRunning) {
     thoughts = [
-      { id: "init-step", label: ROTATING_STATUSES[rotatingIndex], status: "pending" as const }
+      { id: "init-step", label: activeWord, status: "pending" as const }
     ];
   }
 
@@ -337,7 +393,7 @@ export default function AssistantResponseBubble({
     } else if (status === "failed") {
       return <span className="text-red-400 font-bold text-[11px]">X</span>;
     } else {
-      return <Clock className="w-3 h-3 text-zinc-500 animate-pulse" />;
+      return <VoxKageLoader />;
     }
   };
 
@@ -370,6 +426,7 @@ export default function AssistantResponseBubble({
                 isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
               }`}
             />
+            {isMsgRunning && <VoxKageLoader />}
             <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
               {displayLabel}
             </span>
