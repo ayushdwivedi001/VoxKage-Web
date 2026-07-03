@@ -143,15 +143,13 @@ export const computeSessionFiles = (messages: Message[]) => {
 
   return list;
 };
-
 export const parseSources = (content: string) => {
   if (!content) return { cleanContent: "", sources: [] };
-  const sourcesRegex = /<Sources\s+data="([^"]+)"\s*\/>/i;
-  const match = content.match(sourcesRegex);
-  let cleanContent = content.replace(/<Sources[\s\S]*/i, '').trim();
+  const sourcesRegex = /<Sources\s+data="([^"]+)"\s*\/>/gi;
+  let match;
   let sources: { title: string; url: string; domain: string }[] = [];
-
-  if (match) {
+  
+  while ((match = sourcesRegex.exec(content)) !== null) {
     const rawData = match[1];
     const pairs = rawData.split('||');
     pairs.forEach((p) => {
@@ -166,11 +164,14 @@ export const parseSources = (content: string) => {
         } catch {
           domain = url;
         }
-        sources.push({ title, url, domain });
+        if (!sources.some(s => s.url === url)) {
+          sources.push({ title, url, domain });
+        }
       }
     });
   }
 
+  const cleanContent = content.replace(/<Sources\s+data="[^"]+"\s*\/>/gi, '').trim();
   return { cleanContent, sources };
 };
 
@@ -181,12 +182,11 @@ export interface ImageItem {
 
 export const parseImages = (content: string) => {
   if (!content) return { cleanContent: "", images: [] };
-  const imagesRegex = /<Images\s+query="([^"]*)"\s+data="([^"]+)"\s*\/>/i;
-  const match = content.match(imagesRegex);
-  let cleanContent = content.replace(/<Images[\s\S]*/i, '').trim();
+  const imagesRegex = /<Images\s+query="([^"]*)"\s+data="([^"]+)"\s*\/>/gi;
+  let match;
   let images: ImageItem[] = [];
-
-  if (match) {
+  
+  while ((match = imagesRegex.exec(content)) !== null) {
     const rawData = match[2];
     const pairs = rawData.split('||');
     pairs.forEach((p) => {
@@ -197,9 +197,9 @@ export const parseImages = (content: string) => {
     });
   }
 
+  const cleanContent = content.replace(/<Images\s+query="[^"]*"\s+data="[^"]+"\s*\/>/gi, '').trim();
   return { cleanContent, images };
 };
-
 export interface MapPlace {
   name: string;
   lat: number;

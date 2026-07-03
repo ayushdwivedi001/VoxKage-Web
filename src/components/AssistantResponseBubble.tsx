@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import {
   Check,
@@ -239,6 +240,11 @@ export default function AssistantResponseBubble({
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackComments, setFeedbackComments] = useState("");
   const [copied, setCopied] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -728,7 +734,7 @@ export default function AssistantResponseBubble({
       {sources.length > 0 && (
         <div 
           onClick={() => setIsSourcesOpen(true)}
-          className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-zinc-900/60 border border-zinc-800/80 hover:bg-zinc-800/80 transition-colors duration-200 cursor-pointer select-none"
+          className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-zinc-900/65 border border-zinc-850 hover:bg-zinc-850 hover:border-zinc-700 transition-all duration-200 cursor-pointer select-none w-fit shadow-md"
         >
           <div className="flex items-center">
             {sources.slice(0, 3).map((src, srcIdx) => {
@@ -886,9 +892,9 @@ export default function AssistantResponseBubble({
       )}
 
       {/* Sources Centric Modal Popup Overlay */}
-      {isSourcesOpen && (
+      {mounted && isSourcesOpen && createPortal(
         <div 
-          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn"
+          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-[100] animate-fadeIn"
           onClick={() => setIsSourcesOpen(false)}
         >
           <div 
@@ -943,7 +949,8 @@ export default function AssistantResponseBubble({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* ThumbsDown Feedback Modal Overlay */}
       {showFeedbackModal && (

@@ -376,6 +376,7 @@ async def execute_tool_call_v2(
                 tool_context["calculator_tag"] = f'<Calculator type="{c_type}" title="{title}" />'
                 tool_output = json.dumps({"status": "success", "type": c_type, "title": title})
             elif name == "web_search":
+                tool_context["web_search_called"] = True
                 q = args.get("query", "")
                 search_res = await web_search(q)
                 tool_output = json.dumps(search_res)
@@ -384,12 +385,14 @@ async def execute_tool_call_v2(
                         if isinstance(r, dict) and r.get("url") and "error" not in r:
                             tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
             elif name == "web_fetch":
+                tool_context["web_search_called"] = True
                 u = args.get("url", "")
                 fetch_res = await web_fetch(u)
                 tool_output = json.dumps(fetch_res)
                 if isinstance(fetch_res, dict) and fetch_res.get("url") and "error" not in fetch_res:
                     tool_context["consulted_sources"].append({"title": fetch_res.get("url"), "url": fetch_res.get("url")})
             elif name == "web_search_parallel":
+                tool_context["web_search_called"] = True
                 queries = args.get("queries", [])
                 search_res = await web_search_parallel(queries)
                 tool_output = json.dumps(search_res)
@@ -400,6 +403,7 @@ async def execute_tool_call_v2(
                                 if isinstance(r, dict) and r.get("url") and "error" not in r:
                                     tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
             elif name == "web_fetch_parallel":
+                tool_context["web_search_called"] = True
                 urls = args.get("urls", [])
                 fetch_res = await web_fetch_parallel(urls)
                 tool_output = json.dumps(fetch_res)
@@ -408,6 +412,7 @@ async def execute_tool_call_v2(
                         if isinstance(r, dict) and r.get("url") and "error" not in r:
                             tool_context["consulted_sources"].append({"title": r.get("url"), "url": r.get("url")})
             elif name == "web_search_deep":
+                tool_context["web_search_called"] = True
                 q = args.get("query", "")
                 deep_res = await web_search_deep(q)
                 tool_output = json.dumps(deep_res)
