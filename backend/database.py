@@ -106,10 +106,69 @@ def get_session_messages(session_id: str) -> list:
 
 def edit_message_and_truncate(session_id: str, message_id: str, new_content: str) -> dict:
     import re
+    import uuid as _uuid
     db = get_db()
-    
+
+    # --- Resolve client IDs to real DB UUIDs ---
+    # Frontend generates IDs like "user-1783042764666" or "assistant-1783042764666".
+    # Supabase messages.id is a UUID — we must resolve to real UUID first.
+    real_message_id = message_id
+    is_client_id = False
+    try:
+        _uuid.UUID(message_id)  # will throw if not a valid UUID
+    except (ValueError, AttributeError):
+        is_client_id = True
+
+    if is_client_id:
+        # Extract embedded timestamp from "user-TIMESTAMP" or "assistant-TIMESTAMP"
+        ts_match = re.search(r'-(\d{10,15})$', message_id)
+        if not ts_match:
+            raise HTTPException(status_code=400, detail=f"Cannot resolve message_id to a database record: {message_id}")
+        
+        ts_ms = int(ts_match.group(1))
+        # Determine role from prefix
+        role = "user" if message_id.startswith("user-") else "assistant"
+        
+        # Query all messages in this session with matching role, ordered by timestamp
+        all_msgs_res = execute_with_retry(
+            db.table("messages")
+            .select("id, timestamp, role")
+            .eq("session_id", session_id)
+            .eq("role", role)
+            .order("timestamp", desc=False)
+        )
+        if not all_msgs_res.data:
+            raise HTTPException(status_code=404, detail=f"No {role} messages found in session to resolve against.")
+        
+        # Find the message whose timestamp is closest to ts_ms
+        from datetime import datetime, timezone, timedelta
+        target_dt = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+        
+        best_match = None
+        best_diff = None
+        for m in all_msgs_res.data:
+            try:
+                # Supabase timestamps are ISO8601 strings
+                raw_ts = m["timestamp"]
+                if raw_ts.endswith("+00:00"):
+                    msg_dt = datetime.fromisoformat(raw_ts)
+                else:
+                    msg_dt = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                diff = abs((msg_dt - target_dt).total_seconds())
+                if best_diff is None or diff < best_diff:
+                    best_diff = diff
+                    best_match = m
+            except Exception:
+                continue
+        
+        if not best_match or best_diff > 300:  # 5-minute tolerance
+            raise HTTPException(status_code=404, detail=f"Could not find matching DB message for client ID: {message_id}")
+        
+        real_message_id = best_match["id"]
+        print(f"[+] Resolved client ID '{message_id}' → DB UUID '{real_message_id}' (diff: {best_diff:.1f}s)")
+
     # 1. Retrieve target message to get its timestamp
-    res = execute_with_retry(db.table("messages").select("*").eq("id", message_id).eq("session_id", session_id))
+    res = execute_with_retry(db.table("messages").select("*").eq("id", real_message_id).eq("session_id", session_id))
     if not res.data:
         raise HTTPException(status_code=404, detail="Message not found.")
     target_msg = res.data[0]
@@ -155,12 +214,13 @@ def edit_message_and_truncate(session_id: str, message_id: str, new_content: str
     update_res = execute_with_retry(
         db.table("messages")
         .update({"content": new_content})
-        .eq("id", message_id)
+        .eq("id", real_message_id)
         .eq("session_id", session_id)
     )
     if not update_res.data:
         raise HTTPException(status_code=500, detail="Failed to update message.")
     return update_res.data[0]
+
 
 def log_message_feedback_db(session_id: str, message_id: str, feedback_type: str, comments: str | None) -> dict:
     db = get_db()

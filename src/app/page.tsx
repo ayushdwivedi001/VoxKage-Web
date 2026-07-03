@@ -1362,9 +1362,26 @@ export default function Home() {
     const idx = messages.findIndex((m) => m.id === assistantMsgId);
     if (idx === -1) return;
     const precedingUserMsg = messages[idx - 1];
-    if (precedingUserMsg && precedingUserMsg.role === "user") {
-      await resubmitUserMessage(precedingUserMsg.id);
-    }
+    if (!precedingUserMsg || precedingUserMsg.role !== "user") return;
+
+    // Immediately show thinking state on the existing assistant bubble
+    setMessages((prev) => {
+      const copy = [...prev];
+      const aIdx = copy.findIndex((m) => m.id === assistantMsgId);
+      if (aIdx !== -1) {
+        copy[aIdx] = {
+          ...copy[aIdx],
+          content: "",
+          status: "thinking",
+          thinkingDuration: 0,
+          thinkingStart: Date.now(),
+          thinkingSteps: []
+        };
+      }
+      return copy;
+    });
+
+    await resubmitUserMessage(precedingUserMsg.id);
   };
 
   const handleAssistantFeedback = async (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => {
