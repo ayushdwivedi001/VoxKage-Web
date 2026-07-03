@@ -217,59 +217,43 @@ export function getGreeting(
 
   let greeting: string;
 
-  // ── Day-specific overrides ──────────────────────────────────────────
+  // ── Selection: time-of-day primary, day/returning as spice ──────────
+
+  // Helper: pick from a sub-pool if it exists and passes a probability gate
+  const maybe = (key: string, prob: number): string | null =>
+    (pool as any)[key]?.length && Math.random() < prob
+      ? pick((pool as any)[key])
+      : null;
+
   if (showName) {
-    if (dayBucket === "monday" && pool.monday?.length) {
-      greeting = pick(pool.monday);
-    } else if (dayBucket === "friday" && pool.friday?.length) {
-      greeting = pick(pool.friday);
-    } else if (dayBucket === "saturday" && pool.weekend?.length) {
-      greeting = pick(pool.weekend);
-    } else if (dayBucket === "sunday" && pool.sunday?.length) {
-      greeting = pick(pool.sunday);
-    }
-    // ── Returning user ──
-    else if (returning && pool.returning?.length && Math.random() < 0.5) {
-      greeting = pick(pool.returning);
-    }
-    // ── Fall back to time bucket ──
-    else if (pool[timeBucket]?.length) {
-      greeting = pick(pool[timeBucket]);
-    }
-    // ── Last resort: builder ──
-    else {
-      greeting = pick(pool.builder);
-    }
+    // 1) Day-specific (~20% chance on matching day)
+    greeting =
+      maybe("monday", 0.2) ??
+      maybe("friday", 0.2) ??
+      maybe("weekend", 0.2) ??
+      maybe("sunday", 0.2) ??
+      // 2) Returning user (~30% chance)
+      (returning ? maybe("returning", 0.3) : null) ??
+      // 3) Time bucket (~60% chance)
+      maybe(timeBucket, 0.6) ??
+      // 4) Builder (always available)
+      pick(pool.builder);
   } else {
-    // ── WITHOUT NAME ───────────────────────────────────────────────────
-    if (dayBucket === "monday" && pool.monday?.length) {
-      greeting = pick(pool.monday);
-    } else if (dayBucket === "friday" && pool.friday?.length) {
-      greeting = pick(pool.friday);
-    } else if ((dayBucket === "saturday" || dayBucket === "sunday") && pool.weekend?.length) {
-      greeting = pick(pool.weekend);
-    }
-    // ── Time bucket ──
-    else if (pool[timeBucket]?.length && Math.random() < 0.45) {
-      greeting = pick(pool[timeBucket]);
-    }
-    // ── VoxKage identity specials ~20% ──
-    else if (pool.voxkage?.length && Math.random() < 0.35) {
-      greeting = pick(pool.voxkage);
-    }
-    // ── Quiet / invitational ~15% ──
-    else if (pool.quiet?.length && Math.random() < 0.5) {
-      greeting = pick(pool.quiet);
-    }
-    // ── Warm / confident ──
-    else if (pool.warm?.length && Math.random() < 0.6) {
-      greeting = pick(pool.warm);
-    }
-    // ── Fall back to builder or warm ──
-    else {
-      const fallback = Math.random() < 0.6 ? pool.builder : pool.warm;
-      greeting = pick(fallback);
-    }
+    // 1) Day-specific (~20% chance on matching day)
+    greeting =
+      maybe("monday", 0.2) ??
+      maybe("friday", 0.2) ??
+      maybe("weekend", 0.2) ??
+      // 2) Time bucket (~45% chance)
+      maybe(timeBucket, 0.45) ??
+      // 3) VoxKage identity specials (~25% chance)
+      maybe("voxkage", 0.25) ??
+      // 4) Quiet / invitational (~20% chance)
+      maybe("quiet", 0.2) ??
+      // 5) Warm / confident (~30% chance)
+      maybe("warm", 0.3) ??
+      // 6) Builder (always available)
+      pick(pool.builder);
   }
 
   // Inject the name if needed
