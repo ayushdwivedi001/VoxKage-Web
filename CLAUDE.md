@@ -115,27 +115,27 @@ Use these facts to guide your decisions and personalize your responses immediate
 ### VoxKage Consolidated Soul History & Performance
 
 **Domain Metrics**:
-- **FRONTEND**: 100.0% success rate (10/10 tasks)
+- **FRONTEND**: 100.0% success rate (57/57 tasks)
   - Common Weaknesses: None — all points verified against codebase structure., none
-- **BACKEND**: 100.0% success rate (2/2 tasks)
-  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain.
-- **RESEARCH**: 100.0% success rate (8/8 tasks)
+- **BACKEND**: 100.0% success rate (16/16 tasks)
+  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., none
+- **RESEARCH**: 100.0% success rate (44/44 tasks)
   - Common Weaknesses: None — all points verified against codebase structure., None
-- **SYSTEM**: 100.0% success rate (1/1 tasks)
-  - Common Weaknesses: Ensure we verify the system disk before deletion
-- **CODING**: 92.9% success rate (26/28 tasks)
+- **SYSTEM**: 100.0% success rate (11/11 tasks)
+  - Common Weaknesses: Ensure we verify the system disk before deletion, none
+- **CODING**: 98.0% success rate (98/100 tasks)
   - Common Weaknesses: Domain mismatch: coding checklist on research task, Domain mismatch: start_turn classified as 'coding' but task was general/research — coding-specific checklist items (documentation) don't apply to a pure information-gathering task
-- **ANALYSIS**: 100.0% success rate (2/2 tasks)
-  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain.
-- **PLANNING**: 100.0% success rate (11/11 tasks)
+- **ANALYSIS**: 100.0% success rate (12/12 tasks)
+  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None
+- **PLANNING**: 100.0% success rate (40/40 tasks)
   - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None — all points verified against codebase structure.
-- **GENERAL**: 100.0% success rate (17/17 tasks)
+- **GENERAL**: 100.0% success rate (40/40 tasks)
   - Common Weaknesses: none, WebGL approach failed on Windows GPU driver — smoothstep undefined behavior and canvas opacity race conditions; abandoned WebGL in favor of CSS blob gradient which is guaranteed cross-platform
 - **DATA**: 100.0% success rate (2/2 tasks)
   - Common Weaknesses: None, none
-- **DEVOPS**: 100.0% success rate (13/13 tasks)
-  - Common Weaknesses: Domain classified as devops but task was daily research workflow (general/research domain). Daily workflow items were all read-only so minimal impact.
-- **CREATIVE**: 100.0% success rate (1/1 tasks)
+- **DEVOPS**: 100.0% success rate (16/16 tasks)
+  - Common Weaknesses: Domain classified as devops but task was daily research workflow (general/research domain). Daily workflow items were all read-only so minimal impact., none
+- **CREATIVE**: 100.0% success rate (4/4 tasks)
   - Common Weaknesses: None
 
 **Learned Negative Constraints (Anti-Patterns)**:
@@ -146,9 +146,9 @@ Use these facts to guide your decisions and personalize your responses immediate
 - **SYSTEM**: Avoid repeating: Ensure we verify the system disk before deletion
 
 **Recent Tasks Summary**:
-- [2026-06-29] CODING: SUCCESS (Confidence: 0.98)
-- [2026-06-29] GENERAL: SUCCESS (Confidence: 0.98)
-- [2026-06-29] GENERAL: SUCCESS (Confidence: 0.98)
+- [2026-07-03] FRONTEND: SUCCESS (Confidence: 0.5)
+- [2026-07-03] FRONTEND: SUCCESS (Confidence: 0.5)
+- [2026-07-03] CODING: SUCCESS (Confidence: 0.5)
 
 ---
 

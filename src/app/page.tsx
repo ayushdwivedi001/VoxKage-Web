@@ -37,6 +37,7 @@ import ZoomImagePreview from "@/components/ZoomImagePreview";
 import ZoomDocumentPreview from "@/components/ZoomDocumentPreview";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 import { Message, computeSessionFiles } from "@/lib/chatHelpers";
+import { getGreeting, extractNameFromEmail } from "@/lib/greetings";
 
 import {
   login,
@@ -102,6 +103,10 @@ export default function Home() {
   const [openCodeApiKey, setOpenCodeApiKey] = useState("");
   const [customProxyUrl, setCustomProxyUrl] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected">("disconnected");
+
+  // Dynamic greeting
+  const [greeting, setGreeting] = useState("Ready to build, Ayush?");
+  const hasVisitedRef = useRef(false);
   
   const telemetryWsRef = useRef<WebSocket | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -357,6 +362,22 @@ export default function Home() {
       setMessagesCache((prev) => ({ ...prev, [currentSessionId]: messages }));
     }
   }, [messages, currentSessionId]);
+
+  // Generate a dynamic greeting on mount and when email changes
+  useEffect(() => {
+    const name = loginEmail ? extractNameFromEmail(loginEmail) : "";
+    const now = new Date();
+    setGreeting(getGreeting(name, now.getHours(), now.getDay(), false));
+  }, [loginEmail]);
+
+  // Refresh greeting when returning after sending a message
+  useEffect(() => {
+    if (hasVisitedRef.current && !isChatActive) {
+      const name = loginEmail ? extractNameFromEmail(loginEmail) : "";
+      const now = new Date();
+      setGreeting(getGreeting(name, now.getHours(), now.getDay(), true));
+    }
+  }, [isChatActive, loginEmail]);
 
   const loadInitialData = async () => {
     try {
@@ -685,6 +706,7 @@ export default function Home() {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
+    hasVisitedRef.current = true;
 
     let sessionId = currentSessionId;
     let finalAttachments = [...attachments];
@@ -1707,7 +1729,7 @@ export default function Home() {
                 <h1
                   className="text-white text-3xl sm:text-[40px] md:text-[44px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
                 >
-                  Ready to build, Ayush?
+                  {greeting}
                 </h1>
                 <PromptInput
                   onSubmit={handleSendMessage}
