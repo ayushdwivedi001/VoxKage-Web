@@ -50,6 +50,15 @@ async function apiRequest(endpoint: string, method: string = "GET", body: any = 
     throw new Error(errorText || response.statusText);
   }
 
+  const contentType = response.headers.get("Content-Type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await response.text();
+    if (text.includes("<!DOCTYPE html>") || text.includes("<html")) {
+      throw new Error("FastAPI backend is starting up or temporarily offline. Please wait a few seconds and try again.");
+    }
+    throw new Error("Server returned non-JSON response.");
+  }
+
   return response.json();
 }
 
@@ -64,6 +73,16 @@ export async function login(email: string, masterKey: string): Promise<string> {
   if (!res.ok) {
     throw new Error("Invalid Master Key");
   }
+
+  const contentType = res.headers.get("Content-Type") || "";
+  if (!contentType.includes("application/json")) {
+    const text = await res.text();
+    if (text.includes("<!DOCTYPE html>") || text.includes("<html")) {
+      throw new Error("FastAPI backend is starting up or temporarily offline. Please wait a few seconds and try again.");
+    }
+    throw new Error("Server returned non-JSON response.");
+  }
+
   const data = await res.json();
   const token = data.access_token;
   saveToken(token, email);
