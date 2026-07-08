@@ -66,6 +66,56 @@ import {
   logMessageFeedback
 } from "@/lib/api";
 
+const VoxKageIdleCreature = () => (
+  <div className="mb-6 flex justify-center text-white">
+    <style>{`
+      @keyframes idle-blink-left {
+        0%, 94%, 100% { opacity: 0; }
+        95%, 97%       { opacity: 1; }
+      }
+      @keyframes idle-blink-right {
+        0%, 93%, 100% { opacity: 0; }
+        94%, 96%       { opacity: 1; }
+      }
+      .idle-eye-l-lid {
+        animation: idle-blink-left 6s steps(1, end) infinite 0s;
+      }
+      .idle-eye-r-lid {
+        animation: idle-blink-right 7.5s steps(1, end) infinite 1.8s;
+      }
+    `}</style>
+    <svg
+      width="48"
+      height="27"
+      viewBox="0 0 16 9"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ imageRendering: "pixelated" }}
+      className="text-white"
+    >
+      {/* Arms */}
+      <rect x="0" y="3" width="2" height="2" fill="currentColor" />
+      <rect x="14" y="3" width="2" height="2" fill="currentColor" />
+
+      {/* Legs */}
+      <rect x="4" y="6" width="2" height="2" fill="currentColor" />
+      <rect x="10" y="6" width="2" height="2" fill="currentColor" />
+
+      {/* Body */}
+      <g fill="currentColor">
+        <rect x="2" y="0" width="12" height="1" />
+        <rect x="2" y="1" width="2" height="2" />
+        <rect x="6" y="1" width="4" height="2" />
+        <rect x="12" y="1" width="2" height="2" />
+        <rect x="2" y="3" width="12" height="2" />
+        <rect x="2" y="5" width="12" height="1" />
+        <rect className="idle-eye-l-lid" x="4" y="1" width="2" height="2" opacity="0" />
+        <rect className="idle-eye-r-lid" x="10" y="1" width="2" height="2" opacity="0" />
+      </g>
+    </svg>
+  </div>
+);
+
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginEmail, setLoginEmail] = useState("ayushdwivedi001@gmail.com");
@@ -1761,6 +1811,7 @@ export default function Home() {
             {/* Landing Hero Title & Input (only visible when not active, centered vertically) */}
             {!isChatActive && (
               <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20">
+                <VoxKageIdleCreature />
                 <h1
                   className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
                 >

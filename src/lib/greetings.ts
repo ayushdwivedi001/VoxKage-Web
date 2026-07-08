@@ -220,18 +220,25 @@ export function getGreeting(
   // ── Selection: time-of-day primary, day/returning as spice ──────────
 
   // Helper: pick from a sub-pool if it exists and passes a probability gate
-  const maybe = (key: string, prob: number): string | null =>
-    (pool as any)[key]?.length && Math.random() < prob
+  const maybe = (key: string, prob: number): string | null => {
+    // Guard against day-specific keys if they don't match the current day
+    if (key === "monday" && day !== 1) return null;
+    if (key === "friday" && day !== 5) return null;
+    if (key === "weekend" && day !== 0 && day !== 6) return null;
+    if (key === "sunday" && day !== 0) return null;
+
+    return (pool as any)[key]?.length && Math.random() < prob
       ? pick((pool as any)[key])
       : null;
+  };
 
   if (showName) {
-    // 1) Day-specific (~20% chance on matching day)
+    // 1) Day-specific (~35% chance on matching day)
     greeting =
-      maybe("monday", 0.2) ??
-      maybe("friday", 0.2) ??
-      maybe("weekend", 0.2) ??
-      maybe("sunday", 0.2) ??
+      maybe("monday", 0.35) ??
+      maybe("friday", 0.35) ??
+      maybe("weekend", 0.35) ??
+      maybe("sunday", 0.35) ??
       // 2) Returning user (~30% chance)
       (returning ? maybe("returning", 0.3) : null) ??
       // 3) Time bucket (~60% chance)
@@ -239,11 +246,11 @@ export function getGreeting(
       // 4) Builder (always available)
       pick(pool.builder);
   } else {
-    // 1) Day-specific (~20% chance on matching day)
+    // 1) Day-specific (~35% chance on matching day)
     greeting =
-      maybe("monday", 0.2) ??
-      maybe("friday", 0.2) ??
-      maybe("weekend", 0.2) ??
+      maybe("monday", 0.35) ??
+      maybe("friday", 0.35) ??
+      maybe("weekend", 0.35) ??
       // 2) Time bucket (~45% chance)
       maybe(timeBucket, 0.45) ??
       // 3) VoxKage identity specials (~25% chance)
@@ -255,6 +262,7 @@ export function getGreeting(
       // 6) Builder (always available)
       pick(pool.builder);
   }
+
 
   // Inject the name if needed
   if (showName && name) {
