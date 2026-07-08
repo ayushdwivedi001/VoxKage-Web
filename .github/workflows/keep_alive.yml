@@ -18,9 +18,13 @@ jobs:
           if [ -z "$SPACE_URL" ]; then
             SPACE_URL="${{ secrets.VOXKAGE_SPACE_URL }}"
           fi
+          # Fallback to default endpoint if secrets are not configured in GitHub
+          if [ -z "$SPACE_URL" ]; then
+            SPACE_URL="https://shinayush-voxkage-web-backend.hf.space"
+          fi
           
           if [ -z "$SPACE_URL" ]; then
-            echo "⚠️ Warning: VOXKAGE_WEB_SPACE_URL secret is not configured in GitHub Settings. Skipping Space ping."
+            echo "⚠️ Warning: SPACE_URL is still empty."
           else
             success=false
             for i in 1 2 3; do
