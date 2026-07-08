@@ -617,8 +617,8 @@ export function parseInlineElements(text: string, sources: any[] = []) {
   let remaining = text;
   let tokenKey = 0;
 
-  // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, function signatures, or bracketed citations [1] / [ESPN]
-  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)|\[\d+\]|\[[a-zA-Z0-9\s.\-&\u2197↗\ufe0f]{2,}\]))/gi;
+  // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, function signatures, or bracketed citations [1] / [ESPN] optionally followed by parenthesized URLs
+  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)|\[\d+\]|\[[^\]]+\]\s*\(https?:\/\/[^\s)]+\)|\[[a-zA-Z0-9\s.\-&\u2197↗\ufe0f]{2,}\]))/gi;
   let match;
   let lastIndex = 0;
 
@@ -636,6 +636,34 @@ export function parseInlineElements(text: string, sources: any[] = []) {
     } else if (matchStr.startsWith("\\(") && matchStr.endsWith("\\)")) {
       const mathText = matchStr.slice(2, -2);
       tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
+    } else if (matchStr.startsWith("[") && matchStr.endsWith(")")) {
+      // Handle [Label](URL) or [Label] (URL) markdown links
+      const closingBracketIndex = matchStr.indexOf("]");
+      const cleanLabel = matchStr.slice(1, closingBracketIndex).replace(/[\u2197↗]\u200e?\ufe0f?/g, "").trim();
+      const openParenIndex = matchStr.indexOf("(", closingBracketIndex);
+      const targetUrl = matchStr.slice(openParenIndex + 1, -1).trim();
+
+      let domain = "";
+      try {
+        const matchDomain = targetUrl.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
+        domain = matchDomain ? matchDomain[1] : targetUrl;
+      } catch {
+        domain = targetUrl;
+      }
+
+      const matchedSource = {
+        title: cleanLabel,
+        url: targetUrl,
+        domain: domain
+      };
+
+      const sourceIndex = sources.indexOf(matchedSource) !== -1 
+        ? sources.indexOf(matchedSource) + 1 
+        : (parseInt(cleanLabel) || sources.length + 1);
+
+      tokens.push(
+        <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
+      );
     } else if (matchStr.startsWith("[") && matchStr.endsWith("]")) {
       const cleanLabel = matchStr.slice(1, -1).replace(/[\u2197↗]\u200e?\ufe0f?/g, "").trim();
       const numIdx = parseInt(cleanLabel);
