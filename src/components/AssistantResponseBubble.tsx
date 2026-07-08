@@ -136,8 +136,112 @@ const LoaderStyles = () => (
       animation: voxkage-spin-rev 2s linear infinite;
       transform-origin: center;
     }
+
+    /* VoxKage Thinking Creature Animations */
+    @keyframes eureka-cycle {
+      0%, 65%  { opacity: 1; }
+      70%, 95% { opacity: 0; }
+      100%     { opacity: 1; }
+    }
+    @keyframes eureka-cycle-rev {
+      0%, 65%  { opacity: 0; }
+      70%, 95% { opacity: 1; }
+      100%     { opacity: 0; }
+    }
+    @keyframes bulb-pulse {
+      0%, 100% { opacity: 0.75; }
+      50%      { opacity: 1; }
+    }
+    @keyframes sparkle-flicker {
+      0%, 100% { opacity: 0.25; }
+      50%      { opacity: 1; }
+    }
+    @keyframes blink-left {
+      0%, 94%, 100% { opacity: 0; }
+      95%, 97%       { opacity: 1; }
+    }
+    @keyframes blink-right {
+      0%, 93%, 100% { opacity: 0; }
+      94%, 96%       { opacity: 1; }
+    }
+    .frame-ponder {
+      animation: eureka-cycle 2.2s steps(1) infinite;
+    }
+    .frame-idea {
+      animation: eureka-cycle-rev 2.2s steps(1) infinite;
+    }
+    .bulb-glow {
+      animation: bulb-pulse 0.4s infinite ease-in-out;
+    }
+    .bulb-sparkle {
+      animation: sparkle-flicker 0.3s infinite ease-in-out;
+    }
+    .eye-l-lid {
+      animation: blink-left 6s steps(1, end) infinite 0s;
+    }
+    .eye-r-lid {
+      animation: blink-right 7.5s steps(1, end) infinite 1.8s;
+    }
   `}</style>
 );
+
+const VoxKageThinkingCreature = ({ className = "w-5 h-[17.5px]" }: { className?: string }) => (
+  <span className="inline-flex items-center justify-center" style={{ transform: "translateY(-4px)" }}>
+    <LoaderStyles />
+    <svg
+      className={className}
+      viewBox="0 0 16 14"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ imageRendering: "pixelated" }}
+    >
+      {/* SKELETON (Body, Left Arm, Legs, Eyelids - Always Visible, y=6..13) */}
+      <g fill="currentColor">
+        <rect x="2" y="6" width="12" height="1" />
+        <rect x="2" y="7" width="2" height="2" />
+        <rect x="6" y="7" width="4" height="2" />
+        <rect x="12" y="7" width="2" height="2" />
+        <rect x="2" y="9" width="12" height="2" />
+        <rect x="0" y="9" width="2" height="2" />
+        <rect x="2" y="11" width="12" height="1" />
+        <rect x="4" y="12" width="2" height="2" />
+        <rect x="10" y="12" width="2" height="2" />
+        <rect className="eye-l-lid" x="4" y="7" width="2" height="2" opacity={0} />
+        <rect className="eye-r-lid" x="10" y="7" width="2" height="2" opacity={0} />
+      </g>
+
+      {/* FRAME 1: PONDER STATE */}
+      <g className="frame-ponder" fill="currentColor">
+        <rect x="14" y="9" width="2" height="2" />
+      </g>
+
+      {/* FRAME 2: EUREKA STATE */}
+      <g className="frame-idea">
+        <g fill="currentColor">
+          <rect x="14" y="7" width="1" height="2" />
+          <rect x="12" y="4" width="3" height="3" />
+          <rect x="11" y="5" width="1" height="1" />
+          <rect x="12" y="2" width="1" height="2" />
+        </g>
+        <rect x="8" y="4" width="2" height="1" fill="#71717a" />
+        <g fill="#fbbf24" className="bulb-glow">
+          <rect x="7" y="0" width="4" height="1" />
+          <rect x="6" y="1" width="6" height="2" />
+          <rect x="7" y="3" width="1" height="1" />
+          <rect x="10" y="3" width="1" height="1" />
+        </g>
+        <rect x="8" y="3" width="2" height="1" fill="#ea580c" className="bulb-glow" />
+        <g fill="#fbbf24" className="bulb-sparkle">
+          <rect x="4" y="0" width="1" height="1" />
+          <rect x="13" y="0" width="1" height="1" />
+          <rect x="4" y="2" width="1" height="1" />
+          <rect x="13" y="2" width="1" height="1" />
+        </g>
+      </g>
+    </svg>
+  </span>
+);
+
 
 const VoxKageLoader = () => (
   <span className="inline-flex items-center justify-center w-5 h-5">
@@ -593,7 +697,9 @@ export default function AssistantResponseBubble({
                 isThoughtsExpanded ? "rotate-90 text-zinc-200" : "text-zinc-400"
               }`}
             />
-            {isThinkingActive && <VoxKageLoader />}
+            {isThinkingActive && (
+              <VoxKageThinkingCreature className="w-5 h-[17.5px] flex-shrink-0 text-zinc-100" />
+            )}
             <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
               {displayLabel}
             </span>
