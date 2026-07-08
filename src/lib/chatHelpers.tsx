@@ -618,7 +618,7 @@ export function parseInlineElements(text: string, sources: any[] = []) {
   let tokenKey = 0;
 
   // Regex matches LaTeX inline equations ($...$ or \(...\)), URLs, bold, inline code, filenames, function signatures, or bracketed citations [1] / [ESPN]
-  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)|\[\d+\]|\[[a-zA-Z0-9\s.\-&]{2,}(?: ↗)?\]))/gi;
+  const regex = /(\$(?!\s)[^$]+?(?<!\s)\$|\\\(.*?\\\)|(\bhttps?:\/\/[^\s()<>]+(?:\([\w\d]+\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’])|\b(?:www\.|(?<!@))[a-zA-Z0-9-]{2,}(?:\.[a-zA-Z0-9-]+)*(?:\.(?:com|in|net|org|co|io|app|edu|gov|xyz|info|biz|uk|us|me|tv|cc|ca|de|fr|jp|au|ru|br))\b(?:\/[^\s()<>`!"'\[\]{};:'".,]*|\.[a-zA-Z0-9]+|\?[a-zA-Z0-9-&=_]+)*|\*\*.*?\*\*|`.*?`|\b[\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat)\b|\b\w+[\w\-]*\(\)|\[\d+\]|\[[a-zA-Z0-9\s.\-&\u2197↗\ufe0f]{2,}\]))/gi;
   let match;
   let lastIndex = 0;
 
@@ -637,7 +637,7 @@ export function parseInlineElements(text: string, sources: any[] = []) {
       const mathText = matchStr.slice(2, -2);
       tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
     } else if (matchStr.startsWith("[") && matchStr.endsWith("]")) {
-      const cleanLabel = matchStr.slice(1, -1).replace(/ ↗$/, "").trim();
+      const cleanLabel = matchStr.slice(1, -1).replace(/[\u2197↗]\u200e?\ufe0f?/g, "").trim();
       const numIdx = parseInt(cleanLabel);
       let matchedSource = null;
 
@@ -648,18 +648,79 @@ export function parseInlineElements(text: string, sources: any[] = []) {
           const dom = (s.domain || "").toLowerCase();
           const tit = (s.title || "").toLowerCase();
           const lbl = cleanLabel.toLowerCase();
-          return dom.includes(lbl) || lbl.includes(dom.replace("www.", "")) || tit.includes(lbl);
+          
+          // 1. Direct includes checks
+          if (dom.includes(lbl) || lbl.includes(dom.replace(/^www\./, "")) || tit.includes(lbl)) {
+            return true;
+          }
+          
+          // 2. Normalized alphanumeric check (ignoring spaces, case, hyphens, periods)
+          const normLbl = lbl.replace(/[^a-z0-9]/g, "");
+          const normDomClean = dom.replace(/^www\./, "").replace(/\.[a-z]{2,6}$/, "").replace(/[^a-z0-9]/g, "");
+          const normTit = tit.replace(/[^a-z0-9]/g, "");
+          
+          if (normLbl && normDomClean && (normDomClean.includes(normLbl) || normLbl.includes(normDomClean))) {
+            return true;
+          }
+          if (normLbl && normTit && normTit.includes(normLbl)) {
+            return true;
+          }
+          
+          // 3. Word-based overlap (if label has multiple words, check if all words are present in domain or title)
+          const lblWords = lbl.split(/\s+/).filter(w => w.length > 1);
+          if (lblWords.length > 0) {
+            const allWordsInDom = lblWords.every(w => dom.includes(w));
+            const allWordsInTit = lblWords.every(w => tit.includes(w));
+            if (allWordsInDom || allWordsInTit) {
+              return true;
+            }
+          }
+          
+          // 4. Special cases (e.g. TOI -> Times of India)
+          if (lbl === "toi" && (dom.includes("timesofindia") || tit.includes("times of india"))) {
+            return true;
+          }
+          
+          return false;
         });
       }
 
-      if (matchedSource) {
-        const sourceIndex = sources.indexOf(matchedSource) + 1;
-        tokens.push(
-          <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
-        );
-      } else {
-        tokens.push(<React.Fragment key={tokenKey++}>{matchStr}</React.Fragment>);
+      if (!matchedSource) {
+        const lowerLabel = cleanLabel.toLowerCase();
+        let fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(cleanLabel)}`;
+        
+        if (cleanLabel.includes(".") && !cleanLabel.includes(" ")) {
+          fallbackUrl = `https://${cleanLabel}`;
+        } else if (lowerLabel === "sysdig") {
+          fallbackUrl = "https://sysdig.com";
+        } else if (lowerLabel === "crescendo") {
+          fallbackUrl = "https://crescendo.ai";
+        } else if (lowerLabel === "imfounder") {
+          fallbackUrl = "https://imfounder.com";
+        } else if (lowerLabel === "google blog") {
+          fallbackUrl = "https://blog.google";
+        } else if (lowerLabel === "new indian express") {
+          fallbackUrl = "https://www.newindianexpress.com";
+        } else if (lowerLabel === "livemint") {
+          fallbackUrl = "https://www.livemint.com";
+        } else if (lowerLabel === "outlook india") {
+          fallbackUrl = "https://www.outlookindia.com";
+        }
+
+        matchedSource = {
+          title: cleanLabel,
+          url: fallbackUrl,
+          domain: cleanLabel
+        };
       }
+
+      const sourceIndex = sources.indexOf(matchedSource) !== -1 
+        ? sources.indexOf(matchedSource) + 1 
+        : (parseInt(cleanLabel) || sources.length + 1);
+
+      tokens.push(
+        <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
+      );
     } else {
       // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
       const isLink = matchStr.match(/^https?:\/\//i) || 

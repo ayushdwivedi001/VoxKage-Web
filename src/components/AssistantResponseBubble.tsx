@@ -346,6 +346,33 @@ export default function AssistantResponseBubble({
   // Parse message content to extract thinking, final output, and consulted web sources
   const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot } = parseMessageContent(msg.content);
 
+  // Merge sources from all assistant messages so far to ensure citations from previous turns still match
+  const allSources: any[] = [];
+  const seenUrls = new Set<string>();
+  if (sources) {
+    for (const s of sources) {
+      if (s.url && !seenUrls.has(s.url)) {
+        seenUrls.add(s.url);
+        allSources.push(s);
+      }
+    }
+  }
+  if (messages) {
+    for (const m of messages) {
+      if (m.role === "assistant") {
+        const parsed = parseMessageContent(m.content);
+        if (parsed.sources) {
+          for (const s of parsed.sources) {
+            if (s.url && !seenUrls.has(s.url)) {
+              seenUrls.add(s.url);
+              allSources.push(s);
+            }
+          }
+        }
+      }
+    }
+  }
+
   const hasActualThoughts = !!thinkingContent || (msg.thinkingSteps && msg.thinkingSteps.length > 0);
 
   // If currently running, run a local timer
@@ -656,7 +683,7 @@ export default function AssistantResponseBubble({
       {/* --- Assistant Response Text content --- */}
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
-          {renderFormattedContent(removeCodeBlocks(finalContent), sources)}
+          {renderFormattedContent(removeCodeBlocks(finalContent), allSources)}
         </div>
       )}
 
@@ -731,7 +758,7 @@ export default function AssistantResponseBubble({
       )}
 
       {/* --- Consulted Web Search Sources Mini Row --- */}
-      {sources.length > 0 && (
+      {msg.status === "completed" && sources.length > 0 && (
         <div 
           onClick={() => setIsSourcesOpen(true)}
           className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-zinc-900/65 border border-zinc-850 hover:bg-zinc-850 hover:border-zinc-700 transition-all duration-200 cursor-pointer select-none w-fit shadow-md"
