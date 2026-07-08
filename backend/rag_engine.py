@@ -1,29 +1,14 @@
 import os
 import re
+import uuid
 from fastapi import HTTPException
-from database import get_db
+from sqlite_db import get_sqlite_conn
 from rag_parser import chunk_text, extract_text_async
-
-# Cache the model to avoid loading it on every import
-_model = None
-
-def get_embedding_model():
-    global _model
-    if _model is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-            # MiniLM-L6-v2 is fast, accurate, and yields 384 dimensions
-            _model = SentenceTransformer("all-MiniLM-L6-v2")
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Could not load SentenceTransformer embedding model: {str(e)}"
-            )
-    return _model
 
 async def index_file_in_rag(file_path: str, filename: str, user_id: str, document_id: str = None, model: str = None) -> dict:
     """
-    Extracts text, chunks it, generates vector embeddings, and pushes it to Supabase pgvector table.
+    Extracts text, chunks it, and saves it into the local SQLite database.
+    This replaces pgvector and does not load any embedding model.
     """
     text = await extract_text_async(file_path, model=model)
     chunks = chunk_text(text)
@@ -31,137 +16,231 @@ async def index_file_in_rag(file_path: str, filename: str, user_id: str, documen
     if not chunks:
         return {"status": "ignored", "reason": "No text content found in file."}
         
-    model = get_embedding_model()
-    embeddings = model.encode(chunks)
+    doc_id = document_id or str(uuid.uuid4())
     
-    db = get_db()
-    
-    records = []
-    for i, chunk in enumerate(chunks):
-        record = {
-            "filename": filename,
-            "content": chunk,
-            "embedding": embeddings[i].tolist() if hasattr(embeddings[i], "tolist") else list(embeddings[i]),
-            "user_id": user_id
-        }
-        if document_id:
-            record["document_id"] = document_id
-        records.append(record)
-        
-    res = db.table("rag_documents").insert(records).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to save document chunks into database.")
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    try:
+        for chunk in chunks:
+            cursor.execute("""
+                INSERT INTO rag_documents (filename, content, user_id, document_id)
+                VALUES (?, ?, ?, ?)
+            """, (filename, chunk, user_id, doc_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        if conn:
+            conn.close()
+        raise HTTPException(status_code=500, detail=f"Failed to save document chunks into SQLite: {str(e)}")
         
     return {
         "status": "success",
         "chunks_indexed": len(chunks),
         "filename": filename,
-        "document_id": document_id
+        "document_id": doc_id
     }
 
 def query_rag_vector(query: str, user_id: str, top_k: int = 3, threshold: float = 0.20) -> list:
     """
-    Computes query embeddings and calls match_documents RPC function in Supabase.
+    Queries local SQLite database using FTS5 MATCH, falling back to LIKE if FTS5 is not available.
+    Keeps the function signature identical to query_rag_vector for backward compatibility.
     """
-    model = get_embedding_model()
-    query_enc = model.encode(query)
-    query_vector = query_enc.tolist() if hasattr(query_enc, "tolist") else list(query_enc)
-    
-    db = get_db()
-    
-    params = {
-        "query_embedding": query_vector,
-        "match_threshold": threshold,
-        "match_count": top_k,
-        "filter_user_id": user_id
-    }
-    
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
     try:
-        res = db.rpc("match_documents", params).execute()
-        return res.data or []
+        # Build tokenized query for FTS5 (e.g. "search term" -> "search* term*")
+        cleaned_query = ""
+        for word in re.findall(r'\w+', query):
+            cleaned_query += f" {word}*"
+        cleaned_query = cleaned_query.strip()
+        
+        if not cleaned_query:
+            return []
+            
+        cursor.execute("""
+            SELECT filename, content, user_id, document_id, bm25(rag_documents) as rank
+            FROM rag_documents
+            WHERE user_id = ? AND rag_documents MATCH ?
+            ORDER BY rank ASC
+            LIMIT ?
+        """, (user_id, cleaned_query, top_k))
+        rows = cursor.fetchall()
+        results = []
+        for r in rows:
+            results.append({
+                "filename": r["filename"],
+                "content": r["content"],
+                "user_id": r["user_id"],
+                "document_id": r["document_id"]
+            })
+        conn.close()
+        return results
     except Exception as e:
-        print(f"⚠️ RAG Query Error: {e}")
-        return []
+        # Fallback to standard LIKE queries
+        try:
+            words = [w for w in re.findall(r'\w+', query) if w]
+            if not words:
+                return []
+            
+            conditions = []
+            params = [user_id]
+            for w in words:
+                conditions.append("(content LIKE ? OR filename LIKE ?)")
+                params.extend([f"%{w}%", f"%{w}%"])
+                
+            sql = f"""
+                SELECT filename, content, user_id, document_id
+                FROM rag_documents
+                WHERE user_id = ? AND ({" AND ".join(conditions)})
+                LIMIT ?
+            """
+            params.append(top_k)
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                results.append({
+                    "filename": r["filename"],
+                    "content": r["content"],
+                    "user_id": r["user_id"],
+                    "document_id": r["document_id"]
+                })
+            conn.close()
+            return results
+        except Exception as ex:
+            print(f"⚠️ SQLite RAG Query Error: {ex}")
+            if conn:
+                conn.close()
+            return []
 
 def query_scoped_rag_vector(query: str, user_id: str, document_id: str, top_k: int = 5, threshold: float = 0.10) -> list:
     """
-    Computes query embeddings and calls match_document_chunks RPC function in Supabase.
+    Queries local SQLite database filtered by document_id using FTS5 MATCH, falling back to LIKE.
     """
-    model = get_embedding_model()
-    query_enc = model.encode(query)
-    query_vector = query_enc.tolist() if hasattr(query_enc, "tolist") else list(query_enc)
-    
-    db = get_db()
-    
-    params = {
-        "query_embedding": query_vector,
-        "match_threshold": threshold,
-        "match_count": top_k,
-        "filter_user_id": user_id,
-        "filter_document_id": document_id
-    }
-    
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
     try:
-        res = db.rpc("match_document_chunks", params).execute()
-        return res.data or []
-    except Exception as e:
-        print(f"⚠️ Scoped RAG Query Error: {e}")
-        return []
-
-def list_rag_documents(user_id: str) -> list:
-    db = get_db()
-    try:
-        res = db.table("rag_documents") \
-            .select("filename, document_id") \
-            .eq("user_id", user_id) \
-            .execute()
+        cleaned_query = ""
+        for word in re.findall(r'\w+', query):
+            cleaned_query += f" {word}*"
+        cleaned_query = cleaned_query.strip()
         
-        records = res.data or []
-        if not records:
+        if not cleaned_query:
             return []
             
-        summary = {}
-        for r in records:
-            doc_id = r.get("document_id")
-            filename = r.get("filename")
-            key = (doc_id, filename)
-            if key not in summary:
-                summary[key] = 0
-            summary[key] += 1
-            
-        result = []
-        for (doc_id, filename), chunk_count in summary.items():
-            result.append({
-                "document_id": doc_id,
-                "filename": filename,
-                "chunks_indexed": chunk_count
+        cursor.execute("""
+            SELECT filename, content, user_id, document_id, bm25(rag_documents) as rank
+            FROM rag_documents
+            WHERE user_id = ? AND document_id = ? AND rag_documents MATCH ?
+            ORDER BY rank ASC
+            LIMIT ?
+        """, (user_id, document_id, cleaned_query, top_k))
+        rows = cursor.fetchall()
+        results = []
+        for r in rows:
+            results.append({
+                "filename": r["filename"],
+                "content": r["content"],
+                "user_id": r["user_id"],
+                "document_id": r["document_id"]
             })
+        conn.close()
+        return results
+    except Exception as e:
+        try:
+            words = [w for w in re.findall(r'\w+', query) if w]
+            if not words:
+                return []
+            
+            conditions = []
+            params = [user_id, document_id]
+            for w in words:
+                conditions.append("(content LIKE ? OR filename LIKE ?)")
+                params.extend([f"%{w}%", f"%{w}%"])
+                
+            sql = f"""
+                SELECT filename, content, user_id, document_id
+                FROM rag_documents
+                WHERE user_id = ? AND document_id = ? AND ({" AND ".join(conditions)})
+                LIMIT ?
+            """
+            params.append(top_k)
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            results = []
+            for r in rows:
+                results.append({
+                    "filename": r["filename"],
+                    "content": r["content"],
+                    "user_id": r["user_id"],
+                    "document_id": r["document_id"]
+                })
+            conn.close()
+            return results
+        except Exception as ex:
+            print(f"⚠️ SQLite Scoped RAG Query Error: {ex}")
+            if conn:
+                conn.close()
+            return []
+
+def list_rag_documents(user_id: str) -> list:
+    """
+    Returns list of distinct indexed files and chunk counts from SQLite.
+    """
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT filename, document_id, COUNT(*) as count 
+            FROM rag_documents 
+            WHERE user_id = ? 
+            GROUP BY filename, document_id
+        """, (user_id,))
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "document_id": r["document_id"],
+                "filename": r["filename"],
+                "chunks_indexed": r["count"]
+            })
+        conn.close()
         return result
     except Exception as e:
         print(f"⚠️ Error listing RAG documents: {e}")
+        if conn:
+            conn.close()
         return []
 
 def delete_rag_document(user_id: str, document_id: str | None = None, filename: str | None = None) -> dict:
+    """
+    Deletes indexed chunks from SQLite by document_id or filename.
+    """
     if not document_id and not filename:
         return {"status": "error", "message": "Either document_id or filename must be provided."}
         
-    db = get_db()
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
     try:
-        query = db.table("rag_documents").delete().eq("user_id", user_id)
-        if document_id:
-            query = query.eq("document_id", document_id)
-        if filename:
-            query = query.eq("filename", filename)
+        if document_id and filename:
+            cursor.execute("DELETE FROM rag_documents WHERE user_id = ? AND document_id = ? AND filename = ?", (user_id, document_id, filename))
+        elif document_id:
+            cursor.execute("DELETE FROM rag_documents WHERE user_id = ? AND document_id = ?", (user_id, document_id))
+        else:
+            cursor.execute("DELETE FROM rag_documents WHERE user_id = ? AND filename = ?", (user_id, filename))
             
-        res = query.execute()
-        deleted_count = len(res.data) if res.data else 0
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
         return {
             "status": "success",
-            "message": "Successfully deleted RAG document chunks.",
+            "message": "Successfully deleted RAG document chunks from SQLite.",
             "chunks_removed": deleted_count,
             "document_id": document_id,
             "filename": filename
         }
     except Exception as e:
-        print(f"⚠️ Error deleting RAG document: {e}")
+        print(f"⚠️ Error deleting RAG document from SQLite: {e}")
+        if conn:
+            conn.close()
         return {"status": "error", "message": f"Failed to delete document chunks: {str(e)}"}

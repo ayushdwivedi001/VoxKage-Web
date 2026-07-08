@@ -8,7 +8,6 @@ pydantic==2.12.5
 pydantic[email]==2.12.5
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
-sentence-transformers==5.4.1
 numpy==1.26.4
 ddgs==9.14.4
 trafilatura==2.1.0

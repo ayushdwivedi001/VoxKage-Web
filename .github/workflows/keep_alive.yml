@@ -27,14 +27,16 @@ jobs:
             echo "⚠️ Warning: SPACE_URL is still empty."
           else
             success=false
-            for i in 1 2 3; do
+            for i in {1..18}; do
               echo "Space Heartbeat attempt $i..."
+              # Bypassing curl failure rules on initial connection to trigger wakeup,
+              # then check if we get a valid 200 health response.
               if curl -sf --connect-timeout 10 --max-time 15 "$SPACE_URL/health" > /dev/null; then
                 success=true
                 break
               fi
-              echo "⚠️ Space Heartbeat attempt $i failed. Retrying in 5 seconds..."
-              sleep 5
+              echo "⚠️ Space Heartbeat attempt $i failed. Retrying in 10 seconds..."
+              sleep 10
             done
             
             if [ "$success" = true ]; then
@@ -54,14 +56,14 @@ jobs:
             echo "⚠️ Warning: VOXKAGE_WEB_DATASET_URL secret is not configured in GitHub Settings. Skipping Dataset ping."
           else
             success=false
-            for i in 1 2 3; do
+            for i in {1..18}; do
               echo "Dataset Heartbeat attempt $i..."
               if curl -sf --connect-timeout 10 --max-time 15 "$DATASET_URL" > /dev/null; then
                 success=true
                 break
               fi
-              echo "⚠️ Dataset Heartbeat attempt $i failed. Retrying in 5 seconds..."
-              sleep 5
+              echo "⚠️ Dataset Heartbeat attempt $i failed. Retrying in 10 seconds..."
+              sleep 10
             done
             
             if [ "$success" = true ]; then

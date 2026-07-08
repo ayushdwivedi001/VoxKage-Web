@@ -1,9 +1,11 @@
 import os
 import json
+import re
+import uuid
 from datetime import datetime
 from fastapi import HTTPException
 from database import get_db
-from rag_engine import get_embedding_model
+from sqlite_db import get_sqlite_conn
 
 # --- Track 1: User Soul (Personalization) ---
 
@@ -119,75 +121,94 @@ def check_trusted(user_id: str, action_key: str) -> str:
 # --- Track 2: Problem/Solution Self-Learning ---
 
 def log_problem(user_id: str, problem: str, context: str, attempted: str = "") -> str:
-    db = get_db()
-    
-    model = get_embedding_model()
-    emb = model.encode(f"Problem: {problem}\nContext: {context}\nAttempted: {attempted}").tolist()
-    
-    data = {
-        "problem": problem,
-        "context": context,
-        "attempted": attempted,
-        "status": "unsolved",
-        "user_id": user_id,
-        "embedding": emb,
-        "created_at": datetime.utcnow().isoformat()
-    }
-    
-    res = db.table("problem_memories").insert(data).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to log problem.")
-        
-    return res.data[0]["id"]
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    problem_id = str(uuid.uuid4())
+    created_at = datetime.utcnow().isoformat()
+    try:
+        cursor.execute("""
+            INSERT INTO problem_memories (id, problem, context, attempted, solution, what_worked, prevention, status, user_id, created_at, solved_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (problem_id, problem, context, attempted, "", "", "", "unsolved", user_id, created_at, ""))
+        conn.commit()
+        conn.close()
+        return problem_id
+    except Exception as e:
+        if conn:
+            conn.close()
+        raise HTTPException(status_code=500, detail=f"Failed to log problem to SQLite: {str(e)}")
 
 def log_solution(user_id: str, problem_id: str, solution: str, what_worked: str, prevention: str = "") -> str:
-    db = get_db()
-    
-    res_prob = db.table("problem_memories").select("*").eq("id", problem_id).eq("user_id", user_id).execute()
-    if not res_prob.data:
-        raise HTTPException(status_code=404, detail="Problem memory entry not found.")
-        
-    prob = res_prob.data[0]
-    
-    model = get_embedding_model()
-    emb = model.encode(
-        f"Problem: {prob['problem']}\nContext: {prob['context']}\n"
-        f"Solution: {solution}\nWhat worked: {what_worked}\nPrevention: {prevention}"
-    ).tolist()
-    
-    data = {
-        "solution": solution,
-        "what_worked": what_worked,
-        "prevention": prevention,
-        "status": "solved",
-        "embedding": emb,
-        "solved_at": datetime.utcnow().isoformat()
-    }
-    
-    res = db.table("problem_memories").update(data).eq("id", problem_id).eq("user_id", user_id).execute()
-    if not res.data:
-        raise HTTPException(status_code=500, detail="Failed to record solution.")
-        
-    return f"[MEMORY] Solution recorded for '{problem_id}'."
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
+    solved_at = datetime.utcnow().isoformat()
+    try:
+        cursor.execute("""
+            UPDATE problem_memories
+            SET solution = ?, what_worked = ?, prevention = ?, status = 'solved', solved_at = ?
+            WHERE id = ? AND user_id = ?
+        """, (solution, what_worked, prevention, solved_at, problem_id, user_id))
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Problem memory entry not found or user unauthorized.")
+        conn.commit()
+        conn.close()
+        return f"[MEMORY] Solution recorded for '{problem_id}'."
+    except Exception as e:
+        if conn:
+            conn.close()
+        raise HTTPException(status_code=500, detail=f"Failed to record solution in SQLite: {str(e)}")
 
 def search_memory(user_id: str, query: str, top_k: int = 3, threshold: float = 0.45) -> str:
-    model = get_embedding_model()
-    query_vector = model.encode(query).tolist()
-    
-    db = get_db()
-    params = {
-        "query_embedding": query_vector,
-        "match_threshold": threshold,
-        "match_count": top_k,
-        "filter_user_id": user_id
-    }
-    
+    conn = get_sqlite_conn()
+    cursor = conn.cursor()
     try:
-        res = db.rpc("match_problems", params).execute()
-        memories = res.data or []
+        cleaned_query = ""
+        for word in re.findall(r'\w+', query):
+            cleaned_query += f" {word}*"
+        cleaned_query = cleaned_query.strip()
+        
+        if not cleaned_query:
+            return "[MEMORY] No query provided."
+            
+        cursor.execute("""
+            SELECT id, problem, solution, prevention, status, bm25(problem_memories) as rank
+            FROM problem_memories
+            WHERE user_id = ? AND problem_memories MATCH ?
+            ORDER BY rank ASC
+            LIMIT ?
+        """, (user_id, cleaned_query, top_k))
+        rows = cursor.fetchall()
+        memories = [dict(r) for r in rows]
+        conn.close()
     except Exception as e:
-        print(f"⚠️ Problem Search Error: {e}")
-        return "[MEMORY] Search query failed."
+        try:
+            words = [w for w in re.findall(r'\w+', query) if w]
+            if not words:
+                return "[MEMORY] No query words found."
+            
+            conditions = []
+            params = [user_id]
+            for w in words:
+                conditions.append("(problem LIKE ? OR context LIKE ? OR solution LIKE ? OR what_worked LIKE ?)")
+                params.extend([f"%{w}%", f"%{w}%", f"%{w}%", f"%{w}%"])
+                
+            sql = f"""
+                SELECT id, problem, solution, prevention, status
+                FROM problem_memories
+                WHERE user_id = ? AND ({" AND ".join(conditions)})
+                LIMIT ?
+            """
+            params.append(top_k)
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            memories = [dict(r) for r in rows]
+            conn.close()
+        except Exception as ex:
+            print(f"⚠️ SQLite Problem Search Error: {ex}")
+            if conn:
+                conn.close()
+            return "[MEMORY] Search query failed."
 
     if not memories:
         return "[MEMORY] No relevant past learnings found. Proceed normally."
