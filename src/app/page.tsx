@@ -13,6 +13,7 @@ import {
   Search,
   Globe,
   X,
+  MessageSquare,
   ArrowUpRight,
   Square,
   Star,
@@ -198,6 +199,24 @@ interface TreeNode {
   fileData?: any;
 }
 
+const getRelativeTime = (dateString: string) => {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return "Past week";
+    if (diffDays < 30) return "Past month";
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  } catch (e) {
+    return "";
+  }
+};
+
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginEmail, setLoginEmail] = useState("ayushdwivedi001@gmail.com");
@@ -344,6 +363,9 @@ export default function Home() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
   
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [openCodeApiKey, setOpenCodeApiKey] = useState("");
   const [customProxyUrl, setCustomProxyUrl] = useState("");
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "connecting" | "disconnected">("disconnected");
@@ -1825,6 +1847,11 @@ export default function Home() {
           setShowSettingsModal(true);
         }}
         connectionStatus={connectionStatus}
+        onOpenSearch={() => {
+          setShowSearchModal(true);
+          setSearchSelectedIndex(0);
+          setSearchQuery("");
+        }}
       />
 
       {/* Main content workspace container */}
@@ -2355,30 +2382,147 @@ export default function Home() {
               <span className="text-[11px] text-zinc-500">Personal proxy to bypass browser CORS headers. Default public workers pool used if empty.</span>
             </div>
 
-            <div className="flex gap-2 justify-end mt-2">
-              <button
-                type="button"
-                onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 rounded-xl border border-zinc-800 text-[13.5px] hover:bg-zinc-800/80 transition-colors"
-              >
-                Cancel
-              </button>
+            <div className="flex gap-2 justify-between mt-2">
               <button
                 type="button"
                 onClick={() => {
-                  localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
-                  localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
-                  localStorage.setItem("voxkage_user_name", userName.trim());
                   setShowSettingsModal(false);
+                  handleLogout();
                 }}
-                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
+                className="px-4 py-2 rounded-xl border border-red-500/20 text-red-400 hover:bg-red-950/20 text-[13.5px] font-medium transition-colors cursor-pointer"
               >
-                Save Settings
+                Log Out
               </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(false)}
+                  className="px-4 py-2 rounded-xl border border-zinc-800 text-[13.5px] hover:bg-zinc-800/80 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
+                    localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
+                    localStorage.setItem("voxkage_user_name", userName.trim());
+                    setShowSettingsModal(false);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_12px_rgba(37,99,235,0.45)] text-white border border-blue-500/30 transition-colors text-[13.5px] font-medium cursor-pointer"
+                >
+                  Save Settings
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Search Modal */}
+      {showSearchModal && (() => {
+        const filteredSearchSessions = sessionsList.filter((session) =>
+          session.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+        const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setSearchSelectedIndex((prev) =>
+              Math.min(prev + 1, filteredSearchSessions.length - 1)
+            );
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setSearchSelectedIndex((prev) => Math.max(prev - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (filteredSearchSessions[searchSelectedIndex]) {
+              handleSelectSession(filteredSearchSessions[searchSelectedIndex].id);
+              setShowSearchModal(false);
+              setSearchQuery("");
+            }
+          } else if (e.key === "Escape") {
+            setShowSearchModal(false);
+            setSearchQuery("");
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-[100] flex items-start justify-center p-4 pt-[15vh]">
+            <div 
+              onClick={() => { setShowSearchModal(false); setSearchQuery(""); }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-200" 
+            />
+            <div className="relative w-full max-w-xl bg-[#121216] border border-zinc-800 rounded-2xl shadow-2xl z-10 flex flex-col overflow-hidden font-sans text-zinc-300 animate-fadeIn">
+              {/* Search Input Box */}
+              <div className="relative flex items-center border-b border-zinc-800/80">
+                <Search className="absolute left-4 w-4 h-4 text-zinc-500 pointer-events-none" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setSearchSelectedIndex(0);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search chats and projects"
+                  className="w-full bg-transparent h-14 pl-11 pr-11 focus:outline-none text-[14.5px] text-zinc-100 placeholder-zinc-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setShowSearchModal(false); setSearchQuery(""); }}
+                  className="absolute right-4 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-350 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Results List */}
+              <div className="flex-grow max-h-[350px] overflow-y-auto p-2 flex flex-col gap-0.5 custom-chat-scrollbar">
+                {filteredSearchSessions.map((session, index) => {
+                  const isSelected = index === searchSelectedIndex;
+                  const relativeTime = getRelativeTime(session.updated_at);
+                  
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => {
+                        handleSelectSession(session.id);
+                        setShowSearchModal(false);
+                        setSearchQuery("");
+                      }}
+                      onMouseEnter={() => setSearchSelectedIndex(index)}
+                      className={`w-full flex items-center justify-between py-2.5 px-3.5 rounded-xl cursor-pointer transition-all duration-150 select-none ${
+                        isSelected
+                          ? "bg-[#18181c] text-white font-medium border border-zinc-800/50"
+                          : "text-zinc-400 hover:text-zinc-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 pr-6">
+                        <MessageSquare className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-white" : "text-zinc-500"}`} />
+                        <span className="truncate text-[13.5px]">{session.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {isSelected ? (
+                          <span className="text-[10px] text-zinc-500 font-semibold tracking-wider uppercase">Enter</span>
+                        ) : (
+                          <span className="text-[10.5px] text-zinc-500 font-normal">{relativeTime}</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                {filteredSearchSessions.length === 0 && (
+                  <div className="text-center py-8 text-[13px] text-zinc-500">
+                    No matching chats found
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {zoomImage && (
         <ZoomImagePreview
