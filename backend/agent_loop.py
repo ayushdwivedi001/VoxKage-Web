@@ -498,6 +498,220 @@ async def execute_tool_call_v2(
             else:
                 tool_output = f"Error: Uploaded file '{filename}' not found on server disk. Cannot index."
 
+        elif name == "read_code_file":
+            filename = args.get("filename", "")
+            await send_to_client({"type": "hud_log", "content": f"Reading virtual session file: {filename}..."})
+            
+            # Fetch files in session
+            from database import get_session_messages
+            messages_history = get_session_messages(session_id)
+            
+            # Extract virtual files from messages
+            files_map = {}
+            import re
+            for m in messages_history:
+                if m.get("role") == "assistant":
+                    content = m.get("content", "")
+                    code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
+                    files_list = []
+                    for match in code_blocks:
+                        lang = match.group(1) or "txt"
+                        code = match.group(2)
+                        if not code.strip():
+                            continue
+                        
+                        start_idx = max(0, match.start() - 150)
+                        preceding = content[start_idx:match.start()]
+                        file_match = re.search(r'`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?', preceding, re.IGNORECASE)
+                        fname = file_match.group(1) if file_match else ""
+                        
+                        if not fname:
+                            lines = code.strip().split('\n')[:3]
+                            for line in lines:
+                                inline_match = re.search(r'(?:#|//|/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))', line, re.IGNORECASE)
+                                if inline_match:
+                                    fname = inline_match.group(1)
+                                    break
+                        
+                        if not fname:
+                            ext = "py" if lang == "python" else "js" if lang == "javascript" else "ts" if lang == "typescript" else "html" if lang == "html" else "css" if lang == "css" else "txt"
+                            fname = f"app_{len(files_list) + 1}.{ext}"
+                        
+                        if not any(f["name"] == fname for f in files_list):
+                            files_list.append({"name": fname, "code": code.strip()})
+                            files_map[fname] = code.strip()
+            
+            match_code = files_map.get(filename)
+            if not match_code:
+                # Try case-insensitive matching
+                for fn, c in files_map.items():
+                    if fn.lower() == filename.lower():
+                        match_code = c
+                        break
+            
+            if match_code is not None:
+                tool_output = match_code
+            else:
+                available = ", ".join(list(files_map.keys())) or "none"
+                tool_output = f"Error: File '{filename}' not found. Available session files: {available}"
+
+        elif name == "verify_code_file":
+            filename = args.get("filename", "")
+            await send_to_client({"type": "hud_log", "content": f"Performing syntax validation for: {filename}..."})
+            
+            # Fetch files in session
+            from database import get_session_messages
+            messages_history = get_session_messages(session_id)
+            
+            # Extract virtual files from messages
+            files_map = {}
+            import re
+            for m in messages_history:
+                if m.get("role") == "assistant":
+                    content = m.get("content", "")
+                    code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
+                    files_list = []
+                    for match in code_blocks:
+                        lang = match.group(1) or "txt"
+                        code = match.group(2)
+                        if not code.strip():
+                            continue
+                        
+                        start_idx = max(0, match.start() - 150)
+                        preceding = content[start_idx:match.start()]
+                        file_match = re.search(r'`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?', preceding, re.IGNORECASE)
+                        fname = file_match.group(1) if file_match else ""
+                        
+                        if not fname:
+                            lines = code.strip().split('\n')[:3]
+                            for line in lines:
+                                inline_match = re.search(r'(?:#|//|/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))', line, re.IGNORECASE)
+                                if inline_match:
+                                    fname = inline_match.group(1)
+                                    break
+                        
+                        if not fname:
+                            ext = "py" if lang == "python" else "js" if lang == "javascript" else "ts" if lang == "typescript" else "html" if lang == "html" else "css" if lang == "css" else "txt"
+                            fname = f"app_{len(files_list) + 1}.{ext}"
+                        
+                        if not any(f["name"] == fname for f in files_list):
+                            files_list.append({"name": fname, "code": code.strip()})
+                            files_map[fname] = code.strip()
+            
+            match_code = files_map.get(filename)
+            if not match_code:
+                # Try case-insensitive matching
+                for fn, c in files_map.items():
+                    if fn.lower() == filename.lower():
+                        match_code = c
+                        filename = fn
+                        break
+            
+            if match_code is None:
+                available = ", ".join(list(files_map.keys())) or "none"
+                tool_output = json.dumps({"valid": False, "error": f"Error: File '{filename}' not found. Available session files: {available}"})
+            else:
+                try:
+                    ext = filename.split(".")[-1].lower() if "." in filename else ""
+                    validation_res = {"valid": True}
+                    
+                    # 1. Bracket Matching Check (for code files)
+                    if ext in ("py", "js", "jsx", "ts", "tsx", "json", "css", "html"):
+                        brackets = {')': '(', '}': '{', ']': '['}
+                        stack = []
+                        lines_list = match_code.splitlines()
+                        for idx, line in enumerate(lines_list):
+                            in_single_quote = False
+                            in_double_quote = False
+                            in_template_literal = False
+                            escaped = False
+                            
+                            if ext == "py" and line.strip().startswith("#"):
+                                continue
+                                
+                            for char_idx, char in enumerate(line):
+                                if escaped:
+                                    escaped = False
+                                    continue
+                                if char == '\\':
+                                    escaped = True
+                                    continue
+                                if char == "'" and not in_double_quote and not in_template_literal:
+                                    in_single_quote = not in_single_quote
+                                    continue
+                                if char == '"' and not in_single_quote and not in_template_literal:
+                                    in_double_quote = not in_double_quote
+                                    continue
+                                if char == '`' and not in_single_quote and not in_double_quote:
+                                    in_template_literal = not in_template_literal
+                                    continue
+                                if in_single_quote or in_double_quote or in_template_literal:
+                                    continue
+                                    
+                                if char in brackets.values():
+                                    stack.append((char, idx + 1, char_idx + 1))
+                                elif char in brackets.keys():
+                                    if not stack:
+                                        validation_res = {"valid": False, "error": f"SyntaxError: Unmatched closing bracket '{char}' at line {idx+1}:{char_idx+1}"}
+                                        break
+                                    top, l_num, c_num = stack.pop()
+                                    if brackets[char] != top:
+                                        validation_res = {"valid": False, "error": f"SyntaxError: Mismatching bracket '{char}' at line {idx+1}:{char_idx+1} (expected closing for '{top}' from line {l_num}:{c_num})"}
+                                        break
+                            if not validation_res["valid"]:
+                                break
+                                
+                        if validation_res["valid"] and stack:
+                            top, l_num, c_num = stack.pop()
+                            validation_res = {"valid": False, "error": f"SyntaxError: Unclosed bracket '{top}' opened at line {l_num}:{c_num}"}
+
+                    # 2. Specific Language Compiler checks (only run if bracket check passed)
+                    if validation_res["valid"]:
+                        if ext == "py":
+                            try:
+                                compile(match_code, filename, 'exec')
+                            except SyntaxError as e:
+                                validation_res = {"valid": False, "error": f"SyntaxError: {e.msg} at line {e.lineno}:{e.offset}"}
+                        elif ext == "json":
+                            try:
+                                json.loads(match_code)
+                            except ValueError as e:
+                                validation_res = {"valid": False, "error": f"JSONError: {str(e)}"}
+                        elif ext == "html":
+                            from html.parser import HTMLParser
+                            class HTMLValidator(HTMLParser):
+                                def __init__(self):
+                                    super().__init__()
+                                    self.tags = []
+                                    self.errors = []
+                                def handle_starttag(self, tag, attrs):
+                                    if tag not in ('img', 'br', 'hr', 'input', 'meta', 'link', 'source', 'area', 'base', 'col', 'embed', 'param', 'track', 'wbr'):
+                                        self.tags.append((tag, self.getpos()))
+                                def handle_endtag(self, tag):
+                                    if tag in ('img', 'br', 'hr', 'input', 'meta', 'link', 'source', 'area', 'base', 'col', 'embed', 'param', 'track', 'wbr'):
+                                        return
+                                    if not self.tags:
+                                        self.errors.append(f"Unmatched closing tag </{tag}> at line {self.getpos()[0]}")
+                                        return
+                                    expected, pos = self.tags.pop()
+                                    if expected != tag:
+                                        self.errors.append(f"Tag mismatch: </{tag}> closed at line {self.getpos()[0]} (expected closing for <{expected}> opened at line {pos[0]})")
+                            
+                            val = HTMLValidator()
+                            try:
+                                val.feed(match_code)
+                                if val.errors:
+                                    validation_res = {"valid": False, "error": val.errors[0]}
+                                elif val.tags:
+                                    tag, pos = val.tags.pop()
+                                    validation_res = {"valid": False, "error": f"Unclosed tag <{tag}> opened at line {pos[0]}"}
+                            except Exception as e:
+                                validation_res = {"valid": False, "error": f"HTML Parsing Error: {str(e)}"}
+
+                    tool_output = json.dumps(validation_res)
+                except Exception as e:
+                    tool_output = json.dumps({"valid": False, "error": f"Internal Verification Error: {str(e)}"})
+
         # --- Route Memories & Problems ---
         elif name == "remember_user":
             await send_to_client({"type": "hud_log", "content": "Saving user memory..."})

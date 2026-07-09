@@ -928,7 +928,20 @@ export default function Home() {
 
     let promptText = text;
     if (comments.length > 0) {
-      const commentCtx = comments.map(c => `[Context: ${c.fileName} at line ${c.line}]: "${c.text}"`).join("\n");
+      const sessionFiles = computeSessionFiles(messages);
+      const commentCtx = comments.map(c => {
+        const matchingFile = sessionFiles.find(f => f.name === c.fileName);
+        let snippet = "";
+        if (matchingFile && matchingFile.versions.length > 0) {
+          const code = matchingFile.versions[matchingFile.versions.length - 1].code;
+          const lines = code.split("\n");
+          const start = Math.max(0, c.line - 11);
+          const end = Math.min(lines.length, c.line + 10);
+          const snippetLines = lines.slice(start, end).map((l, idx) => `${start + idx + 1}: ${l}`);
+          snippet = `\n[Code Snippet around line ${c.line} of ${c.fileName}]:\n\`\`\`\n${snippetLines.join("\n")}\n\`\`\``;
+        }
+        return `[User Comment on ${c.fileName} at line ${c.line}]: "${c.text}"${snippet}`;
+      }).join("\n\n");
       promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
     }
 
@@ -2000,7 +2013,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Right Column: Code Inspection Panel */}
           {displayedActiveFile && (
             <div
               style={{
@@ -2034,6 +2046,7 @@ export default function Home() {
                   setComments(prev => prev.filter(c => c.id !== id));
                 }}
                 jumpToLine={jumpToLine}
+                sessionFiles={sessionArtifacts}
               />
             </div>
           )}

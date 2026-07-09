@@ -61,8 +61,7 @@ export interface Message {
   thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed"; resultContent?: any }>;
 }
 
-
-export const extractFilesFromContent = (content: string) => {
+export const extractFilesFromContent = (content: string, userPromptFilenames: string[] = []) => {
   const files: Array<{ name: string; type: string; code: string }> = [];
   if (!content) return files;
 
@@ -74,18 +73,59 @@ export const extractFilesFromContent = (content: string) => {
     const code = match[2];
     if (!code.trim()) continue;
 
-    // Try to find a filename in the text preceding the code block (within last 150 characters)
+    const ext = lang === "python" ? "py" : lang === "javascript" ? "js" : lang === "typescript" ? "ts" : lang === "html" ? "html" : lang === "css" ? "css" : "txt";
+
+    // 1. Try to find a filename in the text preceding the code block (within last 150 characters)
     const searchStartIndex = Math.max(0, match.index - 150);
     const precedingText = content.substring(searchStartIndex, match.index);
-    
-    // Regex to search for a filename
-    const fileMatch = precedingText.match(/`?([\w\-]+\.(?:py|js|ts|tsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?/i);
+    const fileMatch = precedingText.match(/`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?/i);
     let fileName = fileMatch ? fileMatch[1] : "";
 
+    // 2. Try to find a filename comment inside the first 3 lines of the code block itself
     if (!fileName) {
-      const ext = lang === "python" ? "py" : lang === "javascript" ? "js" : lang === "typescript" ? "ts" : lang === "html" ? "html" : lang === "css" ? "css" : "txt";
-      const index = files.length + 1;
-      fileName = `app_${index}.${ext}`;
+      const lines = code.trim().split("\n").slice(0, 3);
+      for (const line of lines) {
+        const inlineMatch = line.match(/(?:#|\/\/|\/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))/i);
+        if (inlineMatch) {
+          fileName = inlineMatch[1];
+          break;
+        }
+      }
+    }
+
+    // 3. Try to use any filename from the user prompt of matching extension
+    if (!fileName && userPromptFilenames.length > 0) {
+      const matchingUserPromptFile = userPromptFilenames.find(f => f.toLowerCase().endsWith(`.${ext}`));
+      if (matchingUserPromptFile) {
+        fileName = matchingUserPromptFile;
+      }
+    }
+
+    // 4. Use content-based heuristics to name the file
+    if (!fileName) {
+      const codeLower = code.toLowerCase();
+      if (ext === "py") {
+        if (codeLower.includes("telegram") || codeLower.includes("telebot") || codeLower.includes("telethon")) fileName = "telegram_bot.py";
+        else if (codeLower.includes("discord")) fileName = "discord_bot.py";
+        else if (codeLower.includes("fastapi") || codeLower.includes("flask") || codeLower.includes("django")) fileName = "server.py";
+        else if (codeLower.includes("sqlite3") || codeLower.includes("db.") || codeLower.includes("database")) fileName = "database.py";
+        else if (codeLower.includes("pygame")) fileName = "game.py";
+        else if (codeLower.includes("pandas") || codeLower.includes("plt.") || codeLower.includes("matplotlib")) fileName = "data_analysis.py";
+        else fileName = `app_${files.length + 1}.py`;
+      } else if (ext === "js" || ext === "ts") {
+        if (codeLower.includes("telegram")) fileName = `telegram_bot.${ext}`;
+        else if (codeLower.includes("discord")) fileName = `discord_bot.${ext}`;
+        else if (codeLower.includes("express") || codeLower.includes("http.createserver")) fileName = `server.${ext}`;
+        else fileName = `app_${files.length + 1}.${ext}`;
+      } else if (ext === "tsx" || ext === "jsx") {
+        fileName = `App.${ext}`;
+      } else if (ext === "html") {
+        fileName = `index.html`;
+      } else if (ext === "css") {
+        fileName = `styles.css`;
+      } else {
+        fileName = `app_${files.length + 1}.txt`;
+      }
     }
 
     if (!files.some(f => f.name === fileName)) {
@@ -116,10 +156,20 @@ export const removeCodeBlocks = (text: string) => {
 export const computeSessionFiles = (messages: Message[]) => {
   const list: Array<{ name: string; type: string; versions: Array<{ version: number; code: string }> }> = [];
 
-  messages.forEach((m) => {
+  messages.forEach((m, idx) => {
     if (m.role === "assistant") {
       const { finalContent } = parseMessageContent(m.content);
-      const extracted = extractFilesFromContent(finalContent);
+      
+      // Look for files mentioned in the preceding user message
+      let userPromptFilenames: string[] = [];
+      if (idx > 0) {
+        const prevMsg = messages[idx - 1];
+        if (prevMsg && prevMsg.role === "user") {
+          userPromptFilenames = prevMsg.content.match(/[\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat)/gi) || [];
+        }
+      }
+
+      const extracted = extractFilesFromContent(finalContent, userPromptFilenames);
       extracted.forEach((file) => {
         let existing = list.find((item) => item.name === file.name);
         if (!existing) {

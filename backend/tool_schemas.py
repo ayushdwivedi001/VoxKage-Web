@@ -518,5 +518,33 @@ TOOLS_SCHEMA = [
                 "required": ["filename", "original_name"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_code_file",
+            "description": "Read the contents of any virtual code file generated in this active session workspace (e.g., telegram.py, App.tsx, styles.css, etc.). Always use this instead of laptop shell commands.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the file to read (e.g., 'telegram.py')."}
+                },
+                "required": ["filename"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "verify_code_file",
+            "description": "Perform deep compilation and syntax checks on any virtual code file generated in this session workspace. Use this to verify your changes compile correctly without errors before delivering.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the file to verify (e.g., 'App.tsx')."}
+                },
+                "required": ["filename"]
+            }
+        }
     }
 ]
