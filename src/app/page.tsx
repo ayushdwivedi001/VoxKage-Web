@@ -134,20 +134,16 @@ const VoxKageIdleCreature = () => {
             <rect className="star-1" x="1" y="1" width="1" height="1" fill="#faf9f5"/>
             <rect className="star-2" x="5" y="3" width="1" height="1" fill="#faf9f5"/>
             <rect className="star-3" x="9" y="0" width="1" height="1" fill="#faf9f5"/>
-            <g fill="#faf9f5">
-              <rect x="0" y="9" width="2" height="2"/>
-              <rect x="14" y="9" width="2" height="2"/>
-              <rect x="4" y="12" width="2" height="2"/>
-              <rect x="10" y="12" width="2" height="2"/>
-              <rect x="2" y="6"  width="12" height="1"/>
-              <rect x="2" y="7"  width="2"  height="2"/>
-              <rect x="6" y="7"  width="4"  height="2"/>
-              <rect x="12" y="7" width="2"  height="2"/>
-              <rect x="2" y="9"  width="12" height="2"/>
-              <rect x="2" y="11" width="12" height="1"/>
-              <rect className="idle-eye-l-lid" x="4"  y="7" width="2" height="2" opacity="0"/>
-              <rect className="idle-eye-r-lid" x="10" y="7" width="2" height="2" opacity="0"/>
-            </g>
+            {/* Merged Creature Path (arms + legs + body - eyes) to prevent subpixel seams */}
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M 2 6 h 12 v 3 h 2 v 2 h -2 v 1 h -2 v 2 h -2 v -2 h -4 v 2 h -2 v -2 h -2 v -1 h -2 v -2 h 2 v -3 z M 4 7 h 2 v 2 h -2 z M 10 7 h 2 v 2 h -2 z"
+              fill="#faf9f5"
+            />
+            {/* Eyelids */}
+            <rect className="idle-eye-l-lid" x="4"  y="7" width="2" height="2" fill="#faf9f5" opacity="0"/>
+            <rect className="idle-eye-r-lid" x="10" y="7" width="2" height="2" fill="#faf9f5" opacity="0"/>
           </svg>
         </>
       ) : (
@@ -177,25 +173,16 @@ const VoxKageIdleCreature = () => {
             style={{ imageRendering: "pixelated" }}
             className="text-white animate-fadeIn"
           >
-            {/* Arms */}
-            <rect x="0" y="3" width="2" height="2" fill="currentColor" />
-            <rect x="14" y="3" width="2" height="2" fill="currentColor" />
-
-            {/* Legs */}
-            <rect x="4" y="6" width="2" height="2" fill="currentColor" />
-            <rect x="10" y="6" width="2" height="2" fill="currentColor" />
-
-            {/* Body */}
-            <g fill="currentColor">
-              <rect x="2" y="0" width="12" height="1" />
-              <rect x="2" y="1" width="2" height="2" />
-              <rect x="6" y="1" width="4" height="2" />
-              <rect x="12" y="1" width="2" height="2" />
-              <rect x="2" y="3" width="12" height="2" />
-              <rect x="2" y="5" width="12" height="1" />
-              <rect className="idle-eye-l-lid" x="4" y="1" width="2" height="2" opacity="0" />
-              <rect className="idle-eye-r-lid" x="10" y="1" width="2" height="2" opacity="0" />
-            </g>
+            {/* Merged Creature Path (arms + legs + body - eyes) to prevent subpixel seams */}
+            <path
+              fillRule="evenodd"
+              clipRule="evenodd"
+              d="M 2 0 h 12 v 3 h 2 v 2 h -2 v 1 h -2 v 2 h -2 v -2 h -4 v 2 h -2 v -2 h -2 v -1 h -2 v -2 h 2 v -3 z M 4 1 h 2 v 2 h -2 z M 10 1 h 2 v 2 h -2 z"
+              fill="currentColor"
+            />
+            {/* Eyelids */}
+            <rect className="idle-eye-l-lid" x="4" y="1" width="2" height="2" fill="currentColor" opacity="0" />
+            <rect className="idle-eye-r-lid" x="10" y="1" width="2" height="2" fill="currentColor" opacity="0" />
           </svg>
         </>
       )}
@@ -2034,9 +2021,8 @@ export default function Home() {
             </div>
 
 
-            {/* Landing Hero Title & Input (only visible when not active, centered vertically) */}
             {!isChatActive && (
-              <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20">
+              <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 pb-32 z-20">
                 <VoxKageIdleCreature />
                 <h1
                   className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif"
