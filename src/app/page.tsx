@@ -2,11 +2,6 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import {
-  Copy,
-  Volume2,
-  ThumbsUp,
-  ThumbsDown,
-  RotateCcw,
   ChevronDown,
   Download,
   ChevronRight,
@@ -23,7 +18,9 @@ import {
   Star,
   Edit3,
   Trash2,
-  ArrowDown
+  ArrowDown,
+  Folder,
+  FolderOpen
 } from "lucide-react";
 import GradientBackground from "@/components/GradientBackground";
 import PromptInput from "@/components/PromptInput";
@@ -206,6 +203,14 @@ const VoxKageIdleCreature = () => {
   );
 };
 
+interface TreeNode {
+  name: string;
+  path: string;
+  isFolder: boolean;
+  children: Record<string, TreeNode>;
+  fileData?: any;
+}
+
 export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginEmail, setLoginEmail] = useState("ayushdwivedi001@gmail.com");
@@ -230,6 +235,118 @@ export default function Home() {
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
   const [showArtifactsPanel, setShowArtifactsPanel] = useState(false);
   const [activeFileVersions, setActiveFileVersions] = useState<{ [name: string]: number }>({});
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const buildFileTree = (files: any[]) => {
+    const root: TreeNode = { name: "root", path: "", isFolder: true, children: {} };
+
+    files.forEach((file) => {
+      const parts = file.name.split("/");
+      let current = root;
+      let currentPath = "";
+
+      parts.forEach((part: string, index: number) => {
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        const isLast = index === parts.length - 1;
+
+        if (!current.children[part]) {
+          current.children[part] = {
+            name: part,
+            path: currentPath,
+            isFolder: !isLast,
+            children: {},
+            fileData: isLast ? file : undefined,
+          };
+        }
+        current = current.children[part];
+      });
+    });
+
+    return root;
+  };
+
+  const renderTreeNode = (node: TreeNode, depth: number = 0): React.ReactNode => {
+    const isExpanded = expandedFolders[node.path] ?? true;
+    const hasChildren = Object.keys(node.children).length > 0;
+
+    if (node.isFolder) {
+      return (
+        <div key={node.path} className="flex flex-col w-full select-none">
+          <div
+            onClick={() => {
+              setExpandedFolders(prev => ({ ...prev, [node.path]: !isExpanded }));
+            }}
+            className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-zinc-800/40 text-zinc-400 hover:text-zinc-200 cursor-pointer text-[13.5px] font-sans font-medium transition-all duration-150"
+            style={{ paddingLeft: `${depth * 14 + 8}px` }}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+            )}
+            <FolderOpen className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+            <span className="truncate">{node.name}</span>
+          </div>
+
+          {isExpanded && hasChildren && (
+            <div className="flex flex-col w-full">
+              {Object.values(node.children)
+                .sort((a, b) => (b.isFolder ? 1 : 0) - (a.isFolder ? 1 : 0) || a.name.localeCompare(b.name))
+                .map(child => renderTreeNode(child, depth + 1))}
+            </div>
+          )}
+        </div>
+      );
+    } else {
+      const file = node.fileData;
+      if (!file) return null;
+      
+      const activeVer = activeFileVersions[file.name] || file.versions.length;
+      const verObj = file.versions.find((v: any) => v.version === activeVer) || file.versions[file.versions.length - 1];
+
+      return (
+        <div
+          key={node.path}
+          onClick={() => {
+            setActiveFile({ name: file.name, code: verObj.code });
+            setShowArtifactsPanel(false);
+          }}
+          className="flex items-center justify-between group/file-node rounded-lg hover:bg-zinc-800/35 hover:text-white text-zinc-350 cursor-pointer text-[13.5px] font-sans font-normal py-1.5 px-2 transition-all duration-150"
+          style={{ paddingLeft: `${depth * 14 + 18}px` }}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-grow mr-2">
+            <FileText className="w-4 h-4 text-blue-400/80 flex-shrink-0" />
+            <span className="truncate">{node.name}</span>
+            {file.versions && file.versions.length > 1 && (
+              <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1 py-0.2 rounded font-sans scale-90">
+                v{activeVer}
+              </span>
+            )}
+          </div>
+          
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              const blob = new Blob([verObj.code], { type: "text/plain" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = node.name;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
+            className="opacity-0 group-hover/file-node:opacity-100 hover:text-blue-400 p-0.5 rounded transition-opacity duration-150 cursor-pointer flex-shrink-0"
+            title="Download file"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+  };
 
   // Caching and UI helper states
   const [messagesCache, setMessagesCache] = useState<{ [sessionId: string]: Message[] }>({});
@@ -680,6 +797,12 @@ export default function Home() {
     setIsChatActive(false);
     setChatTitle("Greeting");
     setContextPercent(0);
+    setActiveFile(null);
+    setComments([]);
+    setJumpToLine(null);
+    setShowArtifactsPanel(false);
+    setActiveFileVersions({});
+    setExpandedFolders({});
   };
 
   const handleToggleStar = async (sessionId: string, starred: boolean) => {
@@ -2028,6 +2151,10 @@ export default function Home() {
                   setJumpToLine(null);
                   setIsExpanded(false);
                 }}
+                onBack={() => {
+                  setActiveFile(null);
+                  setShowArtifactsPanel(true);
+                }}
                 isExpanded={isExpanded}
                 onToggleExpand={() => setIsExpanded(!isExpanded)}
                 comments={comments}
@@ -2076,13 +2203,38 @@ export default function Home() {
               </div>
 
               <div className="flex-grow overflow-auto p-5 flex flex-col gap-4">
-                <h3 className="text-zinc-100 text-[15px] font-medium font-sans">
-                  Artifacts created in this session
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-zinc-100 text-[15px] font-medium font-sans">
+                    Artifacts created in this session
+                  </h3>
+                  {sessionArtifacts.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        sessionArtifacts.forEach((file) => {
+                          const activeVer = activeFileVersions[file.name] || file.versions.length;
+                          const verObj = file.versions.find((v: any) => v.version === activeVer) || file.versions[file.versions.length - 1];
+                          const blob = new Blob([verObj.code], { type: "text/plain" });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = file.name.split("/").pop() || file.name;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        });
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-350 hover:text-white text-[12.5px] font-medium transition-all duration-200 cursor-pointer select-none"
+                    >
+                      Download all
+                    </button>
+                  )}
+                </div>
                 <div className="flex flex-col gap-2.5">
                   {sessionArtifacts.map((file, idx) => {
                     const activeVer = activeFileVersions[file.name] || file.versions.length;
-                    const verObj = file.versions.find(v => v.version === activeVer) || file.versions[file.versions.length - 1];
+                    const verObj = file.versions.find((v: any) => v.version === activeVer) || file.versions[file.versions.length - 1];
                     return (
                       <FileListItem
                         key={idx}
@@ -2102,7 +2254,7 @@ export default function Home() {
                           const url = URL.createObjectURL(blob);
                           const a = document.createElement("a");
                           a.href = url;
-                          a.download = file.name;
+                          a.download = file.name.split("/").pop() || file.name;
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);

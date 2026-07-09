@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Copy, Maximize2, Minimize2, Check, X, MessageSquare, Eye, Code, Terminal, RotateCw } from "lucide-react";
+import { Copy, Maximize2, Minimize2, Check, X, MessageSquare, Eye, Code, Terminal, RotateCw, ArrowLeft } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-javascript";
@@ -76,6 +76,7 @@ interface FileInspectorPanelProps {
   onDeleteComment: (id: string) => void;
   jumpToLine: number | null;
   sessionFiles?: Array<{ name: string; type: string; versions: Array<{ version: number; code: string }> }>;
+  onBack?: () => void;
 }
 
 export default function FileInspectorPanel({
@@ -89,6 +90,7 @@ export default function FileInspectorPanel({
   onDeleteComment,
   jumpToLine,
   sessionFiles = [],
+  onBack,
 }: FileInspectorPanelProps) {
   const [copied, setCopied] = useState(false);
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
@@ -102,17 +104,21 @@ export default function FileInspectorPanel({
   const [consoleHeight, setConsoleHeight] = useState(180);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [isResizing, setIsResizing] = useState(false);
+  const [consoleCopied, setConsoleCopied] = useState(false);
+
   const isResizingRef = useRef(false);
   const logsEndRef = useRef<HTMLDivElement | null>(null);
 
   const handleResizeStart = (e: React.PointerEvent) => {
     isResizingRef.current = true;
+    setIsResizing(true);
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
   };
 
-  // Check if file is previewable
-  const canPreview = /\.(html|css|js|jsx|ts|tsx|json)$/i.test(fileName);
+  // Check if file is previewable (only JSX/TSX, HTML, CSS, JS)
+  const canPreview = /\.(html|css|js|jsx|tsx)$/i.test(fileName);
 
   const handleCopy = async () => {
     try {
@@ -202,6 +208,7 @@ export default function FileInspectorPanel({
     const handlePointerUp = () => {
       if (isResizingRef.current) {
         isResizingRef.current = false;
+        setIsResizing(false);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       }
@@ -214,6 +221,17 @@ export default function FileInspectorPanel({
       window.removeEventListener("pointerup", handlePointerUp);
     };
   }, []);
+
+  const handleCopyConsole = async () => {
+    try {
+      const logsText = consoleLogs.map(l => `[${l.time}] [${l.type.toUpperCase()}] ${l.text}`).join("\n");
+      await navigator.clipboard.writeText(logsText);
+      setConsoleCopied(true);
+      setTimeout(() => setConsoleCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy console logs", err);
+    }
+  };
 
   const handleCommitComment = (lineNum: number) => {
     if (!commentInputText.trim()) return;
@@ -367,7 +385,8 @@ export default function FileInspectorPanel({
         k.toLowerCase() === (path + '.tsx').toLowerCase() || 
         k.toLowerCase() === (path + '.ts').toLowerCase() || 
         k.toLowerCase() === (path + '.jsx').toLowerCase() || 
-        k.toLowerCase() === (path + '.js').toLowerCase()
+        k.toLowerCase() === (path + '.js').toLowerCase() ||
+        k.toLowerCase() === (path + '.css').toLowerCase()
       );
       
       const file = files[fileKey];
@@ -375,25 +394,39 @@ export default function FileInspectorPanel({
         throw new Error("Module not found: " + path);
       }
       
-      let transpiled = "";
-      try {
-        transpiled = Babel.transform(file.content, {
-          presets: ["react", "typescript"],
-          filename: path
-        }).code;
-      } catch (err) {
-        sendLog("error", "Transpile Error in " + path + ": " + err.message);
-        throw err;
+      let blobCode = "";
+
+      if (fileKey.toLowerCase().endsWith(".css")) {
+        const escapedCss = file.content
+          .split('\\\\').join('\\\\\\\\')
+          .split("'").join("\\\\'")
+          .split('\\n').join('\\\\n')
+          .split('\\r').join('\\\\r');
+        blobCode = "const style = document.createElement('style'); style.textContent = '" + escapedCss + "'; document.head.appendChild(style); export default {};";
+      } else {
+        let transpiled = "";
+        try {
+          transpiled = Babel.transform(file.content, {
+            presets: [
+              ["typescript", { allExtensions: true, isTSX: true }],
+              "react"
+            ],
+            filename: path
+          }).code;
+        } catch (err) {
+          sendLog("error", "Transpile Error in " + path + ": " + err.message);
+          throw err;
+        }
+        
+        // Resolve relative modules in generated code to dynamic Blobs
+        blobCode = transpiled.replace(/(from\\s+['"])(\\.\\.?\\/[^'"]+)(['"])/g, (match, p1, p2, p3) => {
+          const resolvedPath = resolvePath(path, p2);
+          const resolvedBlob = compileModule(resolvedPath);
+          return p1 + resolvedBlob + p3;
+        });
       }
       
-      // Resolve relative modules in generated code to dynamic Blobs
-      const resolvedCode = transpiled.replace(/(from\\s+['"])(\\.\\.?\\/[^'"]+)(['"])/g, (match, p1, p2, p3) => {
-        const resolvedPath = resolvePath(path, p2);
-        const resolvedBlob = compileModule(resolvedPath);
-        return p1 + resolvedBlob + p3;
-      });
-      
-      const blob = new Blob([resolvedCode], { type: "application/javascript" });
+      const blob = new Blob([blobCode], { type: "application/javascript" });
       const blobUrl = URL.createObjectURL(blob);
       blobUrls[path] = blobUrl;
       return blobUrl;
@@ -439,13 +472,15 @@ export default function FileInspectorPanel({
       // 4. Resolve React Component Mount if active file is a React file and no script is mounting it
       const isReactActive = ${!isHtml};
       if (isReactActive) {
-        const entryKey = Object.keys(blobUrls).find(k => 
-          k.toLowerCase() === 'app.tsx' || 
-          k.toLowerCase() === 'app.jsx' || 
-          k.toLowerCase() === 'index.tsx' || 
-          k.toLowerCase() === 'index.jsx' || 
-          k.toLowerCase() === 'index.js'
-        );
+        let entryKey = Object.keys(blobUrls).find(k => {
+          const lk = k.toLowerCase();
+          return lk === 'app.tsx' || lk === 'app.jsx' || lk === 'index.tsx' || lk === 'index.jsx' || lk === 'index.js' ||
+                 lk.endsWith('/app.tsx') || lk.endsWith('/app.jsx') || lk.endsWith('/index.tsx') || lk.endsWith('/index.jsx') || lk.endsWith('/index.js');
+        });
+        
+        if (!entryKey && (fileName.endsWith('.jsx') || fileName.endsWith('.tsx') || fileName.endsWith('.js') || fileName.endsWith('.ts'))) {
+          entryKey = Object.keys(blobUrls).find(k => k.toLowerCase() === fileName.toLowerCase());
+        }
         
         if (entryKey) {
           sendLog("info", "Mounting entry component: " + entryKey);
@@ -455,7 +490,7 @@ export default function FileInspectorPanel({
           entryScript.textContent = \`
             import React from 'react';
             import ReactDOM from 'react-dom/client';
-            import App from '\${entryUrl}';
+            import App from '\\\${entryUrl}';
             
             const rootEl = document.getElementById('root');
             if (rootEl) {
@@ -500,8 +535,18 @@ export default function FileInspectorPanel({
       {/* Top Header Panel */}
       <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0 gap-4">
         {/* Left Side: Filename & Preview Mode Toggles */}
-        <div className="min-w-0 flex items-center gap-4">
-          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[200px]">
+        <div className="min-w-0 flex items-center gap-2">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="flex items-center gap-1.5 text-[12.5px] font-medium text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all duration-200 mr-1 select-none"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back</span>
+            </button>
+          )}
+          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[200px]" title={fileName}>
             {fileName}
           </span>
           
@@ -709,6 +754,7 @@ export default function FileInspectorPanel({
         ) : (
           /* Preview Iframe Viewport Area */
           <div className="flex-grow bg-zinc-950 relative h-full w-full">
+            {isResizing && <div className="absolute inset-0 bg-transparent z-50 pointer-events-auto cursor-ns-resize" />}
             <iframe
               key={reloadKey}
               srcDoc={srcDoc}
@@ -742,8 +788,15 @@ export default function FileInspectorPanel({
               <div className="flex items-center gap-2.5">
                 <button
                   type="button"
+                  onClick={handleCopyConsole}
+                  className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850 cursor-pointer flex items-center gap-1 select-none font-sans"
+                >
+                  {consoleCopied ? "Copied!" : "Copy logs"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => setConsoleLogs([])}
-                  className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850 cursor-pointer"
+                  className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850 cursor-pointer select-none font-sans"
                 >
                   Clear logs
                 </button>

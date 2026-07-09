@@ -522,13 +522,13 @@ async def execute_tool_call_v2(
                         
                         start_idx = max(0, match.start() - 150)
                         preceding = content[start_idx:match.start()]
-                        file_match = re.search(r'`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?', preceding, re.IGNORECASE)
+                        file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
                         fname = file_match.group(1) if file_match else ""
                         
                         if not fname:
                             lines = code.strip().split('\n')[:3]
                             for line in lines:
-                                inline_match = re.search(r'(?:#|//|/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))', line, re.IGNORECASE)
+                                inline_match = re.search(r'(?:#|//|/\*)\s*(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))', line, re.IGNORECASE)
                                 if inline_match:
                                     fname = inline_match.group(1)
                                     break
@@ -579,13 +579,13 @@ async def execute_tool_call_v2(
                         
                         start_idx = max(0, match.start() - 150)
                         preceding = content[start_idx:match.start()]
-                        file_match = re.search(r'`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?', preceding, re.IGNORECASE)
+                        file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
                         fname = file_match.group(1) if file_match else ""
                         
                         if not fname:
                             lines = code.strip().split('\n')[:3]
                             for line in lines:
-                                inline_match = re.search(r'(?:#|//|/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))', line, re.IGNORECASE)
+                                inline_match = re.search(r'(?:#|//|/\*)\s*(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))', line, re.IGNORECASE)
                                 if inline_match:
                                     fname = inline_match.group(1)
                                     break

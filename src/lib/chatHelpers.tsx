@@ -73,19 +73,27 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
     const code = match[2];
     if (!code.trim()) continue;
 
-    const ext = lang === "python" ? "py" : lang === "javascript" ? "js" : lang === "typescript" ? "ts" : lang === "html" ? "html" : lang === "css" ? "css" : "txt";
+    const ext = lang === "python" ? "py" : 
+                lang === "javascript" ? "js" : 
+                lang === "typescript" ? "ts" : 
+                lang === "html" ? "html" : 
+                lang === "css" ? "css" : 
+                lang === "tsx" ? "tsx" :
+                lang === "jsx" ? "jsx" :
+                lang === "json" ? "json" :
+                "txt";
 
     // 1. Try to find a filename in the text preceding the code block (within last 150 characters)
     const searchStartIndex = Math.max(0, match.index - 150);
     const precedingText = content.substring(searchStartIndex, match.index);
-    const fileMatch = precedingText.match(/`?([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))`?/i);
+    const fileMatch = precedingText.match(/`?(\/?[\w\-]+(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?/i);
     let fileName = fileMatch ? fileMatch[1] : "";
 
     // 2. Try to find a filename comment inside the first 3 lines of the code block itself
     if (!fileName) {
       const lines = code.trim().split("\n").slice(0, 3);
       for (const line of lines) {
-        const inlineMatch = line.match(/(?:#|\/\/|\/\*)\s*([\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat))/i);
+        const inlineMatch = line.match(/(?:#|\/\/|\/\*)\s*(\/?[\w\-]+(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))/i);
         if (inlineMatch) {
           fileName = inlineMatch[1];
           break;
@@ -101,31 +109,46 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
       }
     }
 
-    // 4. Use content-based heuristics to name the file
-    if (!fileName) {
-      const codeLower = code.toLowerCase();
-      if (ext === "py") {
-        if (codeLower.includes("telegram") || codeLower.includes("telebot") || codeLower.includes("telethon")) fileName = "telegram_bot.py";
-        else if (codeLower.includes("discord")) fileName = "discord_bot.py";
-        else if (codeLower.includes("fastapi") || codeLower.includes("flask") || codeLower.includes("django")) fileName = "server.py";
-        else if (codeLower.includes("sqlite3") || codeLower.includes("db.") || codeLower.includes("database")) fileName = "database.py";
-        else if (codeLower.includes("pygame")) fileName = "game.py";
-        else if (codeLower.includes("pandas") || codeLower.includes("plt.") || codeLower.includes("matplotlib")) fileName = "data_analysis.py";
-        else fileName = `app_${files.length + 1}.py`;
-      } else if (ext === "js" || ext === "ts") {
-        if (codeLower.includes("telegram")) fileName = `telegram_bot.${ext}`;
-        else if (codeLower.includes("discord")) fileName = `discord_bot.${ext}`;
-        else if (codeLower.includes("express") || codeLower.includes("http.createserver")) fileName = `server.${ext}`;
-        else fileName = `app_${files.length + 1}.${ext}`;
-      } else if (ext === "tsx" || ext === "jsx") {
-        fileName = `App.${ext}`;
-      } else if (ext === "html") {
-        fileName = `index.html`;
-      } else if (ext === "css") {
-        fileName = `styles.css`;
+    // 4. Determine file promotion
+    const hasExplicitName = !!fileName;
+    if (!hasExplicitName) {
+      const linesCount = code.split("\n").length;
+      const isLargeBlock = linesCount > 35 || code.length > 1500;
+      const isCodeLang = ["py", "js", "ts", "tsx", "jsx", "html", "css"].includes(ext);
+      
+      if (isLargeBlock && isCodeLang) {
+        const codeLower = code.toLowerCase();
+        if (ext === "py") {
+          if (codeLower.includes("telegram") || codeLower.includes("telebot") || codeLower.includes("telethon")) fileName = "telegram_bot.py";
+          else if (codeLower.includes("discord")) fileName = "discord_bot.py";
+          else if (codeLower.includes("fastapi") || codeLower.includes("flask") || codeLower.includes("django")) fileName = "server.py";
+          else if (codeLower.includes("sqlite3") || codeLower.includes("db.") || codeLower.includes("database")) fileName = "database.py";
+          else if (codeLower.includes("pygame")) fileName = "game.py";
+          else if (codeLower.includes("pandas") || codeLower.includes("plt.") || codeLower.includes("matplotlib")) fileName = "data_analysis.py";
+          else fileName = `app_${files.length + 1}.py`;
+        } else if (ext === "js" || ext === "ts") {
+          if (codeLower.includes("telegram")) fileName = `telegram_bot.${ext}`;
+          else if (codeLower.includes("discord")) fileName = `discord_bot.${ext}`;
+          else if (codeLower.includes("express") || codeLower.includes("http.createserver")) fileName = `server.${ext}`;
+          else fileName = `app_${files.length + 1}.${ext}`;
+        } else if (ext === "tsx" || ext === "jsx") {
+          fileName = `App.${ext}`;
+        } else if (ext === "html") {
+          fileName = `index.html`;
+        } else if (ext === "css") {
+          fileName = `styles.css`;
+        } else {
+          fileName = `app_${files.length + 1}.txt`;
+        }
       } else {
-        fileName = `app_${files.length + 1}.txt`;
+        // Skip rendering as file, keep as inline code block
+        continue;
       }
+    }
+
+    // Clean leading slash for relative virtual path sync
+    if (fileName.startsWith("/")) {
+      fileName = fileName.substring(1);
     }
 
     if (!files.some(f => f.name === fileName)) {
@@ -136,6 +159,7 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
       else if (fileName.endsWith(".html")) fileType = "HTML";
       else if (fileName.endsWith(".css")) fileType = "CSS";
       else if (fileName.endsWith(".json")) fileType = "JSON";
+      else if (fileName.endsWith(".zip")) fileType = "ZIP Archive";
 
       files.push({
         name: fileName,
@@ -153,6 +177,20 @@ export const removeCodeBlocks = (text: string) => {
   return text.replace(/```\w*\n[\s\S]*?(?:```|$)/g, "").trim();
 };
 
+export const removeFileCodeBlocks = (content: string, extractedFiles: Array<{ name: string; code: string }>) => {
+  if (!content) return "";
+  const codeBlockRegex = /(```\w*\n[\s\S]*?(?:```|$))/g;
+  return content.replace(codeBlockRegex, (match) => {
+    const blockMatch = match.match(/```\w*\n([\s\S]*?)(?:```|$)/);
+    const code = blockMatch ? blockMatch[1].trim() : "";
+    const isExtracted = extractedFiles.some(f => f.code.trim() === code);
+    if (isExtracted) {
+      return "";
+    }
+    return match;
+  }).trim();
+};
+
 export const computeSessionFiles = (messages: Message[]) => {
   const list: Array<{ name: string; type: string; versions: Array<{ version: number; code: string }> }> = [];
 
@@ -165,7 +203,7 @@ export const computeSessionFiles = (messages: Message[]) => {
       if (idx > 0) {
         const prevMsg = messages[idx - 1];
         if (prevMsg && prevMsg.role === "user") {
-          userPromptFilenames = prevMsg.content.match(/[\w\-]+\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat)/gi) || [];
+          userPromptFilenames = prevMsg.content.match(/\/?[\w\-]+(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip)/gi) || [];
         }
       }
 
@@ -884,6 +922,50 @@ export function renderTable(rows: string[][], key: string, sources: any[] = []) 
   );
 }
 
+const CodeSnippetBlock = ({ code, language }: { code: string; language: string }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy code snippet", err);
+    }
+  };
+
+  return (
+    <div className="my-4 border border-zinc-800 rounded-xl overflow-hidden bg-[#121215] shadow-lg select-text font-mono w-full max-w-[100%]">
+      {/* Header bar */}
+      <div className="flex justify-between items-center px-4 py-2 bg-[#18181b] border-b border-zinc-850 text-zinc-400 select-none">
+        <span className="text-[11.5px] font-sans font-medium uppercase tracking-wider">{language || "code"}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 hover:text-white text-[11px] font-sans font-medium transition-colors cursor-pointer"
+        >
+          {copied ? (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-green-500"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span>Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      {/* Code body */}
+      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed text-zinc-300 bg-[#0f0f12] scrollbar-thin">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+};
+
 export function renderFormattedContent(content: string, sources: any[] = []) {
   if (!content) return null;
   
@@ -911,6 +993,11 @@ export function renderFormattedContent(content: string, sources: any[] = []) {
   let inBlockMath = false;
   let blockMathContent = "";
 
+  let inCodeBlock = false;
+  let codeBlockContent = "";
+  let codeBlockLang = "";
+  let codeBlockKey = 0;
+
   const isTableRow = (line: string) => {
     return line.trim().startsWith("|") && line.trim().endsWith("|");
   };
@@ -926,6 +1013,31 @@ export function renderFormattedContent(content: string, sources: any[] = []) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        renderedElements.push(
+          <CodeSnippetBlock 
+            key={`code-${codeBlockKey++}`} 
+            code={codeBlockContent} 
+            language={codeBlockLang} 
+          />
+        );
+        inCodeBlock = false;
+        codeBlockContent = "";
+        codeBlockLang = "";
+      } else {
+        const langMatch = line.trim().match(/^```(\w*)/);
+        codeBlockLang = langMatch ? langMatch[1] : "";
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBlockContent += (codeBlockContent ? "\n" : "") + line;
+      continue;
+    }
 
     if (line.trim() === "") {
       renderedElements.push(<div key={`space-${i}`} className="h-1.5" />);
@@ -1023,6 +1135,16 @@ export function renderFormattedContent(content: string, sources: any[] = []) {
         );
       }
     }
+  }
+
+  if (inCodeBlock && codeBlockContent.trim()) {
+    renderedElements.push(
+      <CodeSnippetBlock 
+        key={`code-${codeBlockKey++}`} 
+        code={codeBlockContent} 
+        language={codeBlockLang} 
+      />
+    );
   }
 
   if (inTable && tableRows.length > 0) {

@@ -19,7 +19,7 @@ import {
 import {
   Message,
   extractFilesFromContent,
-  removeCodeBlocks,
+  removeFileCodeBlocks,
   computeSessionFiles,
   parseMessageContent,
   renderFormattedContent
@@ -789,7 +789,7 @@ export default function AssistantResponseBubble({
       {/* --- Assistant Response Text content --- */}
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
-          {renderFormattedContent(removeCodeBlocks(finalContent), allSources)}
+          {renderFormattedContent(removeFileCodeBlocks(finalContent, extracted), allSources)}
         </div>
       )}
 
@@ -899,11 +899,15 @@ export default function AssistantResponseBubble({
       {(msg.status === "completed" || msg.status === "streaming") && (() => {
         const extractedFiles = extractFilesFromContent(finalContent);
         if (extractedFiles.length === 0) return null;
+        
+        const hasZipFile = extractedFiles.some(f => f.name.endsWith('.zip'));
+        const filesToDisplay = hasZipFile ? extractedFiles.filter(f => f.name.endsWith('.zip')) : extractedFiles;
+        
         const sessionFiles = computeSessionFiles(messages);
         
         return (
           <div className="flex flex-col gap-2.5 w-full max-w-[90%] mt-4 animate-fadeIn">
-            {extractedFiles.map((file, idx) => {
+            {filesToDisplay.map((file, idx) => {
               const fileData = sessionFiles.find(f => f.name === file.name);
               const currentActiveVer = activeFileVersions[file.name] || (fileData ? fileData.versions.length : 1);
               const currentVerObj = fileData?.versions.find(v => v.version === currentActiveVer) || file;
