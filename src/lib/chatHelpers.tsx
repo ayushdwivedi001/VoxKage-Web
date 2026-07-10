@@ -61,8 +61,40 @@ export interface Message {
   thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed"; resultContent?: any }>;
 }
 
+export const applyDiff = (currentCode: string, diffBlock: string): string => {
+  const diffRegex = /<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
+  let newCode = currentCode;
+  let match;
+  let applied = false;
+  
+  while ((match = diffRegex.exec(diffBlock)) !== null) {
+    const searchContent = match[1];
+    const replaceContent = match[2];
+    
+    const normalizedSearch = searchContent.replace(/\r\n/g, "\n");
+    const normalizedCode = newCode.replace(/\r\n/g, "\n");
+    
+    if (normalizedCode.includes(normalizedSearch)) {
+      newCode = normalizedCode.replace(normalizedSearch, replaceContent.replace(/\r\n/g, "\n"));
+      applied = true;
+    } else {
+      const trimmedSearch = normalizedSearch.trim();
+      const trimmedCode = normalizedCode.trim();
+      if (trimmedCode.includes(trimmedSearch)) {
+        const idx = normalizedCode.indexOf(trimmedSearch);
+        if (idx !== -1) {
+          newCode = normalizedCode.substring(0, idx) + replaceContent.replace(/\r\n/g, "\n") + normalizedCode.substring(idx + trimmedSearch.length);
+          applied = true;
+        }
+      }
+    }
+  }
+  
+  return applied ? newCode : currentCode;
+};
+
 export const extractFilesFromContent = (content: string, userPromptFilenames: string[] = []) => {
-  const files: Array<{ name: string; type: string; code: string }> = [];
+  const files: Array<{ name: string; type: string; code: string; isDiff?: boolean }> = [];
   if (!content) return files;
 
   const codeBlockRegex = /```(\w*)\n([\s\S]*?)(?:```|$)/g;
@@ -151,7 +183,12 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
       fileName = fileName.substring(1);
     }
 
-    if (!files.some(f => f.name === fileName)) {
+    const isDiff = code.includes("<<<<<<< SEARCH") && code.includes("=======") && code.includes(">>>>>>> REPLACE");
+    const existing = files.find(f => f.name === fileName);
+    if (existing) {
+      existing.code = existing.code + "\n\n" + code.trim();
+      existing.isDiff = existing.isDiff || isDiff;
+    } else {
       let fileType = "Code";
       if (fileName.endsWith(".py")) fileType = "Python";
       else if (fileName.endsWith(".js") || fileName.endsWith(".jsx")) fileType = "JavaScript";
@@ -164,8 +201,60 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
       files.push({
         name: fileName,
         type: `${fileType} · ${lang.toUpperCase()}`,
-        code: code.trim()
+        code: code.trim(),
+        isDiff
       });
+    }
+  }
+
+  // Look for naked/unwrapped SEARCH/REPLACE diff blocks (outside code blocks)
+  const diffBlockRegex = /<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE/g;
+  let diffMatch;
+  while ((diffMatch = diffBlockRegex.exec(content)) !== null) {
+    const fullMatchText = diffMatch[0];
+    // Check if this diff block was already captured inside a code block
+    const alreadyExtracted = files.some(f => f.code.includes(fullMatchText));
+    if (alreadyExtracted) continue;
+
+    // Find filename in the text preceding the diff block (within last 150 characters)
+    const searchStartIndex = Math.max(0, diffMatch.index - 150);
+    const precedingText = content.substring(searchStartIndex, diffMatch.index);
+    const fileMatch = precedingText.match(/`?(\/?[\w\-]+(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?/i);
+    let fileName = fileMatch ? fileMatch[1] : "";
+
+    // Fall back to prompt files if any
+    if (!fileName && userPromptFilenames.length > 0) {
+      fileName = userPromptFilenames[0];
+    }
+
+    if (fileName) {
+      if (fileName.startsWith("/")) {
+        fileName = fileName.substring(1);
+      }
+
+      let fileType = "Code";
+      let lang = "txt";
+      if (fileName.endsWith(".py")) { fileType = "Python"; lang = "python"; }
+      else if (fileName.endsWith(".js")) { fileType = "JavaScript"; lang = "javascript"; }
+      else if (fileName.endsWith(".jsx")) { fileType = "JavaScript"; lang = "jsx"; }
+      else if (fileName.endsWith(".ts")) { fileType = "TypeScript"; lang = "typescript"; }
+      else if (fileName.endsWith(".tsx")) { fileType = "TypeScript"; lang = "tsx"; }
+      else if (fileName.endsWith(".html")) { fileType = "HTML"; lang = "html"; }
+      else if (fileName.endsWith(".css")) { fileType = "CSS"; lang = "css"; }
+      else if (fileName.endsWith(".json")) { fileType = "JSON"; lang = "json"; }
+
+      const existing = files.find(f => f.name === fileName);
+      if (existing) {
+        existing.code = existing.code + "\n\n" + fullMatchText.trim();
+        existing.isDiff = true;
+      } else {
+        files.push({
+          name: fileName,
+          type: `${fileType} · ${lang.toUpperCase()}`,
+          code: fullMatchText.trim(),
+          isDiff: true
+        });
+      }
     }
   }
 
@@ -180,7 +269,7 @@ export const removeCodeBlocks = (text: string) => {
 export const removeFileCodeBlocks = (content: string, extractedFiles: Array<{ name: string; code: string }>) => {
   if (!content) return "";
   const codeBlockRegex = /(```\w*\n[\s\S]*?(?:```|$))/g;
-  return content.replace(codeBlockRegex, (match) => {
+  let clean = content.replace(codeBlockRegex, (match) => {
     const blockMatch = match.match(/```\w*\n([\s\S]*?)(?:```|$)/);
     const code = blockMatch ? blockMatch[1].trim() : "";
     const isExtracted = extractedFiles.some(f => f.code.trim() === code);
@@ -189,6 +278,25 @@ export const removeFileCodeBlocks = (content: string, extractedFiles: Array<{ na
     }
     return match;
   }).trim();
+
+  // Strip naked diff blocks that were extracted
+  extractedFiles.forEach(f => {
+    if (f.code.includes("<<<<<<< SEARCH")) {
+      const normalizedCode = f.code.trim();
+      if (clean.includes(normalizedCode)) {
+        clean = clean.replace(normalizedCode, "");
+      } else {
+        // Fallback for slight whitespace or CR/LF changes
+        const regexStr = normalizedCode.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&').replace(/\s+/g, '\\s+');
+        try {
+          const rx = new RegExp(regexStr, 'g');
+          clean = clean.replace(rx, "");
+        } catch (_) {}
+      }
+    }
+  });
+
+  return clean.trim();
 };
 
 export const computeSessionFiles = (messages: Message[]) => {
@@ -219,10 +327,17 @@ export const computeSessionFiles = (messages: Message[]) => {
           list.push(existing);
         }
         const lastVer = existing.versions[existing.versions.length - 1];
-        if (!lastVer || lastVer.code !== file.code) {
+        let codeToPush = file.code;
+        
+        if (file.isDiff) {
+          const currentCode = lastVer ? lastVer.code : "";
+          codeToPush = applyDiff(currentCode, file.code);
+        }
+        
+        if (!lastVer || lastVer.code !== codeToPush) {
           existing.versions.push({
             version: existing.versions.length + 1,
-            code: file.code,
+            code: codeToPush,
           });
         }
       });

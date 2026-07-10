@@ -37,6 +37,8 @@ interface PromptInputProps {
   onRemoveAttachment?: (filename: string) => void;
   onPreviewImage?: (url: string, rect: DOMRect) => void;
   onPreviewDocument?: (file: Attachment) => void;
+  editingFile?: string | null;
+  onRemoveEditingFile?: () => void;
 }
 
 export default function PromptInput({
@@ -59,6 +61,8 @@ export default function PromptInput({
   onRemoveAttachment,
   onPreviewImage,
   onPreviewDocument,
+  editingFile,
+  onRemoveEditingFile,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -465,8 +469,31 @@ export default function PromptInput({
       )}
 
       {/* Pinned Comments Context Attachment Pills inside Prompt Box */}
-      {comments.length > 0 && (
+      {(comments.length > 0 || editingFile) && (
         <div className="flex flex-wrap gap-2 mb-3.5 animate-fadeIn">
+          {editingFile && (
+            <div 
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-600/10 border border-blue-500/20 transition-all duration-200 cursor-default select-none"
+            >
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+              <span className="text-[12.5px] text-blue-300 font-sans font-medium">
+                Editing: {editingFile}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onRemoveEditingFile) {
+                    onRemoveEditingFile();
+                  }
+                }}
+                className="flex items-center justify-center w-4 h-4 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 hover:text-blue-200 transition-colors cursor-pointer"
+                title="Remove file context"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          )}
           {comments.map((comment) => (
             <div 
               key={comment.id}

@@ -40,6 +40,12 @@ yarn-error.log*
 __pycache__/
 *.pyc
 
+# Uploads
+backend/uploads/
+
+# Claude personal config
+.claude/
+
 # Logs
 bridge_stdout.log
 

@@ -20,6 +20,78 @@ from tool_schemas import TOOLS_SCHEMA
 # Shared laptop responses channel: { request_id: asyncio.Future }
 LAPTOP_CHANNELS = {}
 
+def apply_diff_python(current_code: str, diff_block: str) -> str:
+    pattern = re.compile(
+        r'<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE',
+        re.DOTALL
+    )
+    new_code = current_code
+    matches = list(pattern.finditer(diff_block))
+    if not matches:
+        return current_code
+        
+    for m in matches:
+        search_content = m.group(1)
+        replace_content = m.group(2)
+        
+        search_norm = search_content.replace('\r\n', '\n')
+        code_norm = new_code.replace('\r\n', '\n')
+        replace_norm = replace_content.replace('\r\n', '\n')
+        
+        if search_norm in code_norm:
+            new_code = code_norm.replace(search_norm, replace_norm)
+        else:
+            search_trim = search_norm.strip()
+            if search_trim in code_norm:
+                idx = code_norm.find(search_trim)
+                if idx != -1:
+                    new_code = code_norm[:idx] + replace_norm + code_norm[idx + len(search_trim):]
+    return new_code
+
+def extract_virtual_files_from_history(messages_history: list) -> dict[str, str]:
+    files_map = {}
+    for m in messages_history:
+        if m.get("role") == "assistant":
+            content = m.get("content", "")
+            code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
+            files_list = []
+            for match in code_blocks:
+                lang = match.group(1) or "txt"
+                code = match.group(2)
+                if not code.strip():
+                    continue
+                
+                start_idx = max(0, match.start() - 150)
+                preceding = content[start_idx:match.start()]
+                file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
+                fname = file_match.group(1) if file_match else ""
+                
+                if not fname:
+                    lines = code.strip().split('\n')[:3]
+                    for line in lines:
+                        inline_match = re.search(r'(?:#|//|/\*)\s*(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))', line, re.IGNORECASE)
+                        if inline_match:
+                            fname = inline_match.group(1)
+                            break
+                
+                if not fname:
+                    ext = "py" if lang == "python" else "js" if lang == "javascript" else "ts" if lang == "typescript" else "html" if lang == "html" else "css" if lang == "css" else "txt"
+                    fname = f"app_{len(files_list) + 1}.{ext}"
+                
+                if fname.startswith("/"):
+                    fname = fname[1:]
+                
+                if not any(f["name"] == fname for f in files_list):
+                    files_list.append({"name": fname, "code": code.strip()})
+                    
+                    is_diff = "<<<<<<< SEARCH" in code and "=======" in code and ">>>>>>> REPLACE" in code
+                    if is_diff:
+                        if fname in files_map:
+                            files_map[fname] = apply_diff_python(files_map[fname], code)
+                    else:
+                        files_map[fname] = code.strip()
+    return files_map
+
 def get_tool_label(name: str, args: dict) -> str:
     if name == "show_map":
         return f"Show Map: '{args.get('label') or 'Coordinate Location'}'"
@@ -507,39 +579,10 @@ async def execute_tool_call_v2(
             messages_history = get_session_messages(session_id)
             
             # Extract virtual files from messages
-            files_map = {}
-            import re
-            for m in messages_history:
-                if m.get("role") == "assistant":
-                    content = m.get("content", "")
-                    code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
-                    files_list = []
-                    for match in code_blocks:
-                        lang = match.group(1) or "txt"
-                        code = match.group(2)
-                        if not code.strip():
-                            continue
-                        
-                        start_idx = max(0, match.start() - 150)
-                        preceding = content[start_idx:match.start()]
-                        file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
-                        fname = file_match.group(1) if file_match else ""
-                        
-                        if not fname:
-                            lines = code.strip().split('\n')[:3]
-                            for line in lines:
-                                inline_match = re.search(r'(?:#|//|/\*)\s*(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))', line, re.IGNORECASE)
-                                if inline_match:
-                                    fname = inline_match.group(1)
-                                    break
-                        
-                        if not fname:
-                            ext = "py" if lang == "python" else "js" if lang == "javascript" else "ts" if lang == "typescript" else "html" if lang == "html" else "css" if lang == "css" else "txt"
-                            fname = f"app_{len(files_list) + 1}.{ext}"
-                        
-                        if not any(f["name"] == fname for f in files_list):
-                            files_list.append({"name": fname, "code": code.strip()})
-                            files_map[fname] = code.strip()
+            files_map = extract_virtual_files_from_history(messages_history)
+            
+            if filename.startswith("/"):
+                filename = filename[1:]
             
             match_code = files_map.get(filename)
             if not match_code:
@@ -564,39 +607,10 @@ async def execute_tool_call_v2(
             messages_history = get_session_messages(session_id)
             
             # Extract virtual files from messages
-            files_map = {}
-            import re
-            for m in messages_history:
-                if m.get("role") == "assistant":
-                    content = m.get("content", "")
-                    code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
-                    files_list = []
-                    for match in code_blocks:
-                        lang = match.group(1) or "txt"
-                        code = match.group(2)
-                        if not code.strip():
-                            continue
-                        
-                        start_idx = max(0, match.start() - 150)
-                        preceding = content[start_idx:match.start()]
-                        file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
-                        fname = file_match.group(1) if file_match else ""
-                        
-                        if not fname:
-                            lines = code.strip().split('\n')[:3]
-                            for line in lines:
-                                inline_match = re.search(r'(?:#|//|/\*)\s*(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))', line, re.IGNORECASE)
-                                if inline_match:
-                                    fname = inline_match.group(1)
-                                    break
-                        
-                        if not fname:
-                            ext = "py" if lang == "python" else "js" if lang == "javascript" else "ts" if lang == "typescript" else "html" if lang == "html" else "css" if lang == "css" else "txt"
-                            fname = f"app_{len(files_list) + 1}.{ext}"
-                        
-                        if not any(f["name"] == fname for f in files_list):
-                            files_list.append({"name": fname, "code": code.strip()})
-                            files_map[fname] = code.strip()
+            files_map = extract_virtual_files_from_history(messages_history)
+            
+            if filename.startswith("/"):
+                filename = filename[1:]
             
             match_code = files_map.get(filename)
             if not match_code:

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Copy, Maximize2, Minimize2, Check, X, MessageSquare, Eye, Code, Terminal, RotateCw, ArrowLeft } from "lucide-react";
+import { Copy, Maximize2, Minimize2, Check, X, MessageSquare, Eye, Code, Terminal, RotateCw, ArrowLeft, Sliders } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-javascript";
@@ -77,6 +77,8 @@ interface FileInspectorPanelProps {
   jumpToLine: number | null;
   sessionFiles?: Array<{ name: string; type: string; versions: Array<{ version: number; code: string }> }>;
   onBack?: () => void;
+  onNavigateFile?: (fileName: string) => void;
+  onEditClick?: (fileName: string) => void;
 }
 
 export default function FileInspectorPanel({
@@ -91,6 +93,8 @@ export default function FileInspectorPanel({
   jumpToLine,
   sessionFiles = [],
   onBack,
+  onNavigateFile,
+  onEditClick,
 }: FileInspectorPanelProps) {
   const [copied, setCopied] = useState(false);
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null);
@@ -172,17 +176,21 @@ export default function FileInspectorPanel({
   // Capture Iframe Logs
   useEffect(() => {
     const handleLogMessage = (e: MessageEvent) => {
-      if (e.data && e.data.type === "PREVIEW_LOG") {
-        const logTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        setConsoleLogs((prev) => [
-          ...prev,
-          { type: e.data.logType, text: e.data.data, time: logTime },
-        ]);
+      if (e.data) {
+        if (e.data.type === "PREVIEW_LOG") {
+          const logTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setConsoleLogs((prev) => [
+            ...prev,
+            { type: e.data.logType, text: e.data.data, time: logTime },
+          ]);
+        } else if (e.data.type === "PREVIEW_NAVIGATE" && onNavigateFile) {
+          onNavigateFile(e.data.fileName);
+        }
       }
     };
     window.addEventListener("message", handleLogMessage);
     return () => window.removeEventListener("message", handleLogMessage);
-  }, []);
+  }, [onNavigateFile]);
 
   // Auto-scroll logs terminal
   useEffect(() => {
@@ -358,6 +366,45 @@ export default function FileInspectorPanel({
       }
       return true;
     };
+
+    // Intercept clicks on anchor links to prevent breaking parent container routing
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest("a");
+      if (link) {
+        const href = link.getAttribute("href");
+        if (href) {
+          // 1. Same-page hash anchor routing
+          if (href.startsWith("#") || href.startsWith("/#") || href.includes("#")) {
+            e.preventDefault();
+            const parts = href.split("#");
+            const targetId = parts[parts.length - 1];
+            if (targetId) {
+              const targetEl = document.getElementById(targetId) || document.querySelector('[name="' + targetId + '"]');
+              if (targetEl) {
+                targetEl.scrollIntoView({ behavior: "smooth" });
+                return;
+              }
+            }
+          }
+          
+          // 2. Relative page routing or localhost page routing
+          const isRelative = !href.includes("://");
+          const isSameHost = href.includes(window.location.host);
+          if (isRelative || isSameHost) {
+            e.preventDefault();
+            sendLog("info", "[Navigation Intercepted] Prevented redirect to: " + href);
+            
+            const cleanPath = href.split("#")[0].split("?")[0];
+            const resolvedPath = resolvePath("${fileName}", cleanPath);
+            const fileKey = Object.keys(files).find(k => k.toLowerCase() === resolvedPath.toLowerCase());
+            if (fileKey) {
+              sendLog("info", "Loading page: " + fileKey);
+              window.parent.postMessage({ type: "PREVIEW_NAVIGATE", fileName: fileKey }, "*");
+            }
+          }
+        }
+      }
+    });
   </script>
 
   <script type="module">
@@ -540,13 +587,14 @@ export default function FileInspectorPanel({
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center gap-1.5 text-[12.5px] font-medium text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all duration-200 mr-1 select-none"
+              className="flex items-center justify-center w-8 h-8 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 mr-1 select-none flex-shrink-0"
+              aria-label="Back"
+              title="Back"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back</span>
             </button>
           )}
-          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[200px]" title={fileName}>
+          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[150px]" title={fileName}>
             {fileName}
           </span>
           
@@ -555,29 +603,39 @@ export default function FileInspectorPanel({
               <button
                 type="button"
                 onClick={() => setMode("code")}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-all duration-205 cursor-pointer ${
+                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-205 cursor-pointer ${
                   mode === "code" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
                 }`}
+                title="Code view"
               >
                 <Code className="w-3.5 h-3.5" />
-                <span>Code</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setMode("preview");
-                  // Trigger log build start
                   setConsoleLogs([{ type: "info", text: "Initializing virtual sandbox...", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
                 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium transition-all duration-205 cursor-pointer ${
+                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-205 cursor-pointer ${
                   mode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
                 }`}
+                title="Live preview"
               >
                 <Eye className="w-3.5 h-3.5" />
-                <span>Preview</span>
               </button>
             </div>
           )}
+
+          {/* Dark theme Edit button */}
+          <button
+            type="button"
+            onClick={() => onEditClick?.(fileName)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#141416] border border-zinc-800 hover:border-zinc-700 text-zinc-350 hover:text-zinc-100 text-[12px] font-medium rounded-lg cursor-pointer transition-all duration-200"
+            title="Attach file context to prompt box for inline editing"
+          >
+            <Sliders className="w-3.5 h-3.5 text-zinc-450" />
+            <span>Edit</span>
+          </button>
         </div>
 
         {/* Right Side: Header Controls */}

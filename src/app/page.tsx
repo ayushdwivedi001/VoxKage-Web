@@ -238,6 +238,7 @@ export default function Home() {
 
   // New comments and artifacts states
   const [comments, setComments] = useState<Array<{ id: string; fileName: string; line: number; text: string }>>([]);
+  const [editingFile, setEditingFile] = useState<string | null>(null);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
   const [showArtifactsPanel, setShowArtifactsPanel] = useState(false);
   const [activeFileVersions, setActiveFileVersions] = useState<{ [name: string]: number }>({});
@@ -629,7 +630,10 @@ export default function Home() {
   // Sync current active session messages with cache
   useEffect(() => {
     if (currentSessionId && messages.length > 0) {
-      setMessagesCache((prev) => ({ ...prev, [currentSessionId]: messages }));
+      setMessagesCache((prev) => {
+        if (prev[currentSessionId] === messages) return prev;
+        return { ...prev, [currentSessionId]: messages };
+      });
     }
   }, [messages, currentSessionId]);
 
@@ -1054,11 +1058,20 @@ export default function Home() {
 
     setAttachments([]);
     setComments([]);
+    setEditingFile(null);
 
     setIsChatActive(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
     let promptText = text;
+    if (editingFile) {
+      const currentFiles = computeSessionFiles(messages);
+      const matchingFile = currentFiles.find(f => f.name === editingFile);
+      if (matchingFile && matchingFile.versions.length > 0) {
+        const fileCode = matchingFile.versions[matchingFile.versions.length - 1].code;
+        promptText = `[Editing File: ${editingFile}]\nFile Content:\n\`\`\`\n${fileCode}\n\`\`\`\n\nUser Question:\n${text}`;
+      }
+    }
     if (comments.length > 0) {
       const sessionFiles = computeSessionFiles(messages);
       const commentCtx = comments.map(c => {
@@ -2083,6 +2096,8 @@ export default function Home() {
                   onRemoveAttachment={handleRemoveAttachment}
                   onPreviewImage={handlePreviewImage}
                   onPreviewDocument={setZoomDocument}
+                  editingFile={editingFile}
+                  onRemoveEditingFile={() => setEditingFile(null)}
                 />
               </div>
             )}
@@ -2129,6 +2144,8 @@ export default function Home() {
                     onRemoveAttachment={handleRemoveAttachment}
                     onPreviewImage={handlePreviewImage}
                     onPreviewDocument={setZoomDocument}
+                    editingFile={editingFile}
+                    onRemoveEditingFile={() => setEditingFile(null)}
                   />
 
                   <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">
@@ -2187,6 +2204,15 @@ export default function Home() {
                 }}
                 jumpToLine={jumpToLine}
                 sessionFiles={sessionArtifacts}
+                onNavigateFile={(name) => {
+                  const matchingFile = sessionArtifacts.find(f => f.name === name);
+                  if (matchingFile && matchingFile.versions.length > 0) {
+                    setActiveFile({ name, code: matchingFile.versions[matchingFile.versions.length - 1].code });
+                  }
+                }}
+                onEditClick={(name) => {
+                  setEditingFile(name);
+                }}
               />
             </div>
           )}
