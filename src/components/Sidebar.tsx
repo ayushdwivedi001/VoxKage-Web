@@ -32,6 +32,7 @@ interface SidebarProps {
   onOpenSettings: () => void;
   connectionStatus: "connected" | "connecting" | "disconnected";
   onOpenSearch: () => void;
+  onOpenConnect: () => void;
 }
 
 const SidebarTooltip = ({ children, text, show }: { children: React.ReactNode; text: string; show: boolean }) => {
@@ -60,6 +61,7 @@ export default function Sidebar({
   onOpenSettings,
   connectionStatus,
   onOpenSearch,
+  onOpenConnect,
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
@@ -234,6 +236,7 @@ export default function Sidebar({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
+                onOpenConnect();
               }}
               className="flex items-center w-full h-[40px] pl-[9px] rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer"
             >

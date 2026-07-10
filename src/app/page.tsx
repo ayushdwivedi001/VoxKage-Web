@@ -36,6 +36,8 @@ import ZoomDocumentPreview from "@/components/ZoomDocumentPreview";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 import { Message, computeSessionFiles } from "@/lib/chatHelpers";
 import { getGreeting, extractNameFromEmail } from "@/lib/greetings";
+import ConnectModal from "@/components/ConnectModal";
+import ConnectingAppModal from "@/components/ConnectingAppModal";
 
 import {
   login,
@@ -223,6 +225,10 @@ export default function Home() {
   const [loginMasterKey, setLoginMasterKey] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+
+  const [showConnectModal, setShowConnectModal] = useState(false);
+  const [connectingServer, setConnectingServer] = useState<{ id: string; name: string } | null>(null);
+  const [connectedServers, setConnectedServers] = useState<string[]>([]);
 
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [isChatActive, setIsChatActive] = useState(false);
@@ -816,6 +822,30 @@ export default function Home() {
     setShowArtifactsPanel(false);
     setActiveFileVersions({});
     setExpandedFolders({});
+  };
+
+  const handleConnectClick = (serverId: string) => {
+    const nameMap: Record<string, string> = {
+      gdrive: "Google Drive",
+      slack: "Slack",
+      gcal: "Google Calendar",
+      resend: "Resend",
+      tableau: "Tableau",
+      magicschool: "MagicSchool AI",
+      canva: "Canva",
+      m365: "Microsoft 365",
+      figma: "Figma",
+      gmail: "Gmail",
+      notion: "Notion",
+    };
+    setConnectingServer({ id: serverId, name: nameMap[serverId] || serverId });
+  };
+
+  const handleConnectionSuccess = () => {
+    if (connectingServer) {
+      setConnectedServers((prev) => [...prev, connectingServer.id]);
+      setConnectingServer(null);
+    }
   };
 
   const handleToggleStar = async (sessionId: string, starred: boolean) => {
@@ -1865,6 +1895,7 @@ export default function Home() {
           setSearchSelectedIndex(0);
           setSearchQuery("");
         }}
+        onOpenConnect={() => setShowConnectModal(true)}
       />
 
       {/* Main content workspace container */}
@@ -2565,6 +2596,26 @@ export default function Home() {
         <ZoomDocumentPreview
           file={zoomDocument}
           onClose={() => setZoomDocument(null)}
+        />
+      )}
+
+      <ConnectModal
+        isOpen={showConnectModal}
+        onClose={() => setShowConnectModal(false)}
+        connectedServers={connectedServers}
+        onConnectClick={handleConnectClick}
+        onConfigureClick={(id) => {
+          setConnectedServers((prev) => prev.filter((s) => s !== id));
+        }}
+      />
+
+      {connectingServer && (
+        <ConnectingAppModal
+          isOpen={!!connectingServer}
+          serverId={connectingServer.id}
+          serverName={connectingServer.name}
+          onCancel={() => setConnectingServer(null)}
+          onSuccess={handleConnectionSuccess}
         />
       )}
 

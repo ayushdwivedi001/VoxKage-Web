@@ -27,6 +27,7 @@ import {
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
 import ExpandableWrapper from "./ExpandableWrapper";
+import { CanvaPreviewWidget, GmailInboxWidget, GoogleCalendarWidget } from "./McpWidgets";
 
 const MapWidget = dynamic(() => import("./MapWidget"), {
   ssr: false,
@@ -448,7 +449,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -860,6 +861,27 @@ export default function AssistantResponseBubble({
       {msg.status !== "thinking" && mermaidChart && (
         <ExpandableWrapper label="CS Topology / Diagram" className="w-full max-w-[90%] select-none flex justify-center">
           <MermaidWidget chart={mermaidChart} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Canva Preview Widget --- */}
+      {msg.status !== "thinking" && canva && (
+        <ExpandableWrapper label="Canva Workspace" className="w-full max-w-[90%] select-none">
+          <CanvaPreviewWidget designId={canva.designId} name={canva.name} embedUrl={canva.embedUrl} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Gmail Inbox Widget --- */}
+      {msg.status !== "thinking" && gmail && (
+        <ExpandableWrapper label="Gmail Workspace" className="w-full max-w-[90%] select-none">
+          <GmailInboxWidget emails={gmail.emails} />
+        </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Google Calendar Widget --- */}
+      {msg.status !== "thinking" && calendar && (
+        <ExpandableWrapper label="Calendar Schedule" className="w-full max-w-[90%] select-none">
+          <GoogleCalendarWidget events={calendar.events} />
         </ExpandableWrapper>
       )}
 

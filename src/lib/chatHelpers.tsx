@@ -772,12 +772,111 @@ export const parseMapAndWeather = (content: string) => {
   return { cleanContent, map, weather };
 };
 
+export const parseMcpWidgets = (content: string) => {
+  if (!content) return { cleanContent: content, canva: null, gmail: null, calendar: null };
+  
+  let cleanContent = content;
+  let canva: any = null;
+  let gmail: any = null;
+  let calendar: any = null;
+
+  // 1. Canva Preview Tag: <CanvaPreview designId="..." name="..." embedUrl="..." />
+  const canvaRegex = /<CanvaPreview\s+([^>]*?)\s*\/>/i;
+  const canvaMatch = cleanContent.match(canvaRegex);
+  if (canvaMatch) {
+    const attrString = canvaMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    canva = {
+      designId: getAttr("designId"),
+      name: getAttr("name"),
+      embedUrl: getAttr("embedUrl")
+    };
+    cleanContent = cleanContent.replace(canvaRegex, '').trim();
+  }
+
+  // 2. Gmail List Tag: <GmailList emails="..." />
+  const gmailRegex = /<GmailList\s+([^>]*?)\s*\/>/i;
+  const gmailMatch = cleanContent.match(gmailRegex);
+  if (gmailMatch) {
+    const attrString = gmailMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    const rawEmails = getAttr("emails");
+    let emails: any[] = [];
+    if (rawEmails) {
+      const items = rawEmails.split("||");
+      items.forEach((item, idx) => {
+        const parts = item.split("|");
+        if (parts.length >= 3) {
+          emails.push({
+            id: `gmail-msg-${idx}`,
+            from: parts[0],
+            subject: parts[1],
+            snippet: parts[2],
+            date: parts[3] || ""
+          });
+        }
+      });
+    }
+    if (emails.length > 0) {
+      gmail = { emails };
+    } else {
+      gmail = { emails: [] };
+    }
+    cleanContent = cleanContent.replace(gmailRegex, '').trim();
+  }
+
+  // 3. Calendar Timeline Tag: <CalendarTimeline events="..." />
+  const calendarRegex = /<CalendarTimeline\s+([^>]*?)\s*\/>/i;
+  const calendarMatch = cleanContent.match(calendarRegex);
+  if (calendarMatch) {
+    const attrString = calendarMatch[1];
+    const getAttr = (name: string): string => {
+      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(regex);
+      return m ? m[1] : "";
+    };
+    const rawEvents = getAttr("events");
+    let events: any[] = [];
+    if (rawEvents) {
+      const items = rawEvents.split("||");
+      items.forEach((item, idx) => {
+        const parts = item.split("|");
+        if (parts.length >= 2) {
+          events.push({
+            id: `cal-evt-${idx}`,
+            title: parts[0],
+            time: parts[1],
+            location: parts[2] || ""
+          });
+        }
+      });
+    }
+    if (events.length > 0) {
+      calendar = { events };
+    } else {
+      calendar = { events: [] };
+    }
+    cleanContent = cleanContent.replace(calendarRegex, '').trim();
+  }
+
+  return { cleanContent, canva, gmail, calendar };
+};
+
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
   const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
   const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
-  const { cleanContent: cleanTextContent, map, weather } = parseMapAndWeather(noScienceContent);
+  const { cleanContent: noMapContent, map, weather } = parseMapAndWeather(noScienceContent);
+  const { cleanContent: cleanTextContent, canva, gmail, calendar } = parseMcpWidgets(noMapContent);
   
   let thinkingContent = "";
   let finalContent = cleanTextContent;
@@ -812,7 +911,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot };
+  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {
