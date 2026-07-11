@@ -1,418 +1,791 @@
 "use client";
 
-import React, { useState } from "react";
-import { Search, X, Settings, Plus, Star, Check } from "lucide-react";
-
-export interface McpServerItem {
-  id: string;
-  name: string;
-  desc: string;
-  rank: string;
-  verified: boolean;
-  category: string;
-  logoColor: string;
-}
+import React, { useState, useEffect, useRef } from "react";
+import {
+  X,
+  Check,
+  Plus,
+  Settings2,
+  Search,
+  ArrowLeft,
+  ExternalLink,
+  Copy,
+  CheckCheck,
+} from "lucide-react";
+import { getToken, BACKEND_URL } from "@/lib/api";
 
 interface ConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
-  connectedServers: string[]; // list of connected server ids
-  onConnectClick: (serverId: string) => void;
-  onConfigureClick: (serverId: string) => void;
+  connectedServers: string[];
+  onConnectSuccess: (slug: string) => void;
+  onDisconnectSuccess: (slug: string) => void;
 }
 
-const CATEGORIES = ["All", "Productivity", "Development", "Social", "Database"];
-
-const POPULAR_SERVERS: McpServerItem[] = [
-  {
-    id: "gdrive",
-    name: "Google Drive",
-    desc: "Search, download, and structure files in your cloud storage",
-    rank: "Popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-green-500",
+// --- Single source of truth for the Gmail MCP entry ---
+const GMAIL_SERVER = {
+  slug: "gmail",
+  name: "Gmail",
+  tagline: "Draft replies, summarize threads, & search your inbox",
+  description:
+    "Connect Gmail to VoxKage to quickly find important emails and understand long conversations. VoxKage can search through your messages, read entire email threads to give you context, and help you stay on top of your inbox. Perfect for finding that message you remember sending, catching up on email chains you missed, or preparing for meetings.",
+  developer: "Google",
+  developerUrl: "https://cloud.google.com",
+  connectorUrl: "https://gmailmcp.googleapis.com/mcp/v1",
+  category: "Communication",
+  tools: [
+    "create_draft",
+    "get_thread",
+    "list_drafts",
+    "list_labels",
+    "search_threads",
+  ],
+  links: {
+    documentation: "https://developers.google.com/gmail/api/guides",
+    support: "https://support.google.com/mail",
+    privacy: "https://policies.google.com/privacy",
   },
-  {
-    id: "slack",
-    name: "Slack",
-    desc: "Post updates, query channels, & search chat logs",
-    rank: "#3 popular",
-    verified: true,
-    category: "Social",
-    logoColor: "text-amber-500",
-  },
-  {
-    id: "gcal",
-    name: "Google Calendar",
-    desc: "Create events, list schedules, & get calendar digests",
-    rank: "Popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-blue-500",
-  },
-];
-
-const DIRECTORY_SERVERS: McpServerItem[] = [
-  {
-    id: "resend",
-    name: "Resend",
-    desc: "Email for developers. The best way to reach humans instead of spam folders. Deliver transactional and marketing mail.",
-    rank: "New",
-    verified: true,
-    category: "Development",
-    logoColor: "text-white",
-  },
-  {
-    id: "tableau",
-    name: "Tableau",
-    desc: "See, understand, and act on visual business data metrics and dashboards.",
-    rank: "New",
-    verified: false,
-    category: "Database",
-    logoColor: "text-orange-400",
-  },
-  {
-    id: "magicschool",
-    name: "MagicSchool AI",
-    desc: "Save teaching materials and plan lessons directly to your MagicSchool Resource Library.",
-    rank: "Verified",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-purple-400",
-  },
-  {
-    id: "canva",
-    name: "Canva",
-    desc: "Search, create, autofill, and export Canva designs and posters.",
-    rank: "#4 popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-teal-400",
-  },
-  {
-    id: "m365",
-    name: "Microsoft 365",
-    desc: "Access your company's SharePoint, OneDrive, Outlook, and Teams directly in VoxKage.",
-    rank: "#7 popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-blue-400",
-  },
-  {
-    id: "figma",
-    name: "Figma",
-    desc: "Generate UI diagrams, mockups, and better front-end code from Figma artboard context.",
-    rank: "#5 popular",
-    verified: true,
-    category: "Development",
-    logoColor: "text-rose-500",
-  },
-  {
-    id: "gmail",
-    name: "Gmail",
-    desc: "Draft replies, summarize threads, search your inbox, and manage emails securely.",
-    rank: "#2 popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-red-500",
-  },
-  {
-    id: "notion",
-    name: "Notion",
-    desc: "Connect your Notion workspace to search documents, update databases, and power workflows.",
-    rank: "#6 popular",
-    verified: true,
-    category: "Productivity",
-    logoColor: "text-white",
-  },
-];
-
-// Helper to render customized SVG app logos matching provided design
-function renderAppLogo(id: string) {
-  if (id === "gdrive") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <path d="M8.5 4.5L3.5 13.5L6.5 19L11.5 10L8.5 4.5Z" fill="#00D4B2" />
-        <path d="M15.5 4.5L10.5 13.5L13.5 19L18.5 10L15.5 4.5Z" fill="#0084FF" />
-        <path d="M12 10L7 19H17L12 10Z" fill="#FFC700" />
-      </svg>
-    );
-  }
-  if (id === "slack") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect x="2" y="2" width="8" height="8" rx="1.5" fill="#E01E5A" />
-        <rect x="14" y="2" width="8" height="8" rx="1.5" fill="#36C5F0" />
-        <rect x="2" y="14" width="8" height="8" rx="1.5" fill="#2EB67D" />
-        <rect x="14" y="14" width="8" height="8" rx="1.5" fill="#ECB22E" />
-      </svg>
-    );
-  }
-  if (id === "gcal") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="3" fill="#1A73E8" />
-        <path d="M7 8V16H9V10.5L11.5 13L13 11.5L9.5 8H7Z" fill="white" />
-        <path d="M17 8H14V10H16V12H14V14H16V16H17V8Z" fill="white" />
-      </svg>
-    );
-  }
-  if (id === "gmail") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <path d="M2 5V19C2 20.1 2.9 21 4 21H6V9L12 14L18 9V21H20C21.1 21 22 20.1 22 19V5C22 3.9 21.1 3 20 3H18L12 8L6 3H4C2.9 3 2 3.9 2 5Z" fill="#EA4335" />
-      </svg>
-    );
-  }
-  if (id === "canva") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect width="24" height="24" rx="6" fill="#00C4CC" />
-        <text x="6" y="17" fill="white" fontSize="13" fontWeight="bold" fontFamily="sans-serif">C</text>
-      </svg>
-    );
-  }
-  if (id === "figma") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <path d="M8 2C5.79 2 4 3.79 4 6C4 7.21 4.54 8.29 5.39 9C4.54 9.71 4 10.79 4 12C4 13.21 4.54 14.29 5.39 15C4.54 15.71 4 16.79 4 18C4 20.21 5.79 22 8 22C10.21 22 12 20.21 12 18V12V6C12 3.79 10.21 2 8 2Z" fill="#F24E1E" />
-        <path d="M16 12C13.79 12 12 13.79 12 16C12 18.21 13.79 20 16 20C18.21 20 20 18.21 20 16C20 13.79 18.21 12 16 12Z" fill="#A259FF" />
-        <path d="M12 6C12 8.21 13.79 10 16 10C18.21 10 20 8.21 20 6C20 3.79 18.21 2 16 2C13.79 2 12 3.79 12 6Z" fill="#1ABC9C" />
-      </svg>
-    );
-  }
-  if (id === "notion") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect width="24" height="24" rx="5" fill="#FFFFFF" />
-        <text x="6" y="17" fill="#000000" fontSize="14" fontWeight="black" fontFamily="sans-serif">N</text>
-      </svg>
-    );
-  }
-  if (id === "resend") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect width="24" height="24" rx="5" fill="#0d0d12" />
-        <text x="7" y="17" fill="#FFFFFF" fontSize="13" fontWeight="bold" fontFamily="sans-serif">R</text>
-      </svg>
-    );
-  }
-  if (id === "tableau") {
-    return (
-      <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none">
-        <rect width="24" height="24" rx="5" fill="#EAEBEE" />
-        <circle cx="12" cy="12" r="2" fill="#E15759" />
-        <circle cx="12" cy="6" r="1.5" fill="#4E79A7" />
-        <circle cx="12" cy="18" r="1.5" fill="#4E79A7" />
-        <circle cx="6" cy="12" r="1.5" fill="#4E79A7" />
-        <circle cx="18" cy="12" r="1.5" fill="#4E79A7" />
-      </svg>
-    );
-  }
-  if (id === "magicschool") {
-    return (
-      <div className="w-5 h-5 flex-shrink-0 rounded bg-indigo-600 flex items-center justify-center text-[11px] font-bold text-white font-sans">
-        M
-      </div>
-    );
-  }
-  return (
-    <svg className="w-5 h-5 text-zinc-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="M21 16V8M3 8v8M9 3v18M15 3v18" />
-    </svg>
-  );
-}
+  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg",
+};
 
 export default function ConnectModal({
   isOpen,
   onClose,
   connectedServers,
-  onConnectClick,
-  onConfigureClick,
+  onConnectSuccess,
+  onDisconnectSuccess,
 }: ConnectModalProps) {
-  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [view, setView] = useState<"list" | "details">("list");
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [connectedDetails, setConnectedDetails] = useState<any>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const isConnected =
+    connectedServers.includes("gmail") || !!connectedDetails;
+
+  useEffect(() => {
+    if (isOpen) {
+      setView("list");
+      setSearchQuery("");
+      setError(null);
+      fetchConnectedDetails();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && view === "list") {
+      setTimeout(() => searchRef.current?.focus(), 80);
+    }
+  }, [isOpen, view]);
+
+  const fetchConnectedDetails = async () => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${BACKEND_URL}/user/settings-profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const conn = data.settings_profile?.mcp_connections?.gmail;
+        setConnectedDetails(conn || null);
+      }
+    } catch {
+      /* silent */
+    }
+  };
+
+  const handleConnect = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = getToken();
+
+      const profRes = await fetch(`${BACKEND_URL}/user/settings-profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!profRes.ok) throw new Error("Session expired. Please log in again.");
+      const profData = await profRes.json();
+      const userId = profData.settings_profile?.user_id || "default_user";
+
+      const redirectUri = window.location.origin + "/oauth/callback";
+      const authRes = await fetch(
+        `${BACKEND_URL}/auth/oauth/authorize-url?provider=gmail&user_id=${userId}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!authRes.ok) {
+        const errJson = await authRes.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Failed to start Google OAuth flow.");
+      }
+      const { url } = await authRes.json();
+
+      const w = 520, h = 640;
+      const left = window.screen.width / 2 - w / 2;
+      const top = window.screen.height / 2 - h / 2;
+      const popup = window.open(
+        url,
+        "gmail_oauth",
+        `width=${w},height=${h},left=${left},top=${top},status=no`
+      );
+      if (!popup) throw new Error("Popup blocked. Allow popups for this site.");
+
+      const listener = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type === "OAUTH_SUCCESS" && event.data?.provider === "gmail") {
+          window.removeEventListener("message", listener);
+          setLoading(false);
+          fetchConnectedDetails();
+          onConnectSuccess("gmail");
+        } else if (event.data?.type === "OAUTH_FAILURE") {
+          window.removeEventListener("message", listener);
+          setError(event.data.error || "Google sign-in was declined.");
+          setLoading(false);
+        }
+      };
+      window.addEventListener("message", listener);
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred.");
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    setLoading(true);
+    try {
+      const token = getToken();
+      await fetch(`${BACKEND_URL}/auth/disconnect`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ provider: "gmail" }),
+      });
+      setConnectedDetails(null);
+      onDisconnectSuccess("gmail");
+      setView("list");
+    } catch {
+      /* silent */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(GMAIL_SERVER.connectorUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Filter: only show if search matches (supports future servers)
+  const showGmail =
+    !searchQuery.trim() ||
+    "gmail".includes(searchQuery.toLowerCase()) ||
+    "google".includes(searchQuery.toLowerCase()) ||
+    "email".includes(searchQuery.toLowerCase()) ||
+    GMAIL_SERVER.tagline.toLowerCase().includes(searchQuery.toLowerCase());
 
   if (!isOpen) return null;
 
-  // Filter dynamic server directory list
-  const filteredServers = DIRECTORY_SERVERS.filter((server) => {
-    const matchesCategory = selectedCategory === "All" || server.category === selectedCategory;
-    const matchesSearch =
-      server.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      server.desc.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  });
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Dark Overlay backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-[3px] animate-fadeIn"
+        onClick={onClose}
+      />
 
-      {/* Main modal container */}
-      <div className="relative w-full max-w-4xl h-[85vh] bg-[#0c0c0e] border border-zinc-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden font-sans text-zinc-300 animate-fadeIn">
-        {/* Header Section */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
-          <div>
-            <h2 className="text-[17px] font-semibold text-white tracking-wide font-sans">Connect Tools</h2>
-            <p className="text-[12.5px] text-zinc-500 mt-0.5 font-sans">Integrate third-party developer apps and services directly into VoxKage</p>
+      {/* Modal shell */}
+      <div
+        className="relative flex flex-col overflow-hidden animate-scaleUp font-sans"
+        style={{
+          width: "min(860px, 96vw)",
+          height: "min(700px, 92vh)",
+          background: "#1a1a1a",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: "16px",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
+        }}
+      >
+        {/* ─── VIEW: LIST ───────────────────────────────────────────── */}
+        {view === "list" && (
+          <div className="flex flex-col h-full">
+            {/* Top bar */}
+            <div
+              className="flex items-center justify-between px-6 pt-5 pb-4 flex-shrink-0"
+              style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+            >
+              <h2
+                className="text-[26px] font-normal leading-tight"
+                style={{
+                  color: "#f0f0f0",
+                  letterSpacing: "-0.02em",
+                  fontFamily: "Copernicus, Tiempos, Georgia, serif",
+                }}
+              >
+                Connect Tools with VoxKage
+              </h2>
+              <button
+                onClick={onClose}
+                className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
+                style={{ color: "#888" }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.07)";
+                  (e.currentTarget as HTMLElement).style.color = "#ddd";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.color = "#888";
+                }}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Search bar */}
+            <div className="px-6 py-4 flex-shrink-0">
+              <div className="relative">
+                <Search
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                  style={{ color: "#666" }}
+                />
+                <input
+                  ref={searchRef}
+                  type="text"
+                  placeholder="Search connectors..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-10 pl-10 pr-4 text-[13.5px] rounded-xl outline-none transition-all"
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.09)",
+                    color: "#e0e0e0",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.border = "1px solid rgba(255,255,255,0.18)";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.07)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.border = "1px solid rgba(255,255,255,0.09)";
+                    e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Server grid */}
+            <div className="flex-grow overflow-y-auto px-6 pb-6 custom-chat-scrollbar">
+              {showGmail ? (
+                <>
+                  {/* Section label */}
+                  <p
+                    className="text-[11px] font-semibold mb-3 uppercase tracking-widest"
+                    style={{ color: "#555" }}
+                  >
+                    Available
+                  </p>
+
+                  {/* Grid — same 2-col layout ready for future servers */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <GmailCard
+                      isConnected={isConnected}
+                      loading={loading}
+                      onConnectClick={handleConnect}
+                      onCardClick={() => setView("details")}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center h-40 text-[13px]"
+                  style={{ color: "#555" }}
+                >
+                  No connectors match &ldquo;{searchQuery}&rdquo;
+                </div>
+              )}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-zinc-800 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        )}
+
+        {/* ─── VIEW: DETAILS ────────────────────────────────────────── */}
+        {view === "details" && (
+          <GmailDetailsView
+            isConnected={isConnected}
+            connectedDetails={connectedDetails}
+            loading={loading}
+            error={error}
+            copied={copied}
+            onBack={() => { setView("list"); setError(null); }}
+            onClose={onClose}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+            onCopy={handleCopy}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── GMAIL CARD (list view) ───────────────────────────────────────────────────
+function GmailCard({
+  isConnected,
+  loading,
+  onConnectClick,
+  onCardClick,
+}: {
+  isConnected: boolean;
+  loading: boolean;
+  onConnectClick: () => void;
+  onCardClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onCardClick}
+      className="relative flex flex-col gap-2.5 cursor-pointer select-none transition-all duration-150"
+      style={{
+        background: "#242424",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: "12px",
+        padding: "16px",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "#2a2a2a";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.13)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "#242424";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.08)";
+      }}
+    >
+      {/* Top row: icon + name + action button */}
+      <div className="flex items-center gap-3">
+        {/* Icon */}
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+          style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
+        >
+          <img
+            src={GMAIL_SERVER.iconUrl}
+            alt="Gmail"
+            className="w-5 h-5 object-contain"
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
         </div>
 
-        {/* Scrollable Content Container */}
-        <div className="flex-grow overflow-y-auto p-6 flex flex-col gap-6 custom-chat-scrollbar">
-          
-          {/* POPULAR Section Row */}
-          <div>
-            <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest block mb-3.5 select-none font-sans">
-              Popular
+        {/* Name + verified */}
+        <div className="flex-grow min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="text-[14px] font-semibold truncate"
+              style={{ color: "#e8e8e8" }}
+            >
+              {GMAIL_SERVER.name}
             </span>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {POPULAR_SERVERS.map((server) => {
-                const isConnected = connectedServers.includes(server.id);
-                return (
-                  <div
-                    key={server.id}
-                    className="flex items-center justify-between p-3.5 bg-[#121216] border border-zinc-850 hover:border-zinc-800 rounded-xl transition-all duration-200"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      {renderAppLogo(server.id)}
-                      <span className="text-[14px] font-medium text-zinc-200 truncate font-sans">{server.name}</span>
-                    </div>
-                    {isConnected ? (
-                      <button
-                        type="button"
-                        onClick={() => onConfigureClick(server.id)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-zinc-900 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
-                        title="Configure integration"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onConnectClick(server.id)}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 hover:border-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer"
-                        title="Connect application"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Directory Filter Bar & Search */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mt-2 border-t border-zinc-850/50 pt-5 flex-shrink-0">
-            {/* Category Tags */}
-            <div className="flex flex-wrap gap-1.5">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all duration-150 cursor-pointer font-sans ${
-                    selectedCategory === cat
-                      ? "bg-zinc-800 text-white font-medium"
-                      : "text-zinc-450 hover:text-zinc-200 hover:bg-zinc-900/60"
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Search Input Box */}
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-500 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search app registry..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-[#121216]/60 border border-zinc-850 focus:border-zinc-700/80 rounded-xl h-9 pl-9 pr-4 text-[13px] text-zinc-200 placeholder-zinc-550 focus:outline-none transition-colors font-sans"
-              />
-            </div>
-          </div>
-
-          {/* Dynamic MCP Directory Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4">
-            {filteredServers.length > 0 ? (
-              filteredServers.map((server) => {
-                const isConnected = connectedServers.includes(server.id);
-                return (
-                  <div
-                    key={server.id}
-                    className="p-5 bg-[#121216] border border-zinc-850 rounded-xl hover:border-zinc-800 transition-all duration-200 flex flex-col justify-between min-h-[140px]"
-                  >
-                    <div>
-                      {/* Logo, Name, Badge Header */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {renderAppLogo(server.id)}
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14.5px] font-semibold text-zinc-200 font-sans">{server.name}</span>
-                            {server.verified && (
-                              <svg className="w-3.5 h-3.5 text-blue-500 fill-blue-500/10" viewBox="0 0 24 24">
-                                <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
-                              </svg>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Rank Badge / Action */}
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-zinc-500 font-medium px-2 py-0.5 rounded-full border border-zinc-850 bg-zinc-900/50 font-sans">
-                            {server.rank}
-                          </span>
-                          {isConnected ? (
-                            <button
-                              type="button"
-                              onClick={() => onConfigureClick(server.id)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-850 text-zinc-400 hover:text-white border border-transparent hover:border-zinc-800 transition-all cursor-pointer"
-                              title="Configure integration"
-                            >
-                              <Settings className="w-3.5 h-3.5" />
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => onConnectClick(server.id)}
-                              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-zinc-850 text-zinc-400 hover:text-white border border-transparent hover:border-zinc-800 transition-all cursor-pointer"
-                              title="Connect application"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      <p className="text-[12.5px] text-zinc-400 leading-relaxed mt-3.5 max-w-[90%] font-sans">
-                        {server.desc}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="col-span-2 py-10 flex flex-col items-center justify-center text-center">
-                <span className="text-zinc-600 text-[14px] font-sans">No MCP servers found matching "{searchQuery}"</span>
-              </div>
+            {isConnected && (
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 13 13"
+                fill="none"
+                className="flex-shrink-0"
+              >
+                <circle cx="6.5" cy="6.5" r="6.5" fill="rgba(100,200,120,0.2)" />
+                <path
+                  d="M4 6.5l2 2 3-3"
+                  stroke="#4ade80"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             )}
           </div>
+          {isConnected && (
+            <span className="text-[11.5px]" style={{ color: "#555" }}>
+              Connected
+            </span>
+          )}
+        </div>
 
+        {/* Action button: + or settings gear */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isConnected) {
+              onCardClick();
+            } else {
+              onConnectClick();
+            }
+          }}
+          title={isConnected ? "Manage" : "Connect"}
+          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150 cursor-pointer"
+          style={{
+            background: isConnected
+              ? "rgba(255,255,255,0.04)"
+              : "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: isConnected ? "#888" : "#aaa",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = isConnected
+              ? "rgba(255,255,255,0.09)"
+              : "rgba(255,255,255,0.12)";
+            (e.currentTarget as HTMLElement).style.color = "#e0e0e0";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = isConnected
+              ? "rgba(255,255,255,0.04)"
+              : "rgba(255,255,255,0.06)";
+            (e.currentTarget as HTMLElement).style.color = isConnected ? "#888" : "#aaa";
+          }}
+        >
+          {loading ? (
+            <span
+              className="animate-spin rounded-full border-[1.5px] border-t-transparent"
+              style={{ width: 12, height: 12, borderColor: "#aaa", borderTopColor: "transparent" }}
+            />
+          ) : isConnected ? (
+            <Settings2 className="w-3.5 h-3.5" />
+          ) : (
+            <Plus className="w-3.5 h-3.5" />
+          )}
+        </button>
+      </div>
+
+      {/* Tagline */}
+      <p
+        className="text-[12.5px] leading-relaxed line-clamp-2"
+        style={{ color: "#666" }}
+      >
+        {GMAIL_SERVER.tagline}
+      </p>
+    </div>
+  );
+}
+
+// ─── GMAIL DETAILS VIEW ───────────────────────────────────────────────────────
+function GmailDetailsView({
+  isConnected,
+  connectedDetails,
+  loading,
+  error,
+  copied,
+  onBack,
+  onClose,
+  onConnect,
+  onDisconnect,
+  onCopy,
+}: {
+  isConnected: boolean;
+  connectedDetails: any;
+  loading: boolean;
+  error: string | null;
+  copied: boolean;
+  onBack: () => void;
+  onClose: () => void;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Top bar */}
+      <div
+        className="flex items-center justify-between px-6 py-4 flex-shrink-0"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}
+      >
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-[13px] transition-colors cursor-pointer select-none"
+          style={{ color: "#777" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ccc"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#777"; }}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </button>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 rounded-lg flex items-center justify-center cursor-pointer transition-colors"
+          style={{ color: "#777" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.07)";
+            (e.currentTarget as HTMLElement).style.color = "#ccc";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "transparent";
+            (e.currentTarget as HTMLElement).style.color = "#777";
+          }}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Scrollable content */}
+      <div className="flex-grow overflow-y-auto custom-chat-scrollbar" style={{ padding: "28px 32px 40px" }}>
+        {/* Header row: icon + name + action */}
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <div className="flex items-center gap-4">
+            {/* Large icon */}
+            <div
+              className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+              style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <img
+                src={GMAIL_SERVER.iconUrl}
+                alt="Gmail"
+                className="w-7 h-7 object-contain"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
+            </div>
+            {/* Name + subtitle */}
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[20px] font-bold" style={{ color: "#f0f0f0", letterSpacing: "-0.02em" }}>
+                  {GMAIL_SERVER.name}
+                </h2>
+                {isConnected && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <circle cx="8" cy="8" r="8" fill="rgba(100,200,120,0.18)" />
+                    <path d="M5 8l2.5 2.5 4-4" stroke="#4ade80" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+
+              </div>
+              <p className="text-[13px] mt-0.5" style={{ color: "#666" }}>
+                {GMAIL_SERVER.tagline}
+              </p>
+            </div>
+          </div>
+
+          {/* Disconnect / Connect button */}
+          {isConnected ? (
+            <button
+              disabled={loading}
+              onClick={onDisconnect}
+              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-medium cursor-pointer transition-all disabled:opacity-50"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                color: "#e0e0e0",
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.12)";
+                (e.currentTarget as HTMLElement).style.borderColor = "rgba(239,68,68,0.35)";
+                (e.currentTarget as HTMLElement).style.color = "#f87171";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.12)";
+                (e.currentTarget as HTMLElement).style.color = "#e0e0e0";
+              }}
+            >
+              {loading ? "Disconnecting..." : "Disconnect"}
+            </button>
+          ) : (
+            <button
+              disabled={loading}
+              onClick={onConnect}
+              className="flex-shrink-0 px-4 py-2 rounded-xl text-[13px] font-semibold cursor-pointer transition-all disabled:opacity-50"
+              style={{
+                background: "#fff",
+                color: "#111",
+                border: "none",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#e8e8e8"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#fff"; }}
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <span
+                    className="animate-spin rounded-full border-[1.5px]"
+                    style={{ width: 12, height: 12, borderColor: "#333", borderTopColor: "transparent" }}
+                  />
+                  Connecting...
+                </span>
+              ) : (
+                "Connect"
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Description */}
+        <p className="text-[14px] leading-[1.7] mb-6" style={{ color: "#c0c0c0" }}>
+          {GMAIL_SERVER.description}
+        </p>
+
+        {/* Developed by */}
+        <div className="mb-1.5">
+          <span className="text-[13.5px]" style={{ color: "#888" }}>Developed by </span>
+          <a
+            href={GMAIL_SERVER.developerUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13.5px] font-medium inline-flex items-center gap-1 transition-colors"
+            style={{ color: "#60a5fa" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+          >
+            {GMAIL_SERVER.developer}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+        <p className="text-[12px] leading-relaxed mb-7" style={{ color: "#555" }}>
+          Only use connectors from developers you trust. VoxKage does not control which tools developers make available and cannot verify that they will work as intended or that they won&apos;t change.
+        </p>
+
+        {/* Error */}
+        {error && (
+          <div
+            className="mb-5 px-4 py-3 rounded-xl text-[12.5px]"
+            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Tools */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[15px] font-bold" style={{ color: "#e0e0e0" }}>Tools</span>
+            <span
+              className="text-[12px] font-bold px-1.5 py-0.5 rounded-full min-w-[22px] text-center"
+              style={{ background: "#2e2e2e", color: "#bbb", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              {GMAIL_SERVER.tools.length}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {GMAIL_SERVER.tools.map((tool) => (
+              <span
+                key={tool}
+                className="px-3 py-1.5 text-[12.5px] font-mono rounded-full transition-colors select-none"
+                style={{
+                  background: "#252525",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  color: "#d0d0d0",
+                }}
+              >
+                {tool}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Categories */}
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[15px] font-bold" style={{ color: "#e0e0e0" }}>Categories</span>
+            <span
+              className="text-[12px] font-bold px-1.5 py-0.5 rounded-full min-w-[22px] text-center"
+              style={{ background: "#2e2e2e", color: "#bbb", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              1
+            </span>
+          </div>
+          <span
+            className="px-3 py-1.5 text-[12.5px] rounded-full"
+            style={{
+              background: "#252525",
+              border: "1px solid rgba(255,255,255,0.1)",
+              color: "#d0d0d0",
+            }}
+          >
+            {GMAIL_SERVER.category}
+          </span>
+        </div>
+
+        {/* Divider */}
+        <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", margin: "4px 0 24px" }} />
+
+        {/* Details section */}
+        <div>
+          <h3 className="text-[15px] font-bold mb-5" style={{ color: "#e0e0e0" }}>
+            Details
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-10">
+            {/* Author */}
+            <div>
+              <p className="text-[12px] mb-1.5 font-medium" style={{ color: "#555" }}>Author</p>
+              <a
+                href={GMAIL_SERVER.developerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[13.5px] font-medium transition-colors"
+                style={{ color: "#60a5fa" }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+              >
+                {GMAIL_SERVER.developer}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+
+            {/* Connector URL */}
+            <div>
+              <p className="text-[12px] mb-1.5 font-medium" style={{ color: "#555" }}>Connector URL</p>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[12px] font-mono break-all"
+                  style={{ color: "#bbb" }}
+                >
+                  {GMAIL_SERVER.connectorUrl}
+                </span>
+                <button
+                  onClick={onCopy}
+                  title="Copy URL"
+                  className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer transition-all"
+                  style={{
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: copied ? "#4ade80" : "#888",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                  }}
+                >
+                  {copied ? (
+                    <CheckCheck className="w-3.5 h-3.5" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* More info */}
+            <div className="sm:col-span-2">
+              <p className="text-[12px] mb-2 font-medium" style={{ color: "#555" }}>More info</p>
+              <div className="flex flex-col gap-1.5">
+                {[
+                  { label: "Documentation", href: GMAIL_SERVER.links.documentation },
+                  { label: "Support", href: GMAIL_SERVER.links.support },
+                  { label: "Privacy Policy", href: GMAIL_SERVER.links.privacy },
+                ].map(({ label, href }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[13px] transition-colors w-fit"
+                    style={{ color: "#60a5fa" }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+                  >
+                    {label}
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

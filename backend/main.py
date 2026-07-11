@@ -8,7 +8,12 @@ load_dotenv(dotenv_path=env_path)
 import json
 import asyncio
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
+import httpx
+import secrets
+import hashlib
+import base64
+
 
 from fastapi import FastAPI, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +25,8 @@ from database import (
     create_session, list_sessions, get_session, update_session_name, delete_session,
     log_message, get_session_messages, get_user_favorites, save_user_favorites,
     get_user_settings_profile, save_user_settings_profile, toggle_session_star,
-    edit_message_and_truncate, log_message_feedback_db
+    edit_message_and_truncate, log_message_feedback_db, save_oauth_session,
+    get_and_delete_oauth_session
 )
 from opencode_client import list_opencode_models
 from agent_loop import run_agentic_loop, LAPTOP_CHANNELS
@@ -330,17 +336,194 @@ def save_favorites(
 
 @app.get("/user/settings-profile")
 def get_settings_profile(user: str = Depends(get_current_user)):
-    return {"settings_profile": get_user_settings_profile(user)}
+    profile = get_user_settings_profile(user)
+    if not isinstance(profile, dict):
+        profile = {}
+    profile["user_id"] = user
+    return {"settings_profile": profile}
 
 @app.post("/user/settings-profile")
 def save_settings_profile(
     req: SaveSettingsProfileRequest,
     user: str = Depends(get_current_user)
 ):
-    saved_profile = save_user_settings_profile(user, req.settings_profile)
+    profile = req.settings_profile
+    if not isinstance(profile, dict):
+        profile = {}
+    profile["user_id"] = user
+    saved_profile = save_user_settings_profile(user, profile)
     return {"settings_profile": saved_profile}
 
+# --- MCP Registry REST Endpoints ---
+@app.get("/mcp/registry")
+def get_mcp_registry(query: Optional[str] = None, user: str = Depends(get_current_user)):
+    registry_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp_registry.json")
+    if not os.path.exists(registry_path):
+        return {"servers": [], "source": "curated", "total": 0}
+    try:
+        with open(registry_path, "r", encoding="utf-8") as f:
+            servers = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read registry: {str(e)}")
+
+    if query:
+        q = query.lower()
+        servers = [
+            s for s in servers
+            if q in s.get("name", "").lower() or q in s.get("description", "").lower() or q in s.get("category", "").lower()
+        ]
+
+    return {"servers": servers, "source": "curated", "total": len(servers)}
+
+
+
+# --- OAuth Authorization Models & Endpoints ---
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+    redirect_uri: str
+
+class DisconnectRequest(BaseModel):
+    provider: str
+
+@app.get("/auth/oauth/authorize-url")
+async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
+    """Build Google OAuth 2.0 PKCE authorization URL for Gmail."""
+    if provider != "gmail":
+        raise HTTPException(status_code=400, detail="Only Gmail is supported as an external provider.")
+
+    state = secrets.token_urlsafe(32)
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).decode().rstrip("=")
+
+    from mcp_client import STATIC_PROVIDERS
+    cred = STATIC_PROVIDERS["gmail"]
+    client_id = cred["client_id"]
+    auth_endpoint = cred["auth_url"]
+
+    # Gmail-only scope (read + compose + send)
+    scope = "https://www.googleapis.com/auth/gmail.modify"
+
+    auth_url = (
+        f"{auth_endpoint}?response_type=code"
+        f"&client_id={client_id}"
+        f"&state={state}"
+        f"&redirect_uri={redirect_uri}"
+        f"&code_challenge={code_challenge}"
+        f"&code_challenge_method=S256"
+        f"&scope={scope}"
+        f"&access_type=offline"
+        f"&prompt=consent"
+    )
+
+    save_oauth_session(
+        state=state,
+        code_verifier=code_verifier,
+        user_id=user_id,
+        provider="gmail",
+        client_id=client_id,
+        server_url="https://gmail.googleapis.com/mcp"
+    )
+
+    return {"url": auth_url}
+
+
+@app.post("/auth/oauth/callback")
+async def oauth_callback(req: OAuthCallbackRequest):
+    session = get_and_delete_oauth_session(req.state)
+    if not session:
+        raise HTTPException(status_code=400, detail="Invalid or expired state parameter")
+        
+    provider = session["provider"]
+    code_verifier = session["code_verifier"]
+    client_id = session["client_id"]
+    server_url = session["server_url"]
+    user_id = session["user_id"]
+    
+    from mcp_client import STATIC_PROVIDERS, detect_transport, introspect_server_tools, save_mcp_connection
+    from crypto import encrypt_token
+    
+    token_url = None
+    client_secret = None
+    
+    if provider in STATIC_PROVIDERS:
+        cred = STATIC_PROVIDERS[provider]
+        token_url = cred["token_url"]
+        client_secret = cred["client_secret"]
+    else:
+        if provider == "canva":
+            token_url = "https://mcp.canva.com/oauth/token"
+        elif provider == "notion":
+            token_url = "https://api.notion.com/v1/oauth/token"
+        else:
+            token_url = f"https://mcp.{provider}.com/oauth/token"
+            
+    payload = {
+        "grant_type": "authorization_code",
+        "code": req.code,
+        "redirect_uri": req.redirect_uri,
+        "code_verifier": code_verifier,
+        "client_id": client_id
+    }
+    if client_secret:
+        payload["client_secret"] = client_secret
+        
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {"Accept": "application/json"}
+            res = await client.post(token_url, data=payload, headers=headers)
+            if res.status_code != 200:
+                raise HTTPException(status_code=400, detail=f"Token exchange failed: {res.text}")
+                
+            token_data = res.json()
+            access_token = token_data.get("access_token")
+            refresh_token = token_data.get("refresh_token", "")
+            expires_in = token_data.get("expires_in", 3600)
+            
+            expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
+            
+            encrypted_access = encrypt_token(access_token)
+            encrypted_refresh = encrypt_token(refresh_token) if refresh_token else ""
+            
+            transport = detect_transport(server_url)
+            tools = await introspect_server_tools(
+                server_url=server_url,
+                access_token=access_token,
+                transport=transport
+            )
+            
+            connection_data = {
+                "access_token": encrypted_access,
+                "refresh_token": encrypted_refresh,
+                "expires_at": expires_at,
+                "client_id": client_id,
+                "tools": tools,
+                "connected_at": datetime.utcnow().isoformat(),
+                "server_url": server_url
+            }
+            save_mcp_connection(user_id, provider, connection_data)
+            
+            return {
+                "status": "connected",
+                "provider": provider,
+                "tools_count": len(tools)
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OAuth callback failed: {str(e)}")
+
+@app.post("/auth/disconnect")
+def disconnect_mcp_provider(req: DisconnectRequest, user: str = Depends(get_current_user)):
+    from mcp_client import delete_mcp_connection
+    delete_mcp_connection(user, req.provider)
+    return {"status": "disconnected", "provider": req.provider}
+
+
+
 @app.get("/models")
+
 def get_models(user: str = Depends(get_current_user)):
     return list_opencode_models()
 
@@ -456,9 +639,46 @@ async def prepare_agent_payload(
     current_time_str = req.client_time or datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
 
     system_prompt = get_system_prompt()
+    
+    # Check connected MCP providers
+    mcp_info = ""
+    mcp_tools = []
+    try:
+        from database import get_user_settings_profile
+        profile = get_user_settings_profile(user)
+        connections = profile.get("mcp_connections") or {}
+        print(f"[*] /prepare user: {user}, active mcp connections: {list(connections.keys())}")
+        if connections:
+            mcp_info = "\n--- ACTIVE MCP CONNECTIONS ---\n"
+            for provider, conn in connections.items():
+                if provider == "gmail":
+                    mcp_info += (
+                        "- Gmail is connected and fully authenticated via OAuth.\n"
+                        "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
+                        "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
+                    )
+                    from google_tools import GMAIL_TOOLS
+                    tools_list = GMAIL_TOOLS
+                else:
+                    mcp_info += f"- {provider.title()} is connected.\n"
+                    tools_list = conn.get("tools") or []
+                
+                for t in tools_list:
+                    mcp_tools.append({
+                        "type": "function",
+                        "function": {
+                            "name": f"{provider}__{t['name']}",
+                            "description": f"[{provider.upper()} MCP] {t['description']}",
+                            "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
+                        }
+                    })
+    except Exception as e:
+        print(f"[-] Failed to get MCP info/tools for /prepare: {e}")
+
     system_prompt += (
         f"\n\n--- DYNAMIC SESSION CONTEXT ---\n"
         f"The current local date and time is {current_time_str}. Use this exact timestamp when answering any queries. Never guess the time.\n"
+        f"{mcp_info}"
         f"--- USER SOUL PROFILE MEMORIES ---\n{soul_context}\n\n"
     )
 
@@ -482,7 +702,7 @@ async def prepare_agent_payload(
     return {
         "model": model_id,
         "messages": messages,
-        "tools": TOOLS_SCHEMA,
+        "tools": TOOLS_SCHEMA + mcp_tools,
         "variant_overrides": get_variant_overrides(req.variant)
     }
 

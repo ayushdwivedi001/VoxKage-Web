@@ -615,6 +615,17 @@ export default function AssistantResponseBubble({
     const isPending = status === "pending";
     const lowerLabel = label.toLowerCase();
     
+    // Check if it's Gmail
+    if (lowerLabel.includes("gmail")) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg"
+          alt="Gmail"
+          className="w-3.5 h-3.5 object-contain"
+        />
+      );
+    }
+
     // Check if it's an image search
     if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
       return (

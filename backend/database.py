@@ -317,3 +317,26 @@ def save_user_settings_profile(user_id: str, profile: dict) -> dict:
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to save user settings profile.")
     return res.data[0].get("settings_profile") or {}
+
+# --- OAuth Sessions Management ---
+def save_oauth_session(state: str, code_verifier: str, user_id: str, provider: str, client_id: str = None, server_url: str = None):
+    db = get_db()
+    data = {
+        "state": state,
+        "code_verifier": code_verifier,
+        "user_id": user_id,
+        "provider": provider,
+        "client_id": client_id,
+        "server_url": server_url
+    }
+    execute_with_retry(db.table("oauth_sessions").insert(data))
+
+def get_and_delete_oauth_session(state: str) -> dict | None:
+    db = get_db()
+    res = execute_with_retry(db.table("oauth_sessions").select("*").eq("state", state))
+    if not res.data:
+        return None
+    session_data = res.data[0]
+    execute_with_retry(db.table("oauth_sessions").delete().eq("state", state))
+    return session_data
+

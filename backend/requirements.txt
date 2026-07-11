@@ -19,3 +19,6 @@ python-docx==1.2.0
 openpyxl==3.1.5
 python-pptx==1.0.2
 aiohttp==3.11.11
+mcp>=1.27,<2
+cryptography>=44.0
+

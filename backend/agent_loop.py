@@ -133,6 +133,9 @@ def get_tool_label(name: str, args: dict) -> str:
         return "Delete RAG Doc"
     elif name == "index_document":
         return f"Indexing {args.get('original_name') or args.get('filename') or ''}..."
+    elif "__" in name:
+        provider, mcp_tool = name.split("__", 1)
+        return f"[{provider.title()} MCP] {mcp_tool.replace('_', ' ').title()}"
     else:
         return name.replace("_", " ").title()
 
@@ -223,7 +226,84 @@ def get_variant_overrides(variant: str) -> dict:
             "frequency_penalty": 0.0
         }
 
+async def poll_canva_export_job(
+    session_id: str,
+    user_id: str,
+    client_websocket,
+    manager_ref,
+    job_id: str,
+    access_token: str,
+    server_url: str,
+    transport: str
+):
+    async def send_to_client(payload_dict):
+        if client_websocket:
+            try:
+                await client_websocket.send_text(json.dumps(payload_dict))
+            except:
+                pass
+        elif manager_ref and user_id in manager_ref.active_chats:
+            for ws in manager_ref.active_chats[user_id]:
+                try:
+                    await ws.send_text(json.dumps(payload_dict))
+                except:
+                    pass
+
+    from mcp_pool import mcp_pool
+    # Poll for max 60 seconds
+    for attempt in range(40):
+        await asyncio.sleep(1.5)
+        try:
+            session_mcp = await mcp_pool.get_or_create(
+                user_id=user_id,
+                provider="canva",
+                server_url=server_url,
+                access_token=access_token,
+                transport=transport
+            )
+            res = await session_mcp.call_tool("get_export_status", arguments={"job_id": job_id})
+            
+            output_parts = []
+            for block in res.content:
+                if hasattr(block, "text") and block.text:
+                    output_parts.append(block.text)
+            status_text = "\n".join(output_parts)
+            
+            try:
+                status_json = json.loads(status_text)
+            except:
+                status_json = {}
+                
+            state = status_json.get("state") or status_json.get("status")
+            
+            await send_to_client({
+                "type": "hud_log",
+                "content": f"[Canva MCP] Export status: {state or 'polling'}..."
+            })
+            
+            if state in ("success", "completed", "done"):
+                download_url = status_json.get("url") or status_json.get("download_url")
+                await send_to_client({
+                    "type": "hud_log",
+                    "content": f"[Canva MCP] Export complete! Download link: {download_url}"
+                })
+                if download_url:
+                    await send_to_client({
+                        "type": "token",
+                        "content": f"\n\n### Canva Export Complete\nYour design has been successfully exported: [Download design]({download_url})\n\n![Canva Export]({download_url})"
+                    })
+                break
+            elif state in ("failed", "error"):
+                await send_to_client({
+                    "type": "hud_log",
+                    "content": f"[Canva MCP] Export failed: {status_json.get('error') or 'unknown error'}"
+                })
+                break
+        except Exception as e:
+            print(f"[-] Error polling Canva job {job_id}: {e}")
+
 async def execute_tool_call_v2(
+
     tc: dict,
     user_id: str,
     session_id: str,
@@ -790,8 +870,44 @@ async def execute_tool_call_v2(
                     "timezone": "Server UTC Time",
                     "timestamp": datetime.now().isoformat()
                 })
+        elif "__" in name:
+            provider, mcp_tool_name = name.split("__", 1)
+            if provider == "gmail":
+                gmail_logs = {
+                    "create_draft": "Preparing a Gmail draft...",
+                    "get_thread": "Fetching conversation thread...",
+                    "list_drafts": "Retrieving draft list...",
+                    "list_labels": "Listing mail folders...",
+                    "search_threads": "Searching Gmail mailbox...",
+                }
+                announcement = gmail_logs.get(mcp_tool_name, f"Consulting Gmail ({mcp_tool_name})...")
+            else:
+                announcement = f"[{provider.title()} MCP] Executing {mcp_tool_name}..."
+            await send_to_client({"type": "hud_log", "content": announcement})
+            
+            try:
+                from database import get_user_settings_profile
+                profile = get_user_settings_profile(user_id)
+                connections = profile.get("mcp_connections") or {}
+                conn = connections.get(provider)
+                if not conn:
+                    raise Exception(f"Connection credentials for provider '{provider}' not found.")
+                
+                from mcp_client import get_valid_token
+                access_token = await get_valid_token(user_id, provider, conn)
+
+                # Gmail is the only supported external provider
+                from google_tools import execute_google_tool
+                tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
+
+                if not tool_output:
+                    tool_output = "Success"
+                            
+            except Exception as e:
+                tool_output = f"Error executing MCP tool: {str(e)}"
         else:
             tool_output = f"Error: Tool '{name}' is not supported on Web backend."
+
 
         await send_to_client({"type": "tool_success", "node_id": tc_id})
         short_res = str(tool_output)[:120] + '...' if len(str(tool_output)) > 120 else str(tool_output)
@@ -843,9 +959,30 @@ async def run_agentic_loop(
     current_time_str = client_time or datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
 
     system_prompt = get_system_prompt()
+    mcp_info = ""
+    try:
+        from database import get_user_settings_profile
+        profile = get_user_settings_profile(user_id)
+        connections = profile.get("mcp_connections") or {}
+        print(f"[*] run_agentic_loop user_id: {user_id}, active mcp connections: {list(connections.keys())}")
+        if connections:
+            mcp_info = "\n--- ACTIVE MCP CONNECTIONS ---\n"
+            for provider in connections.keys():
+                if provider == "gmail":
+                    mcp_info += (
+                        "- Gmail is connected and fully authenticated via OAuth.\n"
+                        "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
+                        "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
+                    )
+                else:
+                    mcp_info += f"- {provider.title()} is connected.\n"
+    except Exception as e:
+        print(f"[-] Failed to get MCP info for system prompt: {e}")
+
     system_prompt += (
         f"\n\n--- DYNAMIC SESSION CONTEXT ---\n"
         f"The current local date and time is {current_time_str}. Use this exact timestamp when answering any queries. Never guess the time.\n"
+        f"{mcp_info}"
         f"--- USER SOUL PROFILE MEMORIES ---\n{soul_context}\n\n"
     )
 
@@ -873,8 +1010,32 @@ async def run_agentic_loop(
             "stream": True
         }
         if is_agentic:
-            payload["tools"] = TOOLS_SCHEMA
+            mcp_tools = []
+            try:
+                from database import get_user_settings_profile
+                profile = get_user_settings_profile(user_id)
+                connections = profile.get("mcp_connections") or {}
+                for provider, conn in connections.items():
+                    if provider == "gmail":
+                        from google_tools import GMAIL_TOOLS
+                        tools_list = GMAIL_TOOLS
+                    else:
+                        tools_list = conn.get("tools") or []
+                    for t in tools_list:
+                        mcp_tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": f"{provider}__{t['name']}",
+                                "description": f"[{provider.upper()} MCP] {t['description']}",
+                                "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
+                            }
+                        })
+            except Exception as e:
+                print(f"[-] Failed to fetch or inject MCP tools: {e}")
+                
+            payload["tools"] = TOOLS_SCHEMA + mcp_tools
             payload["tool_choice"] = "auto"
+
 
         payload.update(get_variant_overrides(variant))
 

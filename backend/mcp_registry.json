@@ -1,0 +1,13 @@
+[
+  {
+    "slug": "gmail",
+    "name": "Gmail",
+    "category": "Productivity",
+    "description": "Read, search, compose, and send Gmail messages directly from VoxKage.",
+    "url": "https://gmail.googleapis.com/mcp",
+    "authType": "oauth2.1",
+    "transport": "streamable-http",
+    "maintainer": "Google",
+    "maintainerUrl": "https://mail.google.com"
+  }
+]
