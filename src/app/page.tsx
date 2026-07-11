@@ -216,6 +216,7 @@ export default function Home() {
       attachmentsManager.setAttachments([]);
     }
     if (sessionId) {
+      setIsChatActive(true);
       chatSessions.loadSessionHistory(sessionId, scrollToBottom);
     } else {
       handleCreateNewChat();

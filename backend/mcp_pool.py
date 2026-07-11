@@ -54,7 +54,9 @@ class MCPConnectionPool:
                     await session.__aenter__()
                     await session.initialize()
                 else:
-                    cm = streamable_http_client(server_url, headers=headers)
+                    import httpx
+                    async_client = httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(timeout=None, connect=15.0))
+                    cm = streamable_http_client(server_url, http_client=async_client)
                     read_stream, write_stream, _ = await cm.__aenter__()
                     session = ClientSession(read_stream, write_stream)
                     await session.__aenter__()
@@ -68,7 +70,7 @@ class MCPConnectionPool:
                     last_used=time.time()
                 )
                 return session
-            except Exception as e:
+            except BaseException as e:
                 print(f"[-] Failed to establish connection to {server_url}: {e}")
                 raise e
 
@@ -85,6 +87,14 @@ class MCPConnectionPool:
             for entry in self._pool.values():
                 await self._close_entry(entry)
             self._pool.clear()
+
+    async def remove(self, user_id: str, provider: str):
+        key = f"{user_id}:{provider}"
+        async with self._lock:
+            if key in self._pool:
+                entry = self._pool[key]
+                await self._close_entry(entry)
+                del self._pool[key]
 
     async def _close_entry(self, entry: PoolEntry):
         try:

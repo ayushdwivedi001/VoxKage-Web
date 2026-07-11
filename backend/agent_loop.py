@@ -896,8 +896,50 @@ async def execute_tool_call_v2(
                 from mcp_client import get_valid_token
                 access_token = await get_valid_token(user_id, provider, conn)
 
-                from mcp_servers.gmail.gmail_mcp import execute_google_tool
-                tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
+                if provider == "gmail":
+                    from mcp_servers.gmail.gmail_mcp import execute_google_tool
+                    tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
+                else:
+                    server_url = conn.get("server_url")
+                    if not server_url:
+                        raise Exception(f"Server URL for provider '{provider}' is not configured.")
+                    
+                    from mcp_client import detect_transport
+                    transport = conn.get("transport") or detect_transport(server_url)
+                    
+                    # Execute with a fresh inline connection per tool call.
+                    # Pooled connections are incompatible with AnyIO's cancel scope lifecycle —
+                    # sessions stored outside their `async with` context cause CancelledError
+                    # propagation across asyncio.gather tasks.
+                    async def _execute_remote_tool(token, url, tp, tool, tool_args):
+                        import httpx
+                        from mcp import ClientSession
+                        headers = {"Authorization": f"Bearer {token}"}
+                        if tp == "sse":
+                            from mcp.client.sse import sse_client
+                            async with sse_client(url, headers=headers) as (read, write):
+                                async with ClientSession(read, write) as sess:
+                                    await sess.initialize()
+                                    result = await sess.call_tool(tool, tool_args)
+                                    return "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                        else:
+                            from mcp.client.streamable_http import streamable_http_client
+                            aclient = httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(timeout=None, connect=15.0))
+                            async with streamable_http_client(url, http_client=aclient) as (read, write, _):
+                                async with ClientSession(read, write) as sess:
+                                    await sess.initialize()
+                                    result = await sess.call_tool(tool, tool_args)
+                                    return "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                    
+                    try:
+                        tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
+                    except BaseException as first_error:
+                        print(f"[-] MCP execution failed for {provider}: {first_error}. Retrying with fresh token.")
+                        access_token = await get_valid_token(user_id, provider, conn)
+                        try:
+                            tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
+                        except BaseException as retry_error:
+                            tool_output = f"Error: Remote MCP tool execution failed after retry: {retry_error}"
 
                 if not tool_output:
                     tool_output = "Success"
@@ -1014,6 +1056,8 @@ async def run_agentic_loop(
                 from database import get_user_settings_profile
                 profile = get_user_settings_profile(user_id)
                 connections = profile.get("mcp_connections") or {}
+                
+                raw_mcp_tools = []
                 for provider, conn in connections.items():
                     if provider == "gmail":
                         from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
@@ -1021,6 +1065,55 @@ async def run_agentic_loop(
                     else:
                         tools_list = conn.get("tools") or []
                     for t in tools_list:
+                        raw_mcp_tools.append((provider, t))
+
+                # Check if we need to filter tools (total > 8) to optimize context/distraction
+                if len(raw_mcp_tools) > 8:
+                    await send_to_client({"type": "hud_log", "content": "Searching tools..."})
+                    
+                    scored_tools = []
+                    prompt_lower = prompt.lower()
+                    
+                    for provider, t in raw_mcp_tools:
+                        name_lower = t["name"].lower()
+                        desc_lower = t["description"].lower()
+                        score = 0
+                        
+                        # Provider specific boosts based on user query
+                        if provider == "gmail" and any(k in prompt_lower for k in ["mail", "email", "gmail", "inbox", "draft", "thread", "message", "reply", "send"]):
+                            score += 8
+                        if provider == "google_drive" and any(k in prompt_lower for k in ["drive", "google drive", "file", "doc", "sheet", "pdf", "folder", "upload", "search file", "read file", "slides"]):
+                            score += 8
+                            
+                        # Word-by-word matching
+                        for word in prompt_lower.split():
+                            if len(word) > 2:
+                                if word in name_lower:
+                                    score += 3
+                                if word in desc_lower:
+                                    score += 1
+                                    
+                        scored_tools.append((score, provider, t))
+                    
+                    # Sort descending by score
+                    scored_tools.sort(key=lambda x: x[0], reverse=True)
+                    # Keep top 6 tools
+                    selected = scored_tools[:6]
+                    
+                    for score, provider, t in selected:
+                        mcp_tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": f"{provider}__{t['name']}",
+                                "description": f"[{provider.upper()} MCP] {t['description']}",
+                                "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
+                            }
+                        })
+                    
+                    # Complete the searching tools step immediately in UI
+                    await send_to_client({"type": "tool_success"})
+                else:
+                    for provider, t in raw_mcp_tools:
                         mcp_tools.append({
                             "type": "function",
                             "function": {

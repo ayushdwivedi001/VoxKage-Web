@@ -175,6 +175,7 @@ export default function useChatSessions({
   };
 
   const loadSessionHistory = async (sessionId: string, scrollToBottom: () => void) => {
+    setCurrentSessionId(sessionId);
     initializeTelemetryWS(sessionId);
     const cached = messagesCache[sessionId];
     if (cached) {

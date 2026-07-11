@@ -3,9 +3,15 @@ import httpx
 from datetime import datetime, timedelta
 from crypto import encrypt_token, decrypt_token
 
-# --- Gmail is the only supported OAuth provider ---
+# --- Google OAuth Providers ---
 STATIC_PROVIDERS = {
     "gmail": {
+        "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        "token_url": "https://oauth2.googleapis.com/token",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth"
+    },
+    "google_drive": {
         "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
         "token_url": "https://oauth2.googleapis.com/token",
@@ -22,11 +28,54 @@ def detect_transport(server_url: str) -> str:
     return "streamable_http"
 
 async def introspect_server_tools(server_url: str, access_token: str, transport: str) -> list:
-    """Return static tool schemas for Gmail (the only supported provider)."""
+    """Return tool schemas from Gmail (statically) or retrieve them dynamically from a remote MCP server."""
     if not server_url:
         return []
-    from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
-    return GMAIL_TOOLS
+    
+    if "gmail" in server_url.lower():
+        from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
+        return GMAIL_TOOLS
+
+    # Connect to the remote server and query it dynamically
+    headers = {"Authorization": f"Bearer {access_token}"}
+    try:
+        if transport == "sse":
+            from mcp.client.sse import sse_client
+            from mcp import ClientSession
+            
+            async with sse_client(server_url, headers=headers) as (read_stream, write_stream):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    res = await session.list_tools()
+                    tools_list = []
+                    for t in res.tools:
+                        tools_list.append({
+                            "name": t.name,
+                            "description": t.description,
+                            "inputSchema": t.inputSchema
+                        })
+                    return tools_list
+        else:
+            from mcp.client.streamable_http import streamable_http_client
+            from mcp import ClientSession
+            import httpx
+            
+            async_client = httpx.AsyncClient(headers=headers, timeout=15.0)
+            async with streamable_http_client(server_url, http_client=async_client) as (read_stream, write_stream, _):
+                async with ClientSession(read_stream, write_stream) as session:
+                    await session.initialize()
+                    res = await session.list_tools()
+                    tools_list = []
+                    for t in res.tools:
+                        tools_list.append({
+                            "name": t.name,
+                            "description": t.description,
+                            "inputSchema": t.inputSchema
+                        })
+                    return tools_list
+    except Exception as e:
+        print(f"[-] Failed to introspect remote server tools from {server_url}: {e}")
+        return []
 
 def save_mcp_connection(user_id: str, provider: str, connection_data: dict):
     """Save connected server data (encrypted tokens, tools list) to settings_profile in Supabase."""
@@ -46,8 +95,8 @@ def delete_mcp_connection(user_id: str, provider: str):
         save_user_settings_profile(user_id, profile)
 
 async def refresh_oauth_token(provider: str, refresh_token: str, client_id: str = None) -> dict:
-    """Refresh expired Gmail access token using OAuth refresh token."""
-    cred = STATIC_PROVIDERS["gmail"]
+    """Refresh expired access token using OAuth refresh token."""
+    cred = STATIC_PROVIDERS.get(provider) or STATIC_PROVIDERS.get("gmail")
     payload = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
@@ -57,7 +106,7 @@ async def refresh_oauth_token(provider: str, refresh_token: str, client_id: str 
     async with httpx.AsyncClient(timeout=10.0) as client:
         res = await client.post(cred["token_url"], data=payload)
         if res.status_code != 200:
-            raise Exception(f"Failed to refresh Gmail token: {res.text}")
+            raise Exception(f"Failed to refresh {provider} token: {res.text}")
         return res.json()
 
 async def get_valid_token(user_id: str, provider: str, connection: dict) -> str:

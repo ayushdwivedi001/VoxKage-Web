@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   X,
-  Check,
   Plus,
   Settings2,
   Search,
@@ -11,6 +10,7 @@ import {
   ExternalLink,
   Copy,
   CheckCheck,
+  RefreshCw,
 } from "lucide-react";
 import { getToken, BACKEND_URL } from "@/lib/api";
 
@@ -22,31 +22,58 @@ interface ConnectModalProps {
   onDisconnectSuccess: (slug: string) => void;
 }
 
-// --- Single source of truth for the Gmail MCP entry ---
-const GMAIL_SERVER = {
-  slug: "gmail",
-  name: "Gmail",
-  tagline: "Draft replies, summarize threads, & search your inbox",
-  description:
-    "Connect Gmail to VoxKage to quickly find important emails and understand long conversations. VoxKage can search through your messages, read entire email threads to give you context, and help you stay on top of your inbox. Perfect for finding that message you remember sending, catching up on email chains you missed, or preparing for meetings.",
-  developer: "Google",
-  developerUrl: "https://cloud.google.com",
-  connectorUrl: "https://gmailmcp.googleapis.com/mcp/v1",
-  category: "Communication",
-  tools: [
-    "create_draft",
-    "get_thread",
-    "list_drafts",
-    "list_labels",
-    "search_threads",
-  ],
-  links: {
-    documentation: "https://developers.google.com/gmail/api/guides",
-    support: "https://support.google.com/mail",
-    privacy: "https://policies.google.com/privacy",
+const CONNECTORS = [
+  {
+    slug: "gmail",
+    name: "Gmail",
+    tagline: "Draft replies, summarize threads, & search your inbox",
+    description:
+      "Connect Gmail to VoxKage to quickly find important emails and understand long conversations. VoxKage can search through your messages, read entire email threads to give you context, and help you stay on top of your inbox. Perfect for finding that message you remember sending, catching up on email chains you missed, or preparing for meetings.",
+    developer: "Google",
+    developerUrl: "https://cloud.google.com",
+    connectorUrl: "https://gmailmcp.googleapis.com/mcp/v1",
+    category: "Communication",
+    tools: [
+      "create_draft",
+      "get_thread",
+      "list_drafts",
+      "list_labels",
+      "search_threads",
+    ],
+    links: {
+      documentation: "https://developers.google.com/gmail/api/guides",
+      support: "https://support.google.com/mail",
+      privacy: "https://policies.google.com/privacy",
+    },
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg",
   },
-  iconUrl: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg",
-};
+  {
+    slug: "google_drive",
+    name: "Google Drive",
+    tagline: "Search, read, and upload files instantly",
+    description:
+      "Connect Google Drive to VoxKage to search through your documents, read file contents, upload new files, and analyze your data. VoxKage can find specific documents even when you don't remember the exact name, read and analyze the content of Google Docs, Sheets, Slides, and PDFs, and upload files directly to your Drive. Useful for finding project notes, extracting data from spreadsheets, preparing meeting materials, or organizing files scattered across your Drive.",
+    developer: "Google",
+    developerUrl: "https://cloud.google.com",
+    connectorUrl: "https://drivemcp.googleapis.com/mcp/v1",
+    category: "Productivity",
+    tools: [
+      "create_file",
+      "download_file_content",
+      "get_file_metadata",
+      "get_file_permissions",
+      "list_recent_files",
+      "read_file_content",
+      "search_files",
+    ],
+    links: {
+      documentation: "https://developers.google.com/drive/api/guides",
+      support: "https://support.google.com/drive",
+      privacy: "https://policies.google.com/privacy",
+    },
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg",
+  }
+];
 
 export default function ConnectModal({
   isOpen,
@@ -56,15 +83,13 @@ export default function ConnectModal({
   onDisconnectSuccess,
 }: ConnectModalProps) {
   const [view, setView] = useState<"list" | "details">("list");
+  const [activeConnector, setActiveConnector] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [connectedDetails, setConnectedDetails] = useState<any>(null);
+  const [connectedDetails, setConnectedDetails] = useState<Record<string, any>>({});
   const searchRef = useRef<HTMLInputElement>(null);
-
-  const isConnected =
-    connectedServers.includes("gmail") || !!connectedDetails;
 
   useEffect(() => {
     if (isOpen) {
@@ -89,15 +114,19 @@ export default function ConnectModal({
       });
       if (res.ok) {
         const data = await res.json();
-        const conn = data.settings_profile?.mcp_connections?.gmail;
-        setConnectedDetails(conn || null);
+        const conns = data.settings_profile?.mcp_connections || {};
+        setConnectedDetails(conns);
       }
     } catch {
       /* silent */
     }
   };
 
-  const handleConnect = async () => {
+  const isConnected = (slug: string) => {
+    return connectedServers.includes(slug) || !!connectedDetails[slug];
+  };
+
+  const handleConnect = async (connector: any) => {
     setLoading(true);
     setError(null);
     try {
@@ -112,12 +141,12 @@ export default function ConnectModal({
 
       const redirectUri = window.location.origin + "/oauth/callback";
       const authRes = await fetch(
-        `${BACKEND_URL}/auth/oauth/authorize-url?provider=gmail&user_id=${userId}&redirect_uri=${encodeURIComponent(redirectUri)}`,
+        `${BACKEND_URL}/auth/oauth/authorize-url?provider=${connector.slug}&user_id=${userId}&redirect_uri=${encodeURIComponent(redirectUri)}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!authRes.ok) {
         const errJson = await authRes.json().catch(() => ({}));
-        throw new Error(errJson.detail || "Failed to start Google OAuth flow.");
+        throw new Error(errJson.detail || `Failed to start ${connector.name} OAuth flow.`);
       }
       const { url } = await authRes.json();
 
@@ -126,18 +155,18 @@ export default function ConnectModal({
       const top = window.screen.height / 2 - h / 2;
       const popup = window.open(
         url,
-        "gmail_oauth",
+        `${connector.slug}_oauth`,
         `width=${w},height=${h},left=${left},top=${top},status=no`
       );
       if (!popup) throw new Error("Popup blocked. Allow popups for this site.");
 
       const listener = (event: MessageEvent) => {
         if (event.origin !== window.location.origin) return;
-        if (event.data?.type === "OAUTH_SUCCESS" && event.data?.provider === "gmail") {
+        if (event.data?.type === "OAUTH_SUCCESS" && event.data?.provider === connector.slug) {
           window.removeEventListener("message", listener);
           setLoading(false);
           fetchConnectedDetails();
-          onConnectSuccess("gmail");
+          onConnectSuccess(connector.slug);
         } else if (event.data?.type === "OAUTH_FAILURE") {
           window.removeEventListener("message", listener);
           setError(event.data.error || "Google sign-in was declined.");
@@ -151,7 +180,7 @@ export default function ConnectModal({
     }
   };
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = async (connector: any) => {
     setLoading(true);
     try {
       const token = getToken();
@@ -161,10 +190,14 @@ export default function ConnectModal({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ provider: "gmail" }),
+        body: JSON.stringify({ provider: connector.slug }),
       });
-      setConnectedDetails(null);
-      onDisconnectSuccess("gmail");
+      setConnectedDetails((prev) => {
+        const copy = { ...prev };
+        delete copy[connector.slug];
+        return copy;
+      });
+      onDisconnectSuccess(connector.slug);
       setView("list");
     } catch {
       /* silent */
@@ -173,19 +206,48 @@ export default function ConnectModal({
     }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(GMAIL_SERVER.connectorUrl);
+  const handleCopy = (connector: any) => {
+    navigator.clipboard.writeText(connector.connectorUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Filter: only show if search matches (supports future servers)
-  const showGmail =
-    !searchQuery.trim() ||
-    "gmail".includes(searchQuery.toLowerCase()) ||
-    "google".includes(searchQuery.toLowerCase()) ||
-    "email".includes(searchQuery.toLowerCase()) ||
-    GMAIL_SERVER.tagline.toLowerCase().includes(searchQuery.toLowerCase());
+  const handleRefreshTools = async (connector: any) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = getToken();
+      const res = await fetch(`${BACKEND_URL}/auth/mcp/refresh`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ provider: connector.slug }),
+      });
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Failed to refresh tool schemas.");
+      }
+      const data = await res.json();
+      await fetchConnectedDetails();
+      alert(`Successfully refreshed! Discovered ${data.tools_count} tools.`);
+    } catch (err: any) {
+      setError(err.message || "Failed to refresh tool schemas.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filteredConnectors = CONNECTORS.filter((connector) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      connector.name.toLowerCase().includes(query) ||
+      connector.tagline.toLowerCase().includes(query) ||
+      connector.category.toLowerCase().includes(query)
+    );
+  });
 
   if (!isOpen) return null;
 
@@ -277,9 +339,8 @@ export default function ConnectModal({
 
             {/* Server grid */}
             <div className="flex-grow overflow-y-auto px-6 pb-6 custom-chat-scrollbar">
-              {showGmail ? (
+              {filteredConnectors.length > 0 ? (
                 <>
-                  {/* Section label */}
                   <p
                     className="text-[11px] font-semibold mb-3 uppercase tracking-widest"
                     style={{ color: "#555" }}
@@ -287,14 +348,20 @@ export default function ConnectModal({
                     Available
                   </p>
 
-                  {/* Grid — same 2-col layout ready for future servers */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <GmailCard
-                      isConnected={isConnected}
-                      loading={loading}
-                      onConnectClick={handleConnect}
-                      onCardClick={() => setView("details")}
-                    />
+                    {filteredConnectors.map((connector) => (
+                      <ConnectorCard
+                        key={connector.slug}
+                        connector={connector}
+                        isConnected={isConnected(connector.slug)}
+                        loading={loading}
+                        onConnectClick={() => handleConnect(connector)}
+                        onCardClick={() => {
+                          setActiveConnector(connector);
+                          setView("details");
+                        }}
+                      />
+                    ))}
                   </div>
                 </>
               ) : (
@@ -310,18 +377,23 @@ export default function ConnectModal({
         )}
 
         {/* ─── VIEW: DETAILS ────────────────────────────────────────── */}
-        {view === "details" && (
-          <GmailDetailsView
-            isConnected={isConnected}
-            connectedDetails={connectedDetails}
+        {view === "details" && activeConnector && (
+          <ConnectorDetailsView
+            connector={activeConnector}
+            isConnected={isConnected(activeConnector.slug)}
+            connectedDetails={connectedDetails[activeConnector.slug]}
             loading={loading}
             error={error}
             copied={copied}
-            onBack={() => { setView("list"); setError(null); }}
+            onBack={() => {
+              setView("list");
+              setError(null);
+            }}
             onClose={onClose}
-            onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-            onCopy={handleCopy}
+            onConnect={() => handleConnect(activeConnector)}
+            onDisconnect={() => handleDisconnect(activeConnector)}
+            onCopy={() => handleCopy(activeConnector)}
+            onRefreshTools={() => handleRefreshTools(activeConnector)}
           />
         )}
       </div>
@@ -329,13 +401,15 @@ export default function ConnectModal({
   );
 }
 
-// ─── GMAIL CARD (list view) ───────────────────────────────────────────────────
-function GmailCard({
+// ─── CONNECTOR CARD (list view) ───────────────────────────────────────────────
+function ConnectorCard({
+  connector,
   isConnected,
   loading,
   onConnectClick,
   onCardClick,
 }: {
+  connector: any;
   isConnected: boolean;
   loading: boolean;
   onConnectClick: () => void;
@@ -360,7 +434,6 @@ function GmailCard({
         (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.08)";
       }}
     >
-      {/* Top row: icon + name + action button */}
       <div className="flex items-center gap-3">
         {/* Icon */}
         <div
@@ -368,10 +441,12 @@ function GmailCard({
           style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
         >
           <img
-            src={GMAIL_SERVER.iconUrl}
-            alt="Gmail"
+            src={connector.iconUrl}
+            alt={connector.name}
             className="w-5 h-5 object-contain"
-            onError={(e) => { e.currentTarget.style.display = "none"; }}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
           />
         </div>
 
@@ -382,7 +457,7 @@ function GmailCard({
               className="text-[14px] font-semibold truncate"
               style={{ color: "#e8e8e8" }}
             >
-              {GMAIL_SERVER.name}
+              {connector.name}
             </span>
             {isConnected && (
               <svg
@@ -410,7 +485,7 @@ function GmailCard({
           )}
         </div>
 
-        {/* Action button: + or settings gear */}
+        {/* Action button */}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -423,9 +498,7 @@ function GmailCard({
           title={isConnected ? "Manage" : "Connect"}
           className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all duration-150 cursor-pointer"
           style={{
-            background: isConnected
-              ? "rgba(255,255,255,0.04)"
-              : "rgba(255,255,255,0.06)",
+            background: isConnected ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.06)",
             border: "1px solid rgba(255,255,255,0.1)",
             color: isConnected ? "#888" : "#aaa",
           }}
@@ -460,14 +533,15 @@ function GmailCard({
         className="text-[12.5px] leading-relaxed line-clamp-2"
         style={{ color: "#666" }}
       >
-        {GMAIL_SERVER.tagline}
+        {connector.tagline}
       </p>
     </div>
   );
 }
 
-// ─── GMAIL DETAILS VIEW ───────────────────────────────────────────────────────
-function GmailDetailsView({
+// ─── CONNECTOR DETAILS VIEW ───────────────────────────────────────────────────
+function ConnectorDetailsView({
+  connector,
   isConnected,
   connectedDetails,
   loading,
@@ -478,7 +552,9 @@ function GmailDetailsView({
   onConnect,
   onDisconnect,
   onCopy,
+  onRefreshTools,
 }: {
+  connector: any;
   isConnected: boolean;
   connectedDetails: any;
   loading: boolean;
@@ -489,7 +565,13 @@ function GmailDetailsView({
   onConnect: () => void;
   onDisconnect: () => void;
   onCopy: () => void;
+  onRefreshTools: () => void;
 }) {
+  // Use dynamically retrieved tool names from connection data if connected, fallback to config
+  const displayedTools = connectedDetails?.tools
+    ? connectedDetails.tools.map((t: any) => t.name)
+    : connector.tools;
+
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
@@ -501,8 +583,12 @@ function GmailDetailsView({
           onClick={onBack}
           className="flex items-center gap-1.5 text-[13px] transition-colors cursor-pointer select-none"
           style={{ color: "#777" }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#ccc"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#777"; }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "#ccc";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "#777";
+          }}
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -525,8 +611,11 @@ function GmailDetailsView({
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-grow overflow-y-auto custom-chat-scrollbar" style={{ padding: "28px 32px 40px" }}>
-        {/* Header row: icon + name + action */}
+      <div
+        className="flex-grow overflow-y-auto custom-chat-scrollbar"
+        style={{ padding: "28px 32px 40px" }}
+      >
+        {/* Header row */}
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
             {/* Large icon */}
@@ -535,33 +624,43 @@ function GmailDetailsView({
               style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
             >
               <img
-                src={GMAIL_SERVER.iconUrl}
-                alt="Gmail"
+                src={connector.iconUrl}
+                alt={connector.name}
                 className="w-7 h-7 object-contain"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
               />
             </div>
             {/* Name + subtitle */}
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-[20px] font-bold" style={{ color: "#f0f0f0", letterSpacing: "-0.02em" }}>
-                  {GMAIL_SERVER.name}
+                <h2
+                  className="text-[20px] font-bold"
+                  style={{ color: "#f0f0f0", letterSpacing: "-0.02em" }}
+                >
+                  {connector.name}
                 </h2>
                 {isConnected && (
                   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                     <circle cx="8" cy="8" r="8" fill="rgba(100,200,120,0.18)" />
-                    <path d="M5 8l2.5 2.5 4-4" stroke="#4ade80" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      d="M5 8l2.5 2.5 4-4"
+                      stroke="#4ade80"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 )}
-
               </div>
               <p className="text-[13px] mt-0.5" style={{ color: "#666" }}>
-                {GMAIL_SERVER.tagline}
+                {connector.tagline}
               </p>
             </div>
           </div>
 
-          {/* Disconnect / Connect button */}
+          {/* Connect / Disconnect Action */}
           {isConnected ? (
             <button
               disabled={loading}
@@ -595,8 +694,12 @@ function GmailDetailsView({
                 color: "#111",
                 border: "none",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "#e8e8e8"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "#fff"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "#e8e8e8";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "#fff";
+              }}
             >
               {loading ? (
                 <span className="flex items-center gap-2">
@@ -615,22 +718,26 @@ function GmailDetailsView({
 
         {/* Description */}
         <p className="text-[14px] leading-[1.7] mb-6" style={{ color: "#c0c0c0" }}>
-          {GMAIL_SERVER.description}
+          {connector.description}
         </p>
 
-        {/* Developed by */}
+        {/* Developer Info */}
         <div className="mb-1.5">
           <span className="text-[13.5px]" style={{ color: "#888" }}>Developed by </span>
           <a
-            href={GMAIL_SERVER.developerUrl}
+            href={connector.developerUrl}
             target="_blank"
             rel="noreferrer"
             className="text-[13.5px] font-medium inline-flex items-center gap-1 transition-colors"
             style={{ color: "#60a5fa" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "#93c5fd";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "#60a5fa";
+            }}
           >
-            {GMAIL_SERVER.developer}
+            {connector.developer}
             <ExternalLink className="w-3 h-3" />
           </a>
         </div>
@@ -638,11 +745,15 @@ function GmailDetailsView({
           Only use connectors from developers you trust. VoxKage does not control which tools developers make available and cannot verify that they will work as intended or that they won&apos;t change.
         </p>
 
-        {/* Error */}
+        {/* Error banner */}
         {error && (
           <div
             className="mb-5 px-4 py-3 rounded-xl text-[12.5px]"
-            style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#f87171" }}
+            style={{
+              background: "rgba(239,68,68,0.08)",
+              border: "1px solid rgba(239,68,68,0.2)",
+              color: "#f87171",
+            }}
           >
             {error}
           </div>
@@ -650,20 +761,33 @@ function GmailDetailsView({
 
         {/* Tools */}
         <div className="mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-[15px] font-bold" style={{ color: "#e0e0e0" }}>Tools</span>
-            <span
-              className="text-[12px] font-bold px-1.5 py-0.5 rounded-full min-w-[22px] text-center"
-              style={{ background: "#2e2e2e", color: "#bbb", border: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              {GMAIL_SERVER.tools.length}
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-bold" style={{ color: "#e0e0e0" }}>Tools</span>
+              <span
+                className="text-[12px] font-bold px-1.5 py-0.5 rounded-full min-w-[22px] text-center"
+                style={{ background: "#2e2e2e", color: "#bbb", border: "1px solid rgba(255,255,255,0.1)" }}
+              >
+                {displayedTools.length}
+              </span>
+            </div>
+            {isConnected && (
+              <button
+                onClick={onRefreshTools}
+                disabled={loading}
+                title="Force refresh tool schemas from server"
+                className="text-[12px] text-blue-400 hover:text-blue-300 font-medium inline-flex items-center gap-1 transition-colors cursor-pointer select-none disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+                Refresh Tools
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
-            {GMAIL_SERVER.tools.map((tool) => (
+            {displayedTools.map((tool: string) => (
               <span
                 key={tool}
-                className="px-3 py-1.5 text-[12.5px] font-mono rounded-full transition-colors select-none"
+                className="px-3 py-1.5 text-[12.5px] font-mono rounded-full select-none"
                 style={{
                   background: "#252525",
                   border: "1px solid rgba(255,255,255,0.1)",
@@ -695,14 +819,14 @@ function GmailDetailsView({
               color: "#d0d0d0",
             }}
           >
-            {GMAIL_SERVER.category}
+            {connector.category}
           </span>
         </div>
 
         {/* Divider */}
         <div style={{ borderTop: "1px solid rgba(255,255,255,0.07)", margin: "4px 0 24px" }} />
 
-        {/* Details section */}
+        {/* Details Section */}
         <div>
           <h3 className="text-[15px] font-bold mb-5" style={{ color: "#e0e0e0" }}>
             Details
@@ -712,15 +836,19 @@ function GmailDetailsView({
             <div>
               <p className="text-[12px] mb-1.5 font-medium" style={{ color: "#555" }}>Author</p>
               <a
-                href={GMAIL_SERVER.developerUrl}
+                href={connector.developerUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 text-[13.5px] font-medium transition-colors"
                 style={{ color: "#60a5fa" }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "#93c5fd";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "#60a5fa";
+                }}
               >
-                {GMAIL_SERVER.developer}
+                {connector.developer}
                 <ExternalLink className="w-3 h-3" />
               </a>
             </div>
@@ -729,11 +857,8 @@ function GmailDetailsView({
             <div>
               <p className="text-[12px] mb-1.5 font-medium" style={{ color: "#555" }}>Connector URL</p>
               <div className="flex items-center gap-2">
-                <span
-                  className="text-[12px] font-mono break-all"
-                  style={{ color: "#bbb" }}
-                >
-                  {GMAIL_SERVER.connectorUrl}
+                <span className="text-[12px] font-mono break-all" style={{ color: "#bbb" }}>
+                  {connector.connectorUrl}
                 </span>
                 <button
                   onClick={onCopy}
@@ -760,14 +885,14 @@ function GmailDetailsView({
               </div>
             </div>
 
-            {/* More info */}
+            {/* More Info */}
             <div className="sm:col-span-2">
               <p className="text-[12px] mb-2 font-medium" style={{ color: "#555" }}>More info</p>
               <div className="flex flex-col gap-1.5">
                 {[
-                  { label: "Documentation", href: GMAIL_SERVER.links.documentation },
-                  { label: "Support", href: GMAIL_SERVER.links.support },
-                  { label: "Privacy Policy", href: GMAIL_SERVER.links.privacy },
+                  { label: "Documentation", href: connector.links.documentation },
+                  { label: "Support", href: connector.links.support },
+                  { label: "Privacy Policy", href: connector.links.privacy },
                 ].map(({ label, href }) => (
                   <a
                     key={label}
@@ -776,8 +901,12 @@ function GmailDetailsView({
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 text-[13px] transition-colors w-fit"
                     style={{ color: "#60a5fa" }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#93c5fd"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#60a5fa"; }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.color = "#93c5fd";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.color = "#60a5fa";
+                    }}
                   >
                     {label}
                     <ExternalLink className="w-3 h-3" />

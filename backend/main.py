@@ -386,11 +386,14 @@ class OAuthCallbackRequest(BaseModel):
 class DisconnectRequest(BaseModel):
     provider: str
 
+class RefreshMCPRequest(BaseModel):
+    provider: str
+
 @app.get("/auth/oauth/authorize-url")
 async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
-    """Build Google OAuth 2.0 PKCE authorization URL for Gmail."""
-    if provider != "gmail":
-        raise HTTPException(status_code=400, detail="Only Gmail is supported as an external provider.")
+    """Build Google OAuth 2.0 PKCE authorization URL for Gmail or Google Drive."""
+    if provider not in ("gmail", "google_drive"):
+        raise HTTPException(status_code=400, detail="Only gmail and google_drive are supported as external providers.")
 
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
@@ -399,12 +402,18 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
     ).decode().rstrip("=")
 
     from mcp_client import STATIC_PROVIDERS
-    cred = STATIC_PROVIDERS["gmail"]
+    cred = STATIC_PROVIDERS[provider]
     client_id = cred["client_id"]
     auth_endpoint = cred["auth_url"]
 
-    # Gmail-only scope (read + compose + send)
-    scope = "https://www.googleapis.com/auth/gmail.modify"
+    # Choose scopes and server URL based on provider
+    if provider == "gmail":
+        scope = "https://www.googleapis.com/auth/gmail.modify"
+        server_url = "https://gmailmcp.googleapis.com/mcp/v1"
+    else:
+        # Google Drive access scope
+        scope = "https://www.googleapis.com/auth/drive"
+        server_url = "https://drivemcp.googleapis.com/mcp/v1"
 
     auth_url = (
         f"{auth_endpoint}?response_type=code"
@@ -422,12 +431,51 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
         state=state,
         code_verifier=code_verifier,
         user_id=user_id,
-        provider="gmail",
+        provider=provider,
         client_id=client_id,
-        server_url="https://gmail.googleapis.com/mcp"
+        server_url=server_url
     )
 
     return {"url": auth_url}
+
+
+@app.post("/auth/mcp/refresh")
+async def refresh_mcp_tools(req: RefreshMCPRequest, user: str = Depends(get_current_user)):
+    """Refresh the list of tools for a connected MCP provider by fetching them dynamically."""
+    from database import get_user_settings_profile
+    from mcp_client import get_valid_token, introspect_server_tools, save_mcp_connection
+    
+    profile = get_user_settings_profile(user)
+    connections = profile.get("mcp_connections") or {}
+    conn = connections.get(req.provider)
+    if not conn:
+        raise HTTPException(status_code=400, detail=f"Connection for provider '{req.provider}' not found.")
+        
+    try:
+        access_token = await get_valid_token(user, req.provider, conn)
+        server_url = conn.get("server_url")
+        if not server_url:
+            raise Exception("Server URL not found in connection data.")
+            
+        from mcp_client import detect_transport
+        transport = detect_transport(server_url)
+        
+        tools = await introspect_server_tools(
+            server_url=server_url,
+            access_token=access_token,
+            transport=transport
+        )
+        
+        conn["tools"] = tools
+        save_mcp_connection(user, req.provider, conn)
+        
+        return {
+            "status": "success",
+            "provider": req.provider,
+            "tools_count": len(tools)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh tools: {str(e)}")
 
 
 @app.post("/auth/oauth/callback")
@@ -501,7 +549,8 @@ async def oauth_callback(req: OAuthCallbackRequest):
                 "client_id": client_id,
                 "tools": tools,
                 "connected_at": datetime.utcnow().isoformat(),
-                "server_url": server_url
+                "server_url": server_url,
+                "transport": transport
             }
             save_mcp_connection(user_id, provider, connection_data)
             

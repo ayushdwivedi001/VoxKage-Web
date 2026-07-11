@@ -14,7 +14,8 @@ import {
   X,
   Image as ImageIcon,
   Navigation,
-  Sun
+  Sun,
+  Search
 } from "lucide-react";
 import {
   Message,
@@ -615,6 +616,28 @@ export default function AssistantResponseBubble({
     const isPending = status === "pending";
     const lowerLabel = label.toLowerCase();
     
+    // Check if it's searching tools
+    if (lowerLabel.includes("searching tools")) {
+      return (
+        <Search 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-zinc-300 animate-pulse animate-duration-1000" : "text-zinc-500"
+          }`} 
+        />
+      );
+    }
+
+    // Check if it's Google Drive
+    if (lowerLabel.includes("google_drive") || lowerLabel.includes("drive")) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg"
+          alt="Google Drive"
+          className="w-3.5 h-3.5 object-contain"
+        />
+      );
+    }
+
     // Check if it's Gmail
     if (lowerLabel.includes("gmail")) {
       return (
