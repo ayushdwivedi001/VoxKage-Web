@@ -40,6 +40,12 @@ yarn-error.log*
 __pycache__/
 *.pyc
 
+# Ad-hoc test/verification scripts (not a real test suite)
+backend/test_*.py
+
+# Runtime SQLite memory DB (contains personal data, regenerated at runtime)
+backend/voxkage_memory.db
+
 # Uploads
 backend/uploads/
 

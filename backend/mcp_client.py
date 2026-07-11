@@ -25,8 +25,7 @@ async def introspect_server_tools(server_url: str, access_token: str, transport:
     """Return static tool schemas for Gmail (the only supported provider)."""
     if not server_url:
         return []
-    # Gmail — return native schemas directly (no remote MCP server needed)
-    from google_tools import GMAIL_TOOLS
+    from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
     return GMAIL_TOOLS
 
 def save_mcp_connection(user_id: str, provider: str, connection_data: dict):

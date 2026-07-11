@@ -657,7 +657,7 @@ async def prepare_agent_payload(
                         "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
                         "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
                     )
-                    from google_tools import GMAIL_TOOLS
+                    from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
                     tools_list = GMAIL_TOOLS
                 else:
                     mcp_info += f"- {provider.title()} is connected.\n"

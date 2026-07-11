@@ -896,8 +896,7 @@ async def execute_tool_call_v2(
                 from mcp_client import get_valid_token
                 access_token = await get_valid_token(user_id, provider, conn)
 
-                # Gmail is the only supported external provider
-                from google_tools import execute_google_tool
+                from mcp_servers.gmail.gmail_mcp import execute_google_tool
                 tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
 
                 if not tool_output:
@@ -1017,7 +1016,7 @@ async def run_agentic_loop(
                 connections = profile.get("mcp_connections") or {}
                 for provider, conn in connections.items():
                     if provider == "gmail":
-                        from google_tools import GMAIL_TOOLS
+                        from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
                         tools_list = GMAIL_TOOLS
                     else:
                         tools_list = conn.get("tools") or []
