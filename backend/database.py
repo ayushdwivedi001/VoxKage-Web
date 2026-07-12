@@ -347,6 +347,37 @@ def get_user_settings_profile(user_id: str) -> dict:
             drive_conn["server_url"] = "local://google_drive_v3"
             save_user_settings_profile(user_id, profile)
 
+    # Auto-migration of Google Calendar server_url from remote to local
+    calendar_conn = mcp_connections.get("google_calendar")
+    if calendar_conn and "calendarrmcp.googleapis.com" in calendar_conn.get("server_url", ""):
+        print(f"[*] Migrating google_calendar connection for user {user_id} to local://google_calendar_v3")
+        calendar_conn["server_url"] = "local://google_calendar_v3"
+        try:
+            import asyncio
+            from mcp_servers.google_calendar.google_calendar_mcp import discover_calendar_tools
+            from crypto import decrypt_token
+            access_token = decrypt_token(calendar_conn["access_token"])
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    async def update_calendar_tools():
+                        tools = await discover_calendar_tools(access_token)
+                        calendar_conn["tools"] = tools
+                        save_user_settings_profile(user_id, profile)
+                    loop.create_task(update_calendar_tools())
+                else:
+                    tools = loop.run_until_complete(discover_calendar_tools(access_token))
+                    calendar_conn["tools"] = tools
+                    save_user_settings_profile(user_id, profile)
+            except Exception as e:
+                print(f"[-] Calendar auto-migration failed to fetch tools list: {e}")
+                calendar_conn["server_url"] = "local://google_calendar_v3"
+                save_user_settings_profile(user_id, profile)
+        except Exception as e:
+            print(f"[-] Calendar auto-migration failed: {e}")
+            calendar_conn["server_url"] = "local://google_calendar_v3"
+            save_user_settings_profile(user_id, profile)
+
     return profile
 
 def save_user_settings_profile(user_id: str, profile: dict) -> dict:

@@ -648,7 +648,16 @@ export default function AssistantResponseBubble({
         />
       );
     }
-
+    // Check if it's Google Calendar
+    if (lowerLabel.includes("google_calendar") || lowerLabel.includes("calendar")) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg"
+          alt="Google Calendar"
+          className="w-3.5 h-3.5 object-contain"
+        />
+      );
+    }
     // Check if it's an image search
     if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
       return (

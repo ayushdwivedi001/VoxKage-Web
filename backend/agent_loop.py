@@ -895,6 +895,18 @@ async def execute_tool_call_v2(
                     "permissions.delete": "Removing sharing permissions...",
                 }
                 announcement = drive_logs.get(mcp_tool_name, f"Consulting Google Drive ({mcp_tool_name})...")
+            elif provider == "google_calendar":
+                calendar_logs = {
+                    "create_event": "Creating a new calendar event...",
+                    "delete_event": "Deleting calendar event...",
+                    "find_free_time": "Checking calendar availability...",
+                    "get_event": "Retrieving event details...",
+                    "list_calendars": "Listing your calendars...",
+                    "list_events": "Listing calendar events...",
+                    "respond_to_event": "Updating calendar invitation RSVP...",
+                    "update_event": "Updating calendar event details...",
+                }
+                announcement = calendar_logs.get(mcp_tool_name, f"Consulting Google Calendar ({mcp_tool_name})...")
             else:
                 announcement = f"[{provider.title()} MCP] Executing {mcp_tool_name}..."
             await send_to_client({"type": "hud_log", "content": announcement})
@@ -909,13 +921,16 @@ async def execute_tool_call_v2(
                 
                 from mcp_client import get_valid_token
                 access_token = await get_valid_token(user_id, provider, conn)
-
+ 
                 if provider == "gmail":
                     from mcp_servers.gmail.gmail_mcp import execute_google_tool
                     tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
                 elif provider == "google_drive":
                     from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
                     tool_output = await execute_google_drive_tool(mcp_tool_name, args, access_token)
+                elif provider == "google_calendar":
+                    from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
+                    tool_output = await execute_google_calendar_tool(mcp_tool_name, args, access_token)
                 else:
                     server_url = conn.get("server_url")
                     if not server_url:

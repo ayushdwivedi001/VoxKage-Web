@@ -32,7 +32,7 @@ function renderAppLogo(id: string) {
       </svg>
     );
   }
-  if (id === "gcal") {
+  if (id === "gcal" || id === "google_calendar") {
     return (
       <svg className="w-12 h-12" viewBox="0 0 24 24" fill="none">
         <rect x="3" y="3" width="18" height="18" rx="3" fill="#1A73E8" />

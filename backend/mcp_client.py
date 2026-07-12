@@ -16,6 +16,12 @@ STATIC_PROVIDERS = {
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
         "token_url": "https://oauth2.googleapis.com/token",
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth"
+    },
+    "google_calendar": {
+        "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+        "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        "token_url": "https://oauth2.googleapis.com/token",
+        "auth_url": "https://accounts.google.com/o/oauth2/v2/auth"
     }
 }
 
@@ -39,6 +45,10 @@ async def introspect_server_tools(server_url: str, access_token: str, transport:
     if server_url == "local://google_drive_v3":
         from mcp_servers.google_drive.google_drive_mcp import discover_drive_tools
         return await discover_drive_tools(access_token)
+
+    if server_url == "local://google_calendar_v3":
+        from mcp_servers.google_calendar.google_calendar_mcp import discover_calendar_tools
+        return await discover_calendar_tools(access_token)
 
     # Connect to the remote server and query it dynamically
     headers = {"Authorization": f"Bearer {access_token}"}

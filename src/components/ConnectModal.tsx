@@ -72,6 +72,33 @@ const CONNECTORS = [
       privacy: "https://policies.google.com/privacy",
     },
     iconUrl: "https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg",
+  },
+  {
+    slug: "google_calendar",
+    name: "Google Calendar",
+    tagline: "Manage your schedule and coordinate meetings effortlessly",
+    description:
+      "Connect Google Calendar to VoxKage to view your schedule, manage events, and coordinate meetings. VoxKage can search your calendar for events, check your availability, find free time slots, create and update events, respond to invitations, and help you prepare for meetings. Useful for understanding what's coming up, scheduling new meetings by finding mutual availability, managing your calendar by creating or updating events, coordinating schedules across multiple people, or preparing for meetings by reviewing attendee lists and details.",
+    developer: "Google",
+    developerUrl: "https://cloud.google.com",
+    connectorUrl: "https://calendarrmcp.googleapis.com/mcp/v1",
+    category: "Productivity",
+    tools: [
+      "create_event",
+      "delete_event",
+      "find_free_time",
+      "get_event",
+      "list_calendars",
+      "list_events",
+      "respond_to_event",
+      "update_event"
+    ],
+    links: {
+      documentation: "https://developers.google.com/calendar/api/guides",
+      support: "https://support.google.com/calendar",
+      privacy: "https://policies.google.com/privacy",
+    },
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg",
   }
 ];
 

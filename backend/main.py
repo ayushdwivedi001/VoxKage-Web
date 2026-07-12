@@ -391,9 +391,9 @@ class RefreshMCPRequest(BaseModel):
 
 @app.get("/auth/oauth/authorize-url")
 async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
-    """Build Google OAuth 2.0 PKCE authorization URL for Gmail or Google Drive."""
-    if provider not in ("gmail", "google_drive"):
-        raise HTTPException(status_code=400, detail="Only gmail and google_drive are supported as external providers.")
+    """Build Google OAuth 2.0 PKCE authorization URL for Gmail, Google Drive or Google Calendar."""
+    if provider not in ("gmail", "google_drive", "google_calendar"):
+        raise HTTPException(status_code=400, detail="Only gmail, google_drive, and google_calendar are supported as external providers.")
 
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
@@ -410,13 +410,19 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
     if provider == "gmail":
         scope = "https://www.googleapis.com/auth/gmail.modify"
         server_url = "https://gmailmcp.googleapis.com/mcp/v1"
-    else:
+    elif provider == "google_drive":
         # Google Drive scopes for direct REST API calls.
         scope = (
             "https://www.googleapis.com/auth/drive.readonly "
             "https://www.googleapis.com/auth/drive.file"
         )
         server_url = "local://google_drive_v3"
+    elif provider == "google_calendar":
+        # Google Calendar scope for direct REST API calls
+        scope = "https://www.googleapis.com/auth/calendar"
+        server_url = "local://google_calendar_v3"
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported provider '{provider}'.")
 
     from urllib.parse import urlencode
 
