@@ -658,6 +658,16 @@ export default function AssistantResponseBubble({
         />
       );
     }
+    // Check if it's Notion
+    if (lowerLabel.includes("notion")) {
+      return (
+        <img
+          src="https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg"
+          alt="Notion"
+          className="w-3.5 h-3.5 object-contain invert-[0.1]"
+        />
+      );
+    }
     // Check if it's an image search
     if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
       return (

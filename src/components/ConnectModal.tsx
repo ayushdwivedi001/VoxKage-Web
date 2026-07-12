@@ -99,6 +99,38 @@ const CONNECTORS = [
       privacy: "https://policies.google.com/privacy",
     },
     iconUrl: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg",
+  },
+  {
+    slug: "notion",
+    name: "Notion",
+    tagline: "Connect your Notion workspace to search, update, and power workflows",
+    description:
+      "Notion MCP helps you plug tools into your Notion workspace, allowing you to create, edit, search and organize content directly from Claude. Get contextual and relevant assistance from VoxKage, while keeping knowledge organized in Notion.",
+    developer: "Notion",
+    developerUrl: "https://notion.so",
+    connectorUrl: "https://mcp.notion.com/mcp",
+    category: "Productivity",
+    tools: [
+      "search",
+      "fetch",
+      "create-pages",
+      "update-page",
+      "move-pages",
+      "duplicate-page",
+      "create-database",
+      "update-database",
+      "create-comment",
+      "get-comments",
+      "get-users",
+      "get-self",
+      "get-user"
+    ],
+    links: {
+      documentation: "https://developers.notion.com/docs",
+      support: "https://www.notion.so/help",
+      privacy: "https://www.notion.so/privacy-policy",
+    },
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg",
   }
 ];
 

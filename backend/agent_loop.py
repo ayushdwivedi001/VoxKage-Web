@@ -907,6 +907,23 @@ async def execute_tool_call_v2(
                     "update_event": "Updating calendar event details...",
                 }
                 announcement = calendar_logs.get(mcp_tool_name, f"Consulting Google Calendar ({mcp_tool_name})...")
+            elif provider == "notion":
+                notion_logs = {
+                    "search": "Searching Notion workspace...",
+                    "fetch": "Fetching Notion page content...",
+                    "create-pages": "Creating a new page in Notion...",
+                    "update-page": "Updating Notion page content...",
+                    "move-pages": "Moving page in Notion...",
+                    "duplicate-page": "Duplicating Notion page...",
+                    "create-database": "Creating Notion database...",
+                    "update-database": "Updating Notion database schema...",
+                    "create-comment": "Adding comment to Notion page...",
+                    "get-comments": "Retrieving page comments...",
+                    "get-users": "Listing Notion workspace users...",
+                    "get-self": "Retrieving bot identity info...",
+                    "get-user": "Retrieving workspace user details..."
+                }
+                announcement = notion_logs.get(mcp_tool_name, f"Consulting Notion ({mcp_tool_name})...")
             else:
                 announcement = f"[{provider.title()} MCP] Executing {mcp_tool_name}..."
             await send_to_client({"type": "hud_log", "content": announcement})
@@ -931,6 +948,9 @@ async def execute_tool_call_v2(
                 elif provider == "google_calendar":
                     from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
                     tool_output = await execute_google_calendar_tool(mcp_tool_name, args, access_token)
+                elif provider == "notion":
+                    from mcp_servers.notion.notion_mcp import execute_notion_tool
+                    tool_output = await execute_notion_tool(mcp_tool_name, args, access_token)
                 else:
                     server_url = conn.get("server_url")
                     if not server_url:

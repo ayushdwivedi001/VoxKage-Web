@@ -22,6 +22,12 @@ STATIC_PROVIDERS = {
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
         "token_url": "https://oauth2.googleapis.com/token",
         "auth_url": "https://accounts.google.com/o/oauth2/v2/auth"
+    },
+    "notion": {
+        "client_id": os.getenv("NOTION_CLIENT_ID", ""),
+        "client_secret": os.getenv("NOTION_CLIENT_SECRET", ""),
+        "token_url": "https://api.notion.com/v1/oauth/token",
+        "auth_url": "https://api.notion.com/v1/oauth/authorize"
     }
 }
 
@@ -49,6 +55,10 @@ async def introspect_server_tools(server_url: str, access_token: str, transport:
     if server_url == "local://google_calendar_v3":
         from mcp_servers.google_calendar.google_calendar_mcp import discover_calendar_tools
         return await discover_calendar_tools(access_token)
+
+    if "notion" in server_url.lower():
+        from mcp_servers.notion.notion_mcp import NOTION_TOOLS
+        return NOTION_TOOLS
 
     # Connect to the remote server and query it dynamically
     headers = {"Authorization": f"Bearer {access_token}"}

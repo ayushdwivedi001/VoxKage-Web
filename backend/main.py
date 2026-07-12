@@ -391,9 +391,9 @@ class RefreshMCPRequest(BaseModel):
 
 @app.get("/auth/oauth/authorize-url")
 async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
-    """Build Google OAuth 2.0 PKCE authorization URL for Gmail, Google Drive or Google Calendar."""
-    if provider not in ("gmail", "google_drive", "google_calendar"):
-        raise HTTPException(status_code=400, detail="Only gmail, google_drive, and google_calendar are supported as external providers.")
+    """Build OAuth 2.0 authorization URL for Gmail, Google Drive, Google Calendar, or Notion."""
+    if provider not in ("gmail", "google_drive", "google_calendar", "notion"):
+        raise HTTPException(status_code=400, detail="Only gmail, google_drive, google_calendar, and notion are supported as external providers.")
 
     state = secrets.token_urlsafe(32)
     code_verifier = secrets.token_urlsafe(64)
@@ -411,16 +411,17 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
         scope = "https://www.googleapis.com/auth/gmail.modify"
         server_url = "https://gmailmcp.googleapis.com/mcp/v1"
     elif provider == "google_drive":
-        # Google Drive scopes for direct REST API calls.
         scope = (
             "https://www.googleapis.com/auth/drive.readonly "
             "https://www.googleapis.com/auth/drive.file"
         )
         server_url = "local://google_drive_v3"
     elif provider == "google_calendar":
-        # Google Calendar scope for direct REST API calls
         scope = "https://www.googleapis.com/auth/calendar"
         server_url = "local://google_calendar_v3"
+    elif provider == "notion":
+        scope = ""
+        server_url = "https://mcp.notion.com/mcp"
     else:
         raise HTTPException(status_code=400, detail=f"Unsupported provider '{provider}'.")
 
@@ -430,13 +431,18 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
         "response_type": "code",
         "client_id": client_id,
         "state": state,
-        "redirect_uri": redirect_uri,
-        "code_challenge": code_challenge,
-        "code_challenge_method": "S256",
-        "scope": scope,  # space-separated — urlencode will percent-encode the spaces correctly
-        "access_type": "offline",
-        "prompt": "consent",
+        "redirect_uri": redirect_uri
     }
+
+    if provider == "notion":
+        params["owner"] = "user"
+    else:
+        params["scope"] = scope
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
+        params["access_type"] = "offline"
+        params["prompt"] = "consent"
+
     auth_url = f"{auth_endpoint}?{urlencode(params)}"
 
     save_oauth_session(
@@ -532,17 +538,35 @@ async def oauth_callback(req: OAuthCallbackRequest):
         
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            headers = {"Accept": "application/json"}
-            res = await client.post(token_url, data=payload, headers=headers)
+            if provider == "notion":
+                import base64
+                encoded = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+                headers = {
+                    "Authorization": f"Basic {encoded}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                }
+                notion_payload = {
+                    "grant_type": "authorization_code",
+                    "code": req.code,
+                    "redirect_uri": req.redirect_uri
+                }
+                res = await client.post(token_url, json=notion_payload, headers=headers)
+            else:
+                headers = {"Accept": "application/json"}
+                res = await client.post(token_url, data=payload, headers=headers)
+
             if res.status_code != 200:
                 raise HTTPException(status_code=400, detail=f"Token exchange failed: {res.text}")
                 
             token_data = res.json()
             access_token = token_data.get("access_token")
             refresh_token = token_data.get("refresh_token", "")
-            expires_in = token_data.get("expires_in", 3600)
+            
+            default_expiry = 315360000 if provider == "notion" else 3600
+            expires_in = token_data.get("expires_in") or default_expiry
 
-            # Log the granted scopes for debugging — Google may silently downgrade scopes
+            # Log the granted scopes for debugging
             granted_scope = token_data.get("scope", "<not returned>")
             print(f"[*] OAuth token granted scopes for {provider}: {granted_scope}")
             
