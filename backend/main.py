@@ -411,21 +411,27 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
         scope = "https://www.googleapis.com/auth/gmail.modify"
         server_url = "https://gmailmcp.googleapis.com/mcp/v1"
     else:
-        # Google Drive access scope
-        scope = "https://www.googleapis.com/auth/drive"
-        server_url = "https://drivemcp.googleapis.com/mcp/v1"
+        # Google Drive scopes for direct REST API calls.
+        scope = (
+            "https://www.googleapis.com/auth/drive.readonly "
+            "https://www.googleapis.com/auth/drive.file"
+        )
+        server_url = "local://google_drive_v3"
 
-    auth_url = (
-        f"{auth_endpoint}?response_type=code"
-        f"&client_id={client_id}"
-        f"&state={state}"
-        f"&redirect_uri={redirect_uri}"
-        f"&code_challenge={code_challenge}"
-        f"&code_challenge_method=S256"
-        f"&scope={scope}"
-        f"&access_type=offline"
-        f"&prompt=consent"
-    )
+    from urllib.parse import urlencode
+
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "state": state,
+        "redirect_uri": redirect_uri,
+        "code_challenge": code_challenge,
+        "code_challenge_method": "S256",
+        "scope": scope,  # space-separated — urlencode will percent-encode the spaces correctly
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    auth_url = f"{auth_endpoint}?{urlencode(params)}"
 
     save_oauth_session(
         state=state,
@@ -529,6 +535,10 @@ async def oauth_callback(req: OAuthCallbackRequest):
             access_token = token_data.get("access_token")
             refresh_token = token_data.get("refresh_token", "")
             expires_in = token_data.get("expires_in", 3600)
+
+            # Log the granted scopes for debugging — Google may silently downgrade scopes
+            granted_scope = token_data.get("scope", "<not returned>")
+            print(f"[*] OAuth token granted scopes for {provider}: {granted_scope}")
             
             expires_at = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
             

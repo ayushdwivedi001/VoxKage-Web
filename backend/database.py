@@ -304,7 +304,50 @@ def get_user_settings_profile(user_id: str) -> dict:
     res = execute_with_retry(db.table("user_settings").select("settings_profile").eq("user_id", user_id))
     if not res.data:
         return {}
-    return res.data[0].get("settings_profile") or {}
+    profile = res.data[0].get("settings_profile") or {}
+    
+    # Auto-migration of Google Drive server_url from remote to local
+    mcp_connections = profile.get("mcp_connections", {})
+    drive_conn = mcp_connections.get("google_drive")
+    if drive_conn and "drivemcp.googleapis.com" in drive_conn.get("server_url", ""):
+        print(f"[*] Migrating google_drive connection for user {user_id} to local://google_drive_v3")
+        drive_conn["server_url"] = "local://google_drive_v3"
+        # We also need to refresh the tools list dynamically using the local discovery
+        try:
+            import asyncio
+            from mcp_servers.google_drive.google_drive_mcp import discover_drive_tools
+            # Since we're in a synchronous function, we run it inside the event loop if one is running, or create one
+            from crypto import decrypt_token
+            access_token = decrypt_token(drive_conn["access_token"])
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # We are running inside an async context, we can run_coroutine_threadsafe or use asyncio.run in a separate thread,
+                    # but actually we can just schedule it or do it synchronously by getting the tools list
+                    # Wait, discover_drive_tools is async because it makes an HTTP request.
+                    # Let's do it simply by calling the async function via a helper or run it synchronously
+                    # Since discover_drive_tools is called anyway when verifying/using, or we can just fetch it asynchronously in a task:
+                    async def update_tools():
+                        tools = await discover_drive_tools(access_token)
+                        drive_conn["tools"] = tools
+                        save_user_settings_profile(user_id, profile)
+                    loop.create_task(update_tools())
+                else:
+                    tools = loop.run_until_complete(discover_drive_tools(access_token))
+                    drive_conn["tools"] = tools
+                    save_user_settings_profile(user_id, profile)
+            except Exception as e:
+                # Fallback if event loop is not available/fails
+                print(f"[-] Drive auto-migration failed to fetch tools list: {e}")
+                # We still update the server_url
+                drive_conn["server_url"] = "local://google_drive_v3"
+                save_user_settings_profile(user_id, profile)
+        except Exception as e:
+            print(f"[-] Drive auto-migration failed: {e}")
+            drive_conn["server_url"] = "local://google_drive_v3"
+            save_user_settings_profile(user_id, profile)
+
+    return profile
 
 def save_user_settings_profile(user_id: str, profile: dict) -> dict:
     db = get_db()

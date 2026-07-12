@@ -881,6 +881,20 @@ async def execute_tool_call_v2(
                     "search_threads": "Searching Gmail mailbox...",
                 }
                 announcement = gmail_logs.get(mcp_tool_name, f"Consulting Gmail ({mcp_tool_name})...")
+            elif provider == "google_drive":
+                drive_logs = {
+                    "files.list": "Searching and listing Google Drive files...",
+                    "files.get": "Retrieving file details...",
+                    "files.create": "Creating a new file in Google Drive...",
+                    "files.update": "Updating file content/metadata in Drive...",
+                    "files.delete": "Deleting file from Google Drive...",
+                    "files.copy": "Copying file in Google Drive...",
+                    "files.export": "Exporting Google workspace document...",
+                    "permissions.list": "Listing file permissions...",
+                    "permissions.create": "Sharing Google Drive file...",
+                    "permissions.delete": "Removing sharing permissions...",
+                }
+                announcement = drive_logs.get(mcp_tool_name, f"Consulting Google Drive ({mcp_tool_name})...")
             else:
                 announcement = f"[{provider.title()} MCP] Executing {mcp_tool_name}..."
             await send_to_client({"type": "hud_log", "content": announcement})
@@ -899,6 +913,9 @@ async def execute_tool_call_v2(
                 if provider == "gmail":
                     from mcp_servers.gmail.gmail_mcp import execute_google_tool
                     tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
+                elif provider == "google_drive":
+                    from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
+                    tool_output = await execute_google_drive_tool(mcp_tool_name, args, access_token)
                 else:
                     server_url = conn.get("server_url")
                     if not server_url:

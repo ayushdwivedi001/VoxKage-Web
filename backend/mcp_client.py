@@ -36,6 +36,10 @@ async def introspect_server_tools(server_url: str, access_token: str, transport:
         from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
         return GMAIL_TOOLS
 
+    if server_url == "local://google_drive_v3":
+        from mcp_servers.google_drive.google_drive_mcp import discover_drive_tools
+        return await discover_drive_tools(access_token)
+
     # Connect to the remote server and query it dynamically
     headers = {"Authorization": f"Bearer {access_token}"}
     try:
