@@ -58,6 +58,24 @@ export default function useChatSessions({
     }
   }, [messages, currentSessionId]);
 
+  // Live context-window % — recomputed from messages on every change.
+  // Restored from the pre-modularization page.tsx (lost in commit 4163d59) and
+  // aligned to backend/main.py calculate_context_percent (chars/4.2, 200k window).
+  const CONTEXT_WINDOW_TOKENS = 200000;
+  useEffect(() => {
+    if (messages.length === 0) {
+      setContextPercent(0);
+      return;
+    }
+    let totalChars = 0;
+    for (const m of messages) {
+      totalChars += (m.content || "").length + (m.role || "").length;
+    }
+    const tokens = Math.ceil(totalChars / 4.2);
+    const pct = Math.min(100, Math.max(0, Math.round((tokens / CONTEXT_WINDOW_TOKENS) * 100)));
+    setContextPercent(pct);
+  }, [messages]);
+
   const loadSessionsOnly = async () => {
     try {
       const sess = await fetchSessions();
