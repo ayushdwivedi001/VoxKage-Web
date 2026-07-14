@@ -766,11 +766,9 @@ async def prepare_agent_payload(
         attachments_xml_parts.append("</attachments>")
         db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
 
-    # Log user query to database
-    log_message(session_id, "user", db_content)
-
-    # Synchronously rename the session heuristic-style on first message
-    handle_first_message_rename(session_id, query, user)
+    # Log user query and handle rename in non-blocking background tasks
+    asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
+    asyncio.create_task(asyncio.to_thread(handle_first_message_rename, session_id, query, user))
 
     # Retrieve history
     messages_history = get_session_messages(session_id)
@@ -956,12 +954,12 @@ async def completions_proxy(
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
 @app.post("/sessions/{session_id}/log")
-def log_agent_response(
+async def log_agent_response(
     session_id: str,
     req: LogAssistantResponseRequest,
     user: str = Depends(get_current_user)
 ):
-    log_message(session_id, "assistant", req.content)
+    asyncio.create_task(asyncio.to_thread(log_message, session_id, "assistant", req.content))
     return {"status": "success"}
 
 @app.put("/sessions/{session_id}/messages/{message_id}/edit")
@@ -1178,11 +1176,9 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                 attachments_xml_parts.append("</attachments>")
                 db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
 
-            # Log user query to database
-            log_message(session_id, "user", db_content)
-
-            # Synchronously rename the session heuristic-style on first message
-            handle_first_message_rename(session_id, query, user, websocket)
+            # Log user query and handle rename in non-blocking background tasks
+            asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
+            asyncio.create_task(asyncio.to_thread(handle_first_message_rename, session_id, query, user, websocket))
 
             formatted_history = []
             for msg in messages_history:
@@ -1212,7 +1208,7 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                     pass
 
             if full_response:
-                log_message(session_id, "assistant", full_response)
+                asyncio.create_task(asyncio.to_thread(log_message, session_id, "assistant", full_response))
                 messages_history.append({"role": "user", "content": query})
                 messages_history.append({"role": "assistant", "content": full_response})
 

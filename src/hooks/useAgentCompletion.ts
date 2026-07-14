@@ -235,8 +235,7 @@ export default function useAgentCompletion({
         let targetUrl = "/api/completions/proxy";
         if (
           customProxyUrl &&
-          customProxyUrl.trim() !== "" &&
-          !customProxyUrl.includes("voxkage-proxy.ayushdwivedi001.workers.dev")
+          customProxyUrl.trim() !== ""
         ) {
           targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
         }
@@ -264,15 +263,34 @@ export default function useAgentCompletion({
             body.tool_choice = "auto";
           }
 
-          const res = await fetch(targetUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${openCodeKey}`,
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
+          let res: Response;
+          try {
+            res = await fetch(targetUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${openCodeKey}`,
+              },
+              body: JSON.stringify(body),
+              signal: controller.signal,
+            });
+          } catch (fetchErr: any) {
+            if (targetUrl !== "/api/completions/proxy") {
+              console.warn("Custom proxy failed to fetch, falling back to local proxy:", fetchErr);
+              targetUrl = "/api/completions/proxy";
+              res = await fetch(targetUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${openCodeKey}`,
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+              });
+            } else {
+              throw fetchErr;
+            }
+          }
 
           if (!res.ok) {
             const errText = await res.text();
@@ -558,8 +576,7 @@ export default function useAgentCompletion({
           let targetUrl = "/api/completions/proxy";
           if (
             customProxyUrl &&
-            customProxyUrl.trim() !== "" &&
-            !customProxyUrl.includes("voxkage-proxy.ayushdwivedi001.workers.dev")
+            customProxyUrl.trim() !== ""
           ) {
             targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
           }
@@ -586,15 +603,34 @@ export default function useAgentCompletion({
               body.tool_choice = "auto";
             }
 
-            const res = await fetch(targetUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openCodeKey}`,
-              },
-              body: JSON.stringify(body),
-              signal: controller.signal,
-            });
+            let res: Response;
+            try {
+              res = await fetch(targetUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${openCodeKey}`,
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+              });
+            } catch (fetchErr: any) {
+              if (targetUrl !== "/api/completions/proxy") {
+                console.warn("Custom proxy failed to fetch, falling back to local proxy:", fetchErr);
+                targetUrl = "/api/completions/proxy";
+                res = await fetch(targetUrl, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${openCodeKey}`,
+                  },
+                  body: JSON.stringify(body),
+                  signal: controller.signal,
+                });
+              } else {
+                throw fetchErr;
+              }
+            }
 
             if (!res.ok) {
               const errText = await res.text();
