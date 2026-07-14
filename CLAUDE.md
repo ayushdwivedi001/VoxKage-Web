@@ -115,25 +115,25 @@ Use these facts to guide your decisions and personalize your responses immediate
 ### VoxKage Consolidated Soul History & Performance
 
 **Domain Metrics**:
-- **FRONTEND**: 100.0% success rate (100/100 tasks)
-  - Common Weaknesses: None — all points verified against codebase structure., none
-- **BACKEND**: 100.0% success rate (21/21 tasks)
+- **FRONTEND**: 100.0% success rate (121/121 tasks)
+  - Common Weaknesses: frontend missing excalidraw_tag in useAgentCompletion hook, regex flag loss in chatHelpers
+- **BACKEND**: 100.0% success rate (40/40 tasks)
   - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., none
-- **RESEARCH**: 100.0% success rate (50/50 tasks)
+- **RESEARCH**: 100.0% success rate (76/76 tasks)
   - Common Weaknesses: None — all points verified against codebase structure., None
-- **SYSTEM**: 100.0% success rate (20/20 tasks)
+- **SYSTEM**: 100.0% success rate (26/26 tasks)
   - Common Weaknesses: Ensure we verify the system disk before deletion, none
-- **CODING**: 98.5% success rate (130/132 tasks)
-  - Common Weaknesses: Domain mismatch: coding checklist on research task, Domain mismatch: start_turn classified as 'coding' but task was general/research — coding-specific checklist items (documentation) don't apply to a pure information-gathering task
-- **ANALYSIS**: 100.0% success rate (17/17 tasks)
-  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None
-- **PLANNING**: 100.0% success rate (54/54 tasks)
-  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None — all points verified against codebase structure.
-- **GENERAL**: 100.0% success rate (48/48 tasks)
-  - Common Weaknesses: none, WebGL approach failed on Windows GPU driver — smoothstep undefined behavior and canvas opacity race conditions; abandoned WebGL in favor of CSS blob gradient which is guaranteed cross-platform
-- **DATA**: 100.0% success rate (2/2 tasks)
+- **CODING**: 98.9% success rate (172/174 tasks)
   - Common Weaknesses: None, none
-- **DEVOPS**: 100.0% success rate (19/19 tasks)
+- **ANALYSIS**: 100.0% success rate (22/22 tasks)
+  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None
+- **PLANNING**: 100.0% success rate (72/72 tasks)
+  - Common Weaknesses: Domain mismatch: start_turn classified README rewrite as 'planning' — reflect() checklist asked for phases/risks/alternatives which are inapplicable to documentation writing. Task was actually general/documentation domain., None — all points verified against codebase structure.
+- **GENERAL**: 100.0% success rate (54/54 tasks)
+  - Common Weaknesses: Root cause found: html/body both had background-color: #0d0d0f which painted over ALL children with negative z-index. Fixed by removing body/html backgrounds, making gradient use positive z-index (0
+- **DATA**: 100.0% success rate (5/5 tasks)
+  - Common Weaknesses: None, none
+- **DEVOPS**: 100.0% success rate (28/28 tasks)
   - Common Weaknesses: Domain classified as devops but task was daily research workflow (general/research domain). Daily workflow items were all read-only so minimal impact., none
 - **CREATIVE**: 100.0% success rate (4/4 tasks)
   - Common Weaknesses: None
@@ -146,9 +146,9 @@ Use these facts to guide your decisions and personalize your responses immediate
 - **SYSTEM**: Avoid repeating: Ensure we verify the system disk before deletion
 
 **Recent Tasks Summary**:
-- [2026-07-10] RESEARCH: SUCCESS (Confidence: 0.95)
-- [2026-07-10] RESEARCH: SUCCESS (Confidence: 0.95)
-- [2026-07-10] PLANNING: SUCCESS (Confidence: 0.95)
+- [2026-07-14] DEVOPS: SUCCESS (Confidence: 0.5)
+- [2026-07-14] DEVOPS: SUCCESS (Confidence: 0.5)
+- [2026-07-14] BACKEND: SUCCESS (Confidence: 0.5)
 
 ---
 

@@ -736,36 +736,30 @@ async def prepare_agent_payload(
             db_msgs = get_session_messages(sid)
             user_msgs = [m for m in db_msgs if m["role"] == "user"]
             if len(user_msgs) <= 1:
-                from opencode_proxy import query_opencode_proxy
-                from opencode_client import get_opencode_model
-                title_prompt = f"Summarize this query into a short, creative 3-5 word title for a chat thread (do not include quotes or markdown): '{q}'"
-                title_payload = {
-                    "model": get_opencode_model(m_key),
-                    "messages": [{"role": "user", "content": title_prompt}],
-                    "temperature": 0.7
-                }
-                title_chunks = []
-                async for chunk in query_opencode_proxy(
-                    payload=title_payload,
-                    manager_ref=manager,
-                    user_id=uid,
-                    client_websocket=None,
-                    timeout=15.0
-                ):
-                    if isinstance(chunk, dict):
-                        err_msg = chunk.get("content")
-                        if err_msg and err_msg.startswith("Error:"):
-                            continue
-                        content = chunk.get("content", "")
-                        if content:
-                            title_chunks.append(content)
-                generated_title = "".join(title_chunks).strip()
-                for char in ['"', "'", '`', '*', '#']:
+                from opencode_client import query_opencode_zen
+                title_prompt = (
+                    f"Create a concise 3-5 word title for a chat thread about this message. "
+                    f"Output ONLY the title, no quotes, no markdown, no punctuation at end: '{q}'"
+                )
+                try:
+                    generated_title = await query_opencode_zen(title_prompt, model_key="deepseek-flash")
+                except Exception as api_err:
+                    print(f"[*] OpenCode Rename API rate limit/error ({api_err}), falling back to heuristic.")
+                    # Heuristic fallback: first 5 words of user query
+                    words = [w for w in q.split() if not w.startswith('/')]
+                    generated_title = " ".join(words[:5])
+                    if len(words) > 5:
+                        generated_title += "..."
+                    if not generated_title:
+                        generated_title = "New Chat"
+
+                for char in ['"', "'", '`', '*', '#', '.']:
                     generated_title = generated_title.replace(char, '')
-                generated_title = generated_title.strip().strip('.')
+                generated_title = generated_title.strip()
                 if generated_title:
                     update_session_name(sid, uid, generated_title)
-                    # Notify browser active chats of renaming
+                    # Small delay so the browser's telemetry WebSocket has time to connect
+                    await asyncio.sleep(2)
                     chat_sockets = manager._active_chats.get(uid, [])
                     for s in chat_sockets:
                         try:
@@ -1192,33 +1186,26 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                     db_msgs = get_session_messages(sid)
                     user_msgs = [m for m in db_msgs if m["role"] == "user"]
                     if len(user_msgs) <= 1:
-                        from opencode_proxy import query_opencode_proxy
-                        from opencode_client import get_opencode_model
-                        title_prompt = f"Summarize this query into a short, creative 3-5 word title for a chat thread (do not include quotes or markdown): '{q}'"
-                        title_payload = {
-                            "model": get_opencode_model(m_key),
-                            "messages": [{"role": "user", "content": title_prompt}],
-                            "temperature": 0.7
-                        }
-                        title_chunks = []
-                        async for chunk in query_opencode_proxy(
-                            payload=title_payload,
-                            manager_ref=manager,
-                            user_id=uid,
-                            client_websocket=ws,
-                            timeout=15.0
-                        ):
-                            if isinstance(chunk, dict):
-                                err_msg = chunk.get("content")
-                                if err_msg and err_msg.startswith("Error:"):
-                                    continue
-                                content = chunk.get("content", "")
-                                if content:
-                                    title_chunks.append(content)
-                        generated_title = "".join(title_chunks).strip()
-                        for char in ['"', "'", '`', '*', '#']:
+                        from opencode_client import query_opencode_zen
+                        title_prompt = (
+                            f"Create a concise 3-5 word title for a chat thread about this message. "
+                            f"Output ONLY the title, no quotes, no markdown, no punctuation at end: '{q}'"
+                        )
+                        try:
+                            generated_title = await query_opencode_zen(title_prompt, model_key="deepseek-flash")
+                        except Exception as api_err:
+                            print(f"[*] OpenCode Rename API rate limit/error ({api_err}), falling back to heuristic.")
+                            # Heuristic fallback: first 5 words of user query
+                            words = [w for w in q.split() if not w.startswith('/')]
+                            generated_title = " ".join(words[:5])
+                            if len(words) > 5:
+                                generated_title += "..."
+                            if not generated_title:
+                                generated_title = "New Chat"
+
+                        for char in ['"', "'", '`', '*', '#', '.']:
                             generated_title = generated_title.replace(char, '')
-                        generated_title = generated_title.strip().strip('.')
+                        generated_title = generated_title.strip()
                         if generated_title:
                             update_session_name(sid, uid, generated_title)
                             if is_websocket_connected(ws):

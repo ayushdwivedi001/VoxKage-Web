@@ -65,7 +65,7 @@ export default function Home() {
   const [customProxyUrl, setCustomProxyUrl] = useState("");
 
   const [userName, setUserName] = useState("");
-  const [greeting, setGreeting] = useState("Ready to build, Ayush?");
+  const [greeting, setGreeting] = useState("");
   const hasVisitedRef = useRef(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);

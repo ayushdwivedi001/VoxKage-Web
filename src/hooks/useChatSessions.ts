@@ -90,6 +90,15 @@ export default function useChatSessions({
     }
   }, [isLoggedIn]);
 
+  // Reconnect the dynamic greeting: fires whenever the user logs in or their email is known
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const now = new Date();
+    const name = extractNameFromEmail(loginEmail);
+    const g = getGreeting(name, now.getHours(), now.getDay(), false);
+    setGreeting(g);
+  }, [isLoggedIn, loginEmail]);
+
   const initializeTelemetryWS = (sessionId: string) => {
     if (telemetryWsRef.current) {
       telemetryWsRef.current.close();

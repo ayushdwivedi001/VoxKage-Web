@@ -13,7 +13,8 @@ from database import (
     log_message,
     get_session_messages,
     prune_scheduled_session_messages,
-    get_user_settings_profile
+    get_user_settings_profile,
+    get_schedule
 )
 
 # Cache of currently running schedule tasks to avoid overlapping executions
@@ -172,6 +173,16 @@ async def execute_schedule_job(schedule: dict):
     instruction = schedule["instruction"]
     retrieval_method = schedule["retrieval_method"]
     
+    # Double-check if the schedule still exists and is active in the database
+    try:
+        db_sched = get_schedule(schedule_id, user_id)
+        if not db_sched.get("is_active"):
+            print(f"[!] Schedule {name} ({schedule_id}) is paused/inactive. Skipping execution.")
+            return
+    except Exception:
+        print(f"[!] Schedule {name} ({schedule_id}) no longer exists in database. Skipping execution.")
+        return
+
     if schedule_id in RUNNING_SCHEDULES:
         print(f"[!] Schedule {name} ({schedule_id}) is already running. Skipping overlapping execution.")
         return

@@ -1105,6 +1105,8 @@ async def run_agentic_loop(
         else:
             max_iterations = 1
 
+    # Ensure a hard cap of 20 iterations max under all conditions
+    max_iterations = min(max_iterations, 20)
 
     # is_agentic is always True for run_agentic_loop — this flag gates MCP tool injection
     is_agentic = True

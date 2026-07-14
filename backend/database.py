@@ -454,6 +454,12 @@ def update_schedule(schedule_id: str, user_id: str, update_data: dict) -> dict:
 
 def delete_schedule(schedule_id: str, user_id: str) -> dict:
     db = get_db()
+    # Delete associated sessions first to clean up the UI sidebar and prevent orphaned session entries
+    try:
+        execute_with_retry(db.table("sessions").delete().eq("schedule_id", schedule_id).eq("user_id", user_id))
+    except Exception as e:
+        print(f"[-] Warning: Failed to delete associated sessions for schedule {schedule_id}: {e}")
+        
     res = execute_with_retry(db.table("schedules").delete().eq("id", schedule_id).eq("user_id", user_id))
     return {"status": "success", "deleted_schedule_id": schedule_id}
 
