@@ -870,6 +870,46 @@ export const parseMcpWidgets = (content: string) => {
   return { cleanContent, canva, gmail, calendar };
 };
 
+export interface ScheduleSetupItem {
+  timings: string;
+  interval: number;
+  cron: string;
+  instruction: string;
+  suggested_name: string;
+  estimated_loops: number;
+}
+
+export const parseScheduleSetup = (content: string) => {
+  if (!content) return { cleanContent: content, scheduleSetup: null };
+  
+  let cleanContent = content;
+  let scheduleSetup: ScheduleSetupItem | null = null;
+  
+  const regex = /<ScheduleSetup\s+([^>]*?)\s*\/>/i;
+  const match = cleanContent.match(regex);
+  if (match) {
+    const attrString = match[1];
+    const getAttr = (name: string): string => {
+      const r = new RegExp(`${name}="([^"]*)"`, 'i');
+      const m = attrString.match(r);
+      return m ? m[1] : "";
+    };
+    
+    scheduleSetup = {
+      timings: getAttr("timings"),
+      interval: parseInt(getAttr("interval")) || 24,
+      cron: getAttr("cron"),
+      instruction: getAttr("instruction"),
+      suggested_name: getAttr("suggested_name") || "Schedule Job",
+      estimated_loops: parseInt(getAttr("estimated_loops")) || 5
+    };
+    
+    cleanContent = cleanContent.replace(regex, "").trim();
+  }
+  
+  return { cleanContent, scheduleSetup };
+};
+
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
@@ -877,12 +917,14 @@ export const parseMessageContent = (content: string) => {
   const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
   const { cleanContent: noMapContent, map, weather } = parseMapAndWeather(noScienceContent);
   const { cleanContent: cleanTextContent, canva, gmail, calendar } = parseMcpWidgets(noMapContent);
+  const { cleanContent: finalCleanContent, scheduleSetup } = parseScheduleSetup(cleanTextContent);
   
   let thinkingContent = "";
-  let finalContent = cleanTextContent;
+  let finalContent = finalCleanContent;
 
-  const thinkStartIndex = cleanTextContent.indexOf("<think>");
-  const thinkEndIndex = cleanTextContent.indexOf("</think>");
+  const thinkStartIndex = finalCleanContent.indexOf("<think>");
+  const thinkEndIndex = finalCleanContent.indexOf("</think>");
+
 
   if (thinkStartIndex !== -1) {
     if (thinkEndIndex !== -1) {
@@ -911,7 +953,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar };
+  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, FileText, Star, Edit3, Trash2 } from "lucide-react";
+import { ChevronDown, FileText, Star, Edit3, Trash2, Download, AlertTriangle } from "lucide-react";
+import { getToken } from "@/lib/api";
 
 interface ChatHeaderProps {
   isChatActive: boolean;
@@ -37,6 +38,53 @@ export default function ChatHeader({
   handleDeleteSession,
 }: ChatHeaderProps) {
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
+
+  const currentSess = sessionsList.find((s) => s.id === currentSessionId);
+  const isScheduled = currentSess?.is_scheduled || false;
+
+  const handleExportMarkdown = async () => {
+    setShowExportConfirm(false);
+    if (!currentSessionId) return;
+    
+    try {
+      const token = getToken();
+      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      
+      const res = await fetch(`${apiBase}/sessions/${currentSessionId}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`
+        }
+      });
+      if (!res.ok) throw new Error("Failed to load session history");
+      
+      const data = await res.json();
+      const messages = data.messages || [];
+      const sessionName = data.session?.name || "Scheduled Run Log";
+      
+      let md = `# VoxKage Scheduled Session Log: ${sessionName}\n`;
+      md += `*Generated on: ${new Date().toLocaleString()}*\n\n---\n\n`;
+      
+      messages.forEach((m: any) => {
+        const roleName = m.role === "user" ? "USER PROMPT" : "VOXKAGE REPORT";
+        const timeStr = m.timestamp ? new Date(m.timestamp).toLocaleString() : "";
+        md += `## [${roleName}]${timeStr ? ` — ${timeStr}` : ""}\n\n`;
+        md += `${m.content}\n\n---\n\n`;
+      });
+      
+      const blob = new Blob([md], { type: "text/markdown;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${sessionName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}_history.md`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Export failed:", err);
+      alert("Failed to export log: " + (err as Error).message);
+    }
+  };
 
   return (
     <div
@@ -119,11 +167,22 @@ export default function ChatHeader({
 
       {!activeFile && !showArtifactsPanel && (
         <div className="flex items-center gap-2">
+          {isScheduled && (
+            <button
+              type="button"
+              onClick={() => setShowExportConfirm(true)}
+              className="px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#121215]/80 hover:bg-zinc-800/80 text-zinc-300 hover:text-white text-[13.5px] font-medium transition-all duration-200 cursor-pointer flex items-center gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5 text-blue-500" />
+              <span>Export Log</span>
+            </button>
+          )}
+
           {sessionArtifacts.length > 0 && (
             <button
               type="button"
               onClick={() => setShowArtifactsPanel(true)}
-              className="flex items-center justify-center w-8 h-8 rounded-xl border border-zinc-800 bg-[#181715] hover:bg-[#252320] text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+              className="flex items-center justify-center w-8 h-8 rounded-xl border border-zinc-800 bg-[#181715] hover:bg-[#252320] text-[#8e8b82] hover:text-[#faf9f5] transition-all duration-200 cursor-pointer"
               aria-label="View artifacts"
             >
               <FileText className="w-4 h-4" />
@@ -135,6 +194,36 @@ export default function ChatHeader({
           >
             Share
           </button>
+
+          {showExportConfirm && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-fadeIn backdrop-blur-md">
+              <div className="w-full max-w-[360px] bg-[#252320] border border-[#e6dfd8]/15 rounded-lg p-5 text-center shadow-2xl">
+                <Download className="w-8 h-8 text-blue-500 mx-auto mb-3" />
+                <h3 className="font-serif text-[#faf9f5] text-base font-normal mb-1.5">
+                  Export Scheduled Log?
+                </h3>
+                <p className="text-xs text-[#8e8b82] leading-relaxed mb-5">
+                  Do you want to download the entire execution history of this scheduled session as a markdown file?
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowExportConfirm(false)}
+                    className="px-4 py-2 text-[12.5px] font-medium text-[#efe9de] bg-[#181715] hover:bg-[#181715]/75 border border-[#e6dfd8]/10 rounded transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportMarkdown}
+                    className="px-4 py-2 text-[12.5px] font-medium text-white bg-blue-600 hover:bg-blue-500 rounded transition-colors"
+                  >
+                    Export
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

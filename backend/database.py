@@ -414,3 +414,99 @@ def get_and_delete_oauth_session(state: str) -> dict | None:
     execute_with_retry(db.table("oauth_sessions").delete().eq("state", state))
     return session_data
 
+
+# --- Schedules Management ---
+def create_schedule(user_id: str, name: str, instruction: str, cron_expression: str, interval_hours: int, timezone: str, retrieval_method: str) -> dict:
+    db = get_db()
+    data = {
+        "user_id": user_id,
+        "name": name,
+        "instruction": instruction,
+        "cron_expression": cron_expression,
+        "interval_hours": interval_hours,
+        "timezone": timezone,
+        "retrieval_method": retrieval_method,
+        "is_active": True
+    }
+    res = execute_with_retry(db.table("schedules").insert(data))
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to create schedule.")
+    return res.data[0]
+
+def list_schedules(user_id: str) -> list:
+    db = get_db()
+    res = execute_with_retry(db.table("schedules").select("*").eq("user_id", user_id).order("created_at", desc=True))
+    return res.data or []
+
+def get_schedule(schedule_id: str, user_id: str) -> dict:
+    db = get_db()
+    res = execute_with_retry(db.table("schedules").select("*").eq("id", schedule_id).eq("user_id", user_id))
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Schedule not found.")
+    return res.data[0]
+
+def update_schedule(schedule_id: str, user_id: str, update_data: dict) -> dict:
+    db = get_db()
+    res = execute_with_retry(db.table("schedules").update(update_data).eq("id", schedule_id).eq("user_id", user_id))
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Schedule not found or update failed.")
+    return res.data[0]
+
+def delete_schedule(schedule_id: str, user_id: str) -> dict:
+    db = get_db()
+    res = execute_with_retry(db.table("schedules").delete().eq("id", schedule_id).eq("user_id", user_id))
+    return {"status": "success", "deleted_schedule_id": schedule_id}
+
+def get_active_schedules() -> list:
+    db = get_db()
+    res = execute_with_retry(db.table("schedules").select("*").eq("is_active", True))
+    return res.data or []
+
+def prune_scheduled_session_messages(days_limit: int = 7) -> int:
+    db = get_db()
+    sessions_res = execute_with_retry(db.table("sessions").select("id").eq("is_scheduled", True))
+    session_ids = [s["id"] for s in (sessions_res.data or [])]
+    if not session_ids:
+        return 0
+    from datetime import datetime, timedelta, timezone
+    limit_time = (datetime.now(timezone.utc) - timedelta(days=days_limit)).isoformat()
+    deleted_count = 0
+    for sid in session_ids:
+        try:
+            del_res = execute_with_retry(
+                db.table("messages")
+                .delete()
+                .eq("session_id", sid)
+                .lt("timestamp", limit_time)
+            )
+            if del_res.data:
+                deleted_count += len(del_res.data)
+        except Exception as e:
+            print(f"[-] Failed to prune messages for session {sid}: {e}")
+    return deleted_count
+
+def get_or_create_schedule_session(user_id: str, schedule_id: str, schedule_name: str) -> str:
+    db = get_db()
+    res = execute_with_retry(
+        db.table("sessions")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("schedule_id", schedule_id)
+        .eq("is_scheduled", True)
+    )
+    if res.data:
+        return res.data[0]["id"]
+    
+    data = {
+        "name": schedule_name,
+        "user_id": user_id,
+        "schedule_id": schedule_id,
+        "is_scheduled": True
+    }
+    insert_res = execute_with_retry(db.table("sessions").insert(data))
+    if not insert_res.data:
+        raise Exception("Failed to create scheduled session.")
+    return insert_res.data[0]["id"]
+
+
+

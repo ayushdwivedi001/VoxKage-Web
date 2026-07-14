@@ -1092,9 +1092,19 @@ async def run_agentic_loop(
 
     messages.append({"role": "user", "content": prompt})
 
-    v_upper = (variant or "High").upper()
-    is_agentic = v_upper in ("HIGH", "XHIGH", "MAX")
-    max_iterations = 12 if is_agentic else 1
+    if isinstance(variant, int):
+        max_iterations = variant
+    else:
+        v_upper = (variant or "High").upper()
+        if v_upper == "MAX":
+            max_iterations = 20
+        elif v_upper == "XHIGH":
+            max_iterations = 15
+        elif v_upper == "HIGH":
+            max_iterations = 12
+        else:
+            max_iterations = 1
+
 
     for iteration in range(max_iterations):
         payload = {

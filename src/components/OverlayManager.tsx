@@ -10,6 +10,7 @@ import RenameSessionModal from "@/components/RenameSessionModal";
 import SettingsModal from "@/components/SettingsModal";
 import SearchModal from "@/components/SearchModal";
 import { Attachment } from "@/components/MessageAttachmentsRow";
+import ScheduleListModal from "@/components/ScheduleListModal";
 
 interface OverlayManagerProps {
   moreModelsModalOpen: boolean;
@@ -98,6 +99,15 @@ export default function OverlayManager({
   setConnectingServer,
   getRelativeTime,
 }: OverlayManagerProps) {
+  const [schedulesModalOpen, setSchedulesModalOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleOpen = () => setSchedulesModalOpen(true);
+    window.addEventListener("open-schedules-modal", handleOpen);
+    return () => {
+      window.removeEventListener("open-schedules-modal", handleOpen);
+    };
+  }, []);
   return (
     <>
       {moreModelsModalOpen && (
@@ -201,6 +211,11 @@ export default function OverlayManager({
           }}
         />
       )}
+
+      <ScheduleListModal
+        isOpen={schedulesModalOpen}
+        onClose={() => setSchedulesModalOpen(false)}
+      />
     </>
   );
 }

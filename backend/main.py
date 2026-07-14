@@ -46,7 +46,7 @@ app.add_middleware(
 )
 
 def estimate_tokens(messages: list) -> int:
-    total_chars = 15000 
+    total_chars = 30000  # system prompt + tools schema baseline
     for m in messages:
         content = ""
         role = ""
@@ -61,7 +61,7 @@ def estimate_tokens(messages: list) -> int:
 
 def calculate_context_percent(messages: list) -> int:
     tokens = estimate_tokens(messages)
-    percent = int((tokens / 200000) * 100)
+    percent = int((tokens / 1000000) * 100)  # 1M-token context window
     return min(100, max(0, percent))
 
 # --- Connection Registry Manager ---
@@ -144,6 +144,12 @@ async def websocket_heartbeat_loop():
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(websocket_heartbeat_loop())
+    try:
+        from scheduler import start_scheduler
+        await start_scheduler()
+    except Exception as e:
+        print(f"[-] Failed to start background scheduler: {e}")
+
 
 # --- Auth Helper Models ---
 class MasterLoginRequest(BaseModel):
@@ -175,6 +181,24 @@ class EditMessageRequest(BaseModel):
 class FeedbackRequest(BaseModel):
     feedback_type: str
     comments: Optional[str] = None
+
+class CreateScheduleRequest(BaseModel):
+    name: str
+    instruction: str
+    cron_expression: str
+    interval_hours: int
+    timezone: str
+    retrieval_method: str
+
+class UpdateScheduleRequest(BaseModel):
+    name: Optional[str] = None
+    instruction: Optional[str] = None
+    cron_expression: Optional[str] = None
+    interval_hours: Optional[int] = None
+    timezone: Optional[str] = None
+    retrieval_method: Optional[str] = None
+    is_active: Optional[bool] = None
+
 
 
 # --- Root & Health Endpoints ---
@@ -208,6 +232,37 @@ def get_sessions(user: str = Depends(get_current_user)):
 @app.post("/sessions")
 def post_session(name: str = "New Chat", user: str = Depends(get_current_user)):
     return create_session(user, name)
+
+# --- Schedules REST Endpoints ---
+@app.get("/schedules")
+def get_user_schedules(user: str = Depends(get_current_user)):
+    from database import list_schedules
+    return list_schedules(user)
+
+@app.post("/schedules")
+def post_schedule(req: CreateScheduleRequest, user: str = Depends(get_current_user)):
+    from database import create_schedule
+    return create_schedule(
+        user_id=user,
+        name=req.name,
+        instruction=req.instruction,
+        cron_expression=req.cron_expression,
+        interval_hours=req.interval_hours,
+        timezone=req.timezone,
+        retrieval_method=req.retrieval_method
+    )
+
+@app.put("/schedules/{schedule_id}")
+def put_schedule(schedule_id: str, req: UpdateScheduleRequest, user: str = Depends(get_current_user)):
+    from database import update_schedule
+    update_data = {k: v for k, v in req.dict().items() if v is not None}
+    return update_schedule(schedule_id, user, update_data)
+
+@app.delete("/schedules/{schedule_id}")
+def delete_user_schedule(schedule_id: str, user: str = Depends(get_current_user)):
+    from database import delete_schedule
+    return delete_schedule(schedule_id, user)
+
 
 @app.get("/sessions/{session_id}")
 def get_single_session(session_id: str, user: str = Depends(get_current_user)):
@@ -1057,7 +1112,33 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                     await websocket.send_text(json.dumps({"type": "done"}))
                 continue
 
+            elif "/schedule" in query.lower():
+                try:
+                    log_message(session_id, "user", query)
+                    await websocket.send_text(json.dumps({
+                        "type": "hud_log",
+                        "content": "Designing the Scheduled job component"
+                    }))
+                    from scheduler import parse_schedule_prompt_with_llm
+                    schedule_tag = await parse_schedule_prompt_with_llm(query, user)
+                    await websocket.send_text(json.dumps({"type": "tool_success"}))
+                    log_message(session_id, "assistant", schedule_tag)
+                    await websocket.send_text(json.dumps({"type": "token", "content": schedule_tag}))
+                    messages_history = get_session_messages(session_id)
+                    post_percent = calculate_context_percent(messages_history)
+                    await websocket.send_text(json.dumps({"type": "context_sync", "percent": post_percent}))
+                    await websocket.send_text(json.dumps({"type": "done"}))
+                except Exception as ex:
+                    print(f"[-] Schedule parsing failed: {ex}")
+                    err_msg = f"\n[Schedule Parsing Error: {str(ex)}]\n"
+                    log_message(session_id, "assistant", err_msg)
+                    await websocket.send_text(json.dumps({"type": "tool_failed"}))
+                    await websocket.send_text(json.dumps({"type": "token", "content": err_msg}))
+                    await websocket.send_text(json.dumps({"type": "done"}))
+                continue
+
             # Parse attachments and construct enriched prompt
+
             attachments = payload_data.get("attachments", [])
             enriched_query_parts = []
             

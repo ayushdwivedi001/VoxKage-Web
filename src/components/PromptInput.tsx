@@ -6,7 +6,7 @@ import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
 import { Attachment } from "./MessageAttachmentsRow";
-import { Monitor, FileUp } from "lucide-react";
+import { Monitor, FileUp, Clock } from "lucide-react";
 import PDFHoverCard from "./PDFHoverCard";
 
 interface ModelOption {
@@ -187,7 +187,7 @@ export default function PromptInput({
   };
 
   // --- / Commands Popup States ---
-  const commands = ["/compact", "/agents", "/drill"];
+  const commands = ["/compact", "/agents", "/drill", "/schedule"];
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const getActiveCommandQuery = (text: string) => {
@@ -405,8 +405,8 @@ export default function PromptInput({
 
   const renderHighlightedText = (text: string) => {
     if (!text) return null;
-    const cmdList = ["/compact", "/agents", "/drill"];
-    const parts = text.split(/(\/(?:compact|agents|drill))\b/g);
+    const cmdList = ["/compact", "/agents", "/drill", "/schedule"];
+    const parts = text.split(/(\/(?:compact|agents|drill|schedule))\b/g);
     
     return parts.map((part, index) => {
       if (cmdList.includes(part)) {
@@ -671,6 +671,18 @@ export default function PromptInput({
               >
                 <Monitor className="w-4 h-4 text-zinc-400" />
                 <span>Take a Screenshot</span>
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setPlusPopupOpen(false);
+                  window.dispatchEvent(new CustomEvent("open-schedules-modal"));
+                }}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+              >
+                <Clock className="w-4 h-4 text-zinc-400" />
+                <span>Check Schedules</span>
               </button>
             </div>
           )}

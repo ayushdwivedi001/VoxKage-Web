@@ -10,6 +10,7 @@ import { Message } from "@/lib/chatHelpers";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 
 interface ChatWorkspaceProps {
+  sessionId: string | null;
   isChatActive: boolean;
   chatContainerRef: React.RefObject<HTMLDivElement | null>;
   handleScroll: (e: React.UIEvent<HTMLDivElement>) => void;
@@ -55,6 +56,7 @@ interface ChatWorkspaceProps {
 }
 
 export default function ChatWorkspace({
+  sessionId,
   isChatActive,
   chatContainerRef,
   handleScroll,
@@ -135,6 +137,7 @@ export default function ChatWorkspace({
                   </div>
                 ) : (
                   <AssistantResponseBubble
+                    sessionId={sessionId}
                     msg={msg}
                     setActiveFile={setActiveFile}
                     onScrollToBottom={scrollToBottom}

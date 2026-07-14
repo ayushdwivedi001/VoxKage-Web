@@ -28,6 +28,7 @@ import {
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
 import ExpandableWrapper from "./ExpandableWrapper";
+import ScheduleSetupWidget from "./ScheduleSetupWidget";
 import { CanvaPreviewWidget, GmailInboxWidget, GoogleCalendarWidget } from "./McpWidgets";
 
 const MapWidget = dynamic(() => import("./MapWidget"), {
@@ -315,6 +316,7 @@ const ROTATING_STATUSES = [
 ];
 
 interface AssistantResponseBubbleProps {
+  sessionId: string | null;
   msg: Message;
   setActiveFile: (file: { name: string; code: string } | null) => void;
   onScrollToBottom: () => void;
@@ -326,6 +328,7 @@ interface AssistantResponseBubbleProps {
 }
 
 export default function AssistantResponseBubble({
+  sessionId,
   msg,
   setActiveFile,
   onScrollToBottom,
@@ -336,6 +339,34 @@ export default function AssistantResponseBubble({
   onRetry,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
+  const [scheduleState, setScheduleState] = useState<"pending" | "success" | "cancelled" | null>(null);
+  const [successName, setSuccessName] = useState("");
+
+  const handleScheduleSuccess = async (scheduleId: string, name: string) => {
+    setSuccessName(name);
+    setScheduleState("success");
+    if (sessionId) {
+      const confirmText = `Successfully scheduled task: "${name}".`;
+      try {
+        const { editSessionMessage } = await import("@/lib/api");
+        await editSessionMessage(sessionId, msg.id, confirmText);
+      } catch (err) {
+        console.error("Failed to persist scheduled status:", err);
+      }
+    }
+  };
+
+  const handleScheduleCancel = async () => {
+    setScheduleState("cancelled");
+    if (sessionId) {
+      try {
+        const { editSessionMessage } = await import("@/lib/api");
+        await editSessionMessage(sessionId, msg.id, "Scheduling cancelled.");
+      } catch (err) {
+        console.error("Failed to persist cancelled status:", err);
+      }
+    }
+  };
   const [elapsedSeconds, setElapsedSeconds] = useState(msg.thinkingDuration || 0);
   const [dots, setDots] = useState(".");
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -450,7 +481,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -908,6 +939,40 @@ export default function AssistantResponseBubble({
         <ExpandableWrapper label="Function Graph" className="w-full max-w-[90%] select-none flex justify-center">
           <FunctionGraphWidget formula={plot.formula} minX={plot.minX} maxX={plot.maxX} />
         </ExpandableWrapper>
+      )}
+
+      {/* --- Dynamic Schedule Setup Widget --- */}
+      {msg.status !== "thinking" && scheduleSetup && (
+        <div className="w-full max-w-[90%] flex justify-center">
+          {scheduleState === "success" ? (
+            <div className="my-4 w-full p-4 bg-blue-950/20 border border-blue-500/25 rounded-lg text-zinc-100 flex items-center gap-3">
+              <Check className="w-5.5 h-5.5 text-blue-500 shrink-0" />
+              <div>
+                <h4 className="font-serif text-[14.5px] font-normal text-zinc-100">Task Scheduled Successfully</h4>
+                <p className="text-[12.5px] text-[#8e8b82]">Automated job &ldquo;{successName}&rdquo; is now active in the Schedules Manager.</p>
+              </div>
+            </div>
+          ) : scheduleState === "cancelled" ? (
+            <div className="my-4 w-full p-4 bg-[#252320] border border-[#e6dfd8]/10 rounded-lg text-[#8e8b82] flex items-center gap-3">
+              <X className="w-5.5 h-5.5 text-[#8e8b82] shrink-0" />
+              <div>
+                <h4 className="font-serif text-[14.5px] font-normal text-[#8e8b82]">Scheduling Cancelled</h4>
+                <p className="text-[12.5px] text-[#6c6a64]">The task scheduling request was discarded.</p>
+              </div>
+            </div>
+          ) : (
+            <ScheduleSetupWidget
+              timings={scheduleSetup.timings}
+              interval={scheduleSetup.interval}
+              cron={scheduleSetup.cron}
+              instruction={scheduleSetup.instruction}
+              suggestedName={scheduleSetup.suggested_name}
+              estimatedLoops={scheduleSetup.estimated_loops}
+              onCancel={handleScheduleCancel}
+              onSuccess={handleScheduleSuccess}
+            />
+          )}
+        </div>
       )}
 
       {/* --- Dynamic Mermaid Diagram Widget --- */}

@@ -367,6 +367,7 @@ export default function Home() {
 
         <div className="relative flex flex-grow w-full h-full overflow-hidden">
           <ChatWorkspace
+            sessionId={chatSessions.currentSessionId}
             isChatActive={isChatActive}
             chatContainerRef={chatContainerRef}
             handleScroll={handleScroll}

@@ -60,14 +60,13 @@ export default function useChatSessions({
 
   // Live context-window % — recomputed from messages on every change.
   // Restored from the pre-modularization page.tsx (lost in commit 4163d59) and
-  // aligned to backend/main.py calculate_context_percent (chars/4.2, 200k window).
-  const CONTEXT_WINDOW_TOKENS = 200000;
+  // aligned to backend/main.py calculate_context_percent (chars/4.2, 1M window,
+  // 30k system-prompt/tools baseline) so it starts ~1% and grows as the
+  // conversation accumulates tokens.
+  const CONTEXT_WINDOW_TOKENS = 1_000_000;
+  const SYSTEM_PROMPT_BASELINE_CHARS = 30000;
   useEffect(() => {
-    if (messages.length === 0) {
-      setContextPercent(0);
-      return;
-    }
-    let totalChars = 0;
+    let totalChars = SYSTEM_PROMPT_BASELINE_CHARS;
     for (const m of messages) {
       totalChars += (m.content || "").length + (m.role || "").length;
     }
@@ -112,6 +111,13 @@ export default function useChatSessions({
         const data = JSON.parse(event.data);
         if (data.type === "ping") {
           socket.send(JSON.stringify({ type: "pong" }));
+          return;
+        }
+        if (data.type === "context_sync") {
+          // Backend seeds the initial context-window % for this session.
+          if (typeof data.percent === "number") {
+            setContextPercent(data.percent);
+          }
           return;
         }
         if (data.type === "hud_log") {

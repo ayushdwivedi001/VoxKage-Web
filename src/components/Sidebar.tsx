@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import {
+  Clock,
   PanelLeft,
   PanelLeftClose,
   Search,
@@ -270,8 +271,9 @@ export default function Sidebar({
 
         {/* Recents Chats Section (Only visible when expanded) */}
         {isExpanded && (() => {
-          const starredSessions = sessionsList.filter((s) => s.is_starred);
-          let recentSessions = sessionsList.filter((s) => !s.is_starred);
+          const starredSessions = sessionsList.filter((s) => s.is_starred && !s.is_scheduled);
+          let recentSessions = sessionsList.filter((s) => !s.is_starred && !s.is_scheduled);
+          const scheduledSessions = sessionsList.filter((s) => s.is_scheduled);
           if (filterType === "alphabetical") {
             recentSessions = [...recentSessions].sort((a, b) => a.name.localeCompare(b.name));
           }
@@ -419,6 +421,19 @@ export default function Sidebar({
                   </div>
                   <div className="flex flex-col gap-0.5 -mx-3">
                     {starredSessions.map((session) => renderSessionItem(session))}
+                  </div>
+                </div>
+              )}
+
+              {/* Scheduled section */}
+              {scheduledSessions.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-1.5 text-zinc-500 text-[11px] font-semibold tracking-wider uppercase select-none">
+                    <Clock className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Schedule Sessions</span>
+                  </div>
+                  <div className="flex flex-col gap-0.5 -mx-3">
+                    {scheduledSessions.map((session) => renderSessionItem(session))}
                   </div>
                 </div>
               )}
