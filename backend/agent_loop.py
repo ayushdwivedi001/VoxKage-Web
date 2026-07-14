@@ -1106,6 +1106,9 @@ async def run_agentic_loop(
             max_iterations = 1
 
 
+    # is_agentic is always True for run_agentic_loop — this flag gates MCP tool injection
+    is_agentic = True
+
     for iteration in range(max_iterations):
         payload = {
             "model": model_id,

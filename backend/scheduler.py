@@ -236,10 +236,24 @@ async def execute_schedule_job(schedule: dict):
         if retrieval_method == "gmail":
             try:
                 access_token = await refresh_gmail_token(user_id)
+                # Resolve the actual authenticated Gmail address — never assume it matches user_id
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as profile_client:
+                        profile_res = await profile_client.get(
+                            "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+                            headers={"Authorization": f"Bearer {access_token}"}
+                        )
+                        if profile_res.status_code == 200:
+                            gmail_address = profile_res.json().get("emailAddress", user_id)
+                        else:
+                            gmail_address = user_id
+                except Exception:
+                    gmail_address = user_id
+
                 subject = f"VoxKage Schedule Alert: {name}"
                 body_html = f"<h2>VoxKage Automated Report: {name}</h2><hr/><p>{final_content.replace(chr(10), '<br/>')}</p>"
-                await send_email_direct(user_id, subject, body_html, access_token)
-                print(f"[+] Gmail alert sent successfully for schedule {name}")
+                await send_email_direct(gmail_address, subject, body_html, access_token)
+                print(f"[+] Gmail alert sent successfully for schedule {name} → {gmail_address}")
             except Exception as mail_err:
                 print(f"[-] Failed to send Gmail notification for schedule {name}: {mail_err}")
                 log_message(session_id, "assistant", f"*[Notification Warning: Failed to send Gmail report: {str(mail_err)}]*")
