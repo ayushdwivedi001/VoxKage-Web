@@ -121,6 +121,7 @@ export default function Home() {
   const chatSessions = useChatSessions({
     loginEmail: auth.loginEmail,
     isLoggedIn: auth.isLoggedIn,
+    userName,
     onLogout: () => auth.handleLogout(),
     setGreeting,
     getGreeting,

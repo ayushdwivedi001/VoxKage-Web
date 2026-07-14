@@ -15,6 +15,7 @@ import {
 interface UseChatSessionsProps {
   loginEmail: string;
   isLoggedIn: boolean;
+  userName: string;
   onLogout: () => void;
   setGreeting: (greeting: string) => void;
   getGreeting: (name: string, hr: number, day: number, isReturn: boolean) => string;
@@ -28,6 +29,7 @@ interface UseChatSessionsProps {
 export default function useChatSessions({
   loginEmail,
   isLoggedIn,
+  userName,
   onLogout,
   setGreeting,
   getGreeting,
@@ -90,14 +92,14 @@ export default function useChatSessions({
     }
   }, [isLoggedIn]);
 
-  // Reconnect the dynamic greeting: fires whenever the user logs in or their email is known
+  // Reconnect the dynamic greeting: fires whenever the user logs in, their email is known, or display name changes
   useEffect(() => {
     if (!isLoggedIn) return;
     const now = new Date();
-    const name = extractNameFromEmail(loginEmail);
+    const name = userName && userName.trim() ? userName.trim() : extractNameFromEmail(loginEmail);
     const g = getGreeting(name, now.getHours(), now.getDay(), false);
     setGreeting(g);
-  }, [isLoggedIn, loginEmail]);
+  }, [isLoggedIn, loginEmail, userName]);
 
   const initializeTelemetryWS = (sessionId: string) => {
     if (telemetryWsRef.current) {

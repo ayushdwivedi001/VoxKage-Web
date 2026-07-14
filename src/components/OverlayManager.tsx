@@ -140,7 +140,12 @@ export default function OverlayManager({
           setOpenCodeApiKey={setOpenCodeApiKey}
           customProxyUrl={customProxyUrl}
           setCustomProxyUrl={setCustomProxyUrl}
-          onClose={() => setShowSettingsModal(false)}
+          onClose={() => {
+            setUserName(localStorage.getItem("voxkage_user_name") || "");
+            setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+            setCustomProxyUrl(localStorage.getItem("voxkage_custom_proxy_url") || "");
+            setShowSettingsModal(false);
+          }}
           onSave={() => {
             localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
