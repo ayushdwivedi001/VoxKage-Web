@@ -923,13 +923,16 @@ export default function useAgentCompletion({
         } catch (err: any) {
           if (err.name === "AbortError") return;
           console.error("Client agent loop failed:", err);
-          const errMsg = err.message || String(err);
+          let errMsg = err.message || String(err);
+          if (errMsg.includes("<!DOCTYPE html>") || errMsg.includes("<html")) {
+            errMsg = "FastAPI backend is restarting on Hugging Face. Please wait a few seconds and try again.";
+          }
           setMessages((prev) => {
             if (prev.length === 0) return prev;
             const copy = [...prev];
             const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
             if (idx !== -1) {
-              copy[idx].content = `[System Error: ${errMsg}]`;
+              copy[idx].content = `[System Notification: ${errMsg}]`;
               copy[idx].status = "completed";
               const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
               copy[idx].thinkingDuration = Math.max(elapsed, 0.1);

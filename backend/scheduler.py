@@ -171,7 +171,7 @@ async def execute_schedule_job(schedule: dict):
     user_id = schedule["user_id"]
     name = schedule["name"]
     instruction = schedule["instruction"]
-    retrieval_method = schedule["retrieval_method"]
+    retrieval_method = schedule.get("retrieval_method") or "notification"
     
     # Double-check if the schedule still exists and is active in the database
     try:
@@ -188,66 +188,44 @@ async def execute_schedule_job(schedule: dict):
         return
         
     RUNNING_SCHEDULES.add(schedule_id)
-    print(f"[*] Starting execution of scheduled job: {name}")
+    print(f"[*] Starting execution of scheduled job: {name} (Delivery channel: {retrieval_method})")
     
     try:
-        # 1. Resolve session
-        session_id = get_or_create_schedule_session(user_id, schedule_id, name)
+        session_id = None
+        # ONLY resolve/create UI session IF delivery channel is in-app notification or fallback
+        if retrieval_method == "notification":
+            session_id = get_or_create_schedule_session(user_id, schedule_id, name)
+            log_message(session_id, "user", f"[Automated Execution Triggered]\nInstruction: {instruction}")
         
-        # 2. Log start execution message
-        log_message(session_id, "user", f"[Automated Execution Triggered]\nInstruction: {instruction}")
+        # Resolve user's active model and variant settings from profile
+        user_profile = get_user_settings_profile(user_id)
+        active_model_name = user_profile.get("selected_model") or user_profile.get("selectedModel") or "deepseek-flash"
+        active_variant = user_profile.get("selected_variant") or user_profile.get("selectedVariant") or "Max"
+
+        # Trigger isolated background CronTaskAgent via Cloudflare CORS proxy (No rate limits, no cloud IP blocks)
+        from cron_agent import run_cron_agent_loop
         
-        # 3. Load chat history for context
-        db_messages = get_session_messages(session_id)
-        history = []
-        for m in db_messages:
-            history.append({"role": m["role"], "content": m["content"]})
-            
-        # Keep history minimal for automated runs (e.g. last 10 messages)
-        history = history[-10:] if len(history) > 10 else history
-        
-        # 4. Trigger server-side agentic loop
-        from agent_loop import run_agentic_loop
-        
-        # Determine dynamic loop size based on number of tasks/APIs mentioned
-        keywords = ["notion", "gmail", "calendar", "drive", "indeed", "news", "github"]
-        task_count = sum(1 for kw in keywords if kw in instruction.lower())
-        variant_overrides = "XHigh" if task_count > 2 else "High"
-        
-        final_content = ""
-        try:
-            async for chunk_str in run_agentic_loop(
-                prompt=instruction,
-                user_id=user_id,
-                session_id=session_id,
-                model_key="deepseek-flash",
-                history=history,
-                variant=variant_overrides
-            ):
-                chunk = json.loads(chunk_str)
-                if chunk.get("type") == "token":
-                    final_content += chunk.get("content", "")
-                elif chunk.get("type") == "error":
-                    final_content += f"\n\n[Agent Error: {chunk.get('content')}]"
-        except Exception as loop_err:
-            final_content += f"\n\n[Agent Loop Crash: {str(loop_err)}]"
+        final_content = await run_cron_agent_loop(
+            user_id=user_id,
+            schedule_name=name,
+            instruction=instruction,
+            model_key=active_model_name,
+            variant=active_variant
+        )
             
         if not final_content.strip():
-            final_content = "No report could be compiled by the agent."
+            final_content = "No report could be compiled by the background agent."
             
-        # Formatted heading for automated runs
+        # Formatted heading for reports
         now_local = datetime.now(timezone.utc)
         header_title = f"### ⏰ Automated Run: {name}\n**Timestamp:** {now_local.strftime('%Y-%m-%d %I:%M:%S %p')} UTC\n\n"
         full_report = f"{header_title}{final_content}"
         
-        # 5. Log assistant response to DB
-        log_message(session_id, "assistant", full_report)
-        
-        # 6. Deliver updates via retrieval_method
+        # Route delivery based on retrieval_method
         if retrieval_method == "gmail":
             try:
                 access_token = await refresh_gmail_token(user_id)
-                # Resolve the actual authenticated Gmail address — never assume it matches user_id
+                # Resolve authenticated Gmail address
                 try:
                     async with httpx.AsyncClient(timeout=10.0) as profile_client:
                         profile_res = await profile_client.get(
@@ -264,13 +242,22 @@ async def execute_schedule_job(schedule: dict):
                 subject = f"VoxKage Schedule Alert: {name}"
                 body_html = f"<h2>VoxKage Automated Report: {name}</h2><hr/><p>{final_content.replace(chr(10), '<br/>')}</p>"
                 await send_email_direct(gmail_address, subject, body_html, access_token)
-                print(f"[+] Gmail alert sent successfully for schedule {name} → {gmail_address}")
+                print(f"[+] Gmail alert sent successfully for schedule {name} → {gmail_address}. (Zero UI sessions created)")
             except Exception as mail_err:
                 print(f"[-] Failed to send Gmail notification for schedule {name}: {mail_err}")
-                log_message(session_id, "assistant", f"*[Notification Warning: Failed to send Gmail report: {str(mail_err)}]*")
+                # If mail delivery failed, fall back to UI notification session to ensure report is not lost
+                fallback_sid = get_or_create_schedule_session(user_id, schedule_id, name)
+                log_message(fallback_sid, "assistant", f"{full_report}\n\n*[Notification Warning: Failed to send Gmail report ({str(mail_err)}). Report saved to site fallback session.]*")
+
+        elif retrieval_method == "notification":
+            # Log assistant response to UI database session
+            if session_id:
+                log_message(session_id, "assistant", full_report)
+                
         elif retrieval_method == "telegram":
             print(f"[!] Telegram retrieval method requested but Telegram is not connected.")
-            log_message(session_id, "assistant", "*[Notification Warning: Telegram is not connected. Saved in site notifications only.]*")
+            fallback_sid = get_or_create_schedule_session(user_id, schedule_id, name)
+            log_message(fallback_sid, "assistant", f"{full_report}\n\n*[Notification Warning: Telegram is not connected. Saved in site notifications session.]*")
             
     except Exception as e:
         print(f"[-] Execution of scheduled job {name} failed: {e}")

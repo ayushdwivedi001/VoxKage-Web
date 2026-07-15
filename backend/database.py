@@ -305,8 +305,15 @@ def get_user_settings_profile(user_id: str) -> dict:
     db = get_db()
     res = execute_with_retry(db.table("user_settings").select("settings_profile").eq("user_id", user_id))
     if not res.data:
-        return {}
+        return {
+            "selected_model": "deepseek-flash",
+            "selected_variant": "Max"
+        }
     profile = res.data[0].get("settings_profile") or {}
+    if not profile.get("selected_model") and not profile.get("selectedModel"):
+        profile["selected_model"] = "deepseek-flash"
+    if not profile.get("selected_variant") and not profile.get("selectedVariant"):
+        profile["selected_variant"] = "Max"
     
     # Auto-migration of Google Drive server_url from remote to local
     mcp_connections = profile.get("mcp_connections", {})

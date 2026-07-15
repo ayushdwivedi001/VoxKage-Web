@@ -104,6 +104,20 @@ export default function Home() {
         setUserName(boot.user_name);
       }
 
+      if (boot.selected_model && !localStorage.getItem("voxkage_selected_model")) {
+        localStorage.setItem("voxkage_selected_model", boot.selected_model);
+        setSelectedModel(boot.selected_model);
+      } else if (localStorage.getItem("voxkage_selected_model")) {
+        setSelectedModel(localStorage.getItem("voxkage_selected_model") || "DeepSeek V4 Flash");
+      }
+
+      if (boot.selected_variant && !localStorage.getItem("voxkage_selected_variant")) {
+        localStorage.setItem("voxkage_selected_variant", boot.selected_variant);
+        setSelectedVariant(boot.selected_variant);
+      } else if (localStorage.getItem("voxkage_selected_variant")) {
+        setSelectedVariant(localStorage.getItem("voxkage_selected_variant") || "Max");
+      }
+
       if (boot.mcp_tools) {
         sessionToolsCache["__boot_tools__"] = boot.mcp_tools;
       }
@@ -181,6 +195,10 @@ export default function Home() {
         setCustomProxyUrl(savedProxy);
       }
       setUserName(localStorage.getItem("voxkage_user_name") || "");
+      const savedModel = localStorage.getItem("voxkage_selected_model");
+      if (savedModel) setSelectedModel(savedModel);
+      const savedVariant = localStorage.getItem("voxkage_selected_variant");
+      if (savedVariant) setSelectedVariant(savedVariant);
     }
   }, []);
 

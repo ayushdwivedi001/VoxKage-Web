@@ -305,6 +305,8 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
 
     return {
         "user_name": profile.get("userName") or profile.get("user_name") or "",
+        "selected_model": profile.get("selected_model") or profile.get("selectedModel") or "DeepSeek V4 Flash",
+        "selected_variant": profile.get("selected_variant") or profile.get("selectedVariant") or "Max",
         "soul_context": soul_context,
         "mcp_connections": list(connections.keys()),
         "mcp_tools": TOOLS_SCHEMA + mcp_tools,

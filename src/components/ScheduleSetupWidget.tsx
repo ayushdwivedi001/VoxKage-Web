@@ -175,7 +175,7 @@ export default function ScheduleSetupWidget({
               <Bell className={`w-4 h-4 ${delivery === "notification" ? "text-blue-500" : "text-[#8e8b82]"}`} />
               <div className="flex flex-col">
                 <span className="text-[13px] font-medium">In-app Notification</span>
-                <span className="text-[11px] text-[#8e8b82]">Saved in schedules session</span>
+                <span className="text-[11px] text-[#8e8b82]">Saved in SCHEDULE SESSIONS</span>
               </div>
             </div>
 
@@ -191,7 +191,7 @@ export default function ScheduleSetupWidget({
                 <Mail className={`w-4 h-4 ${delivery === "gmail" ? "text-blue-500" : "text-[#8e8b82]"}`} />
                 <div className="flex flex-col">
                   <span className="text-[13px] font-medium">Email via Gmail</span>
-                  <span className="text-[11px] text-[#8e8b82]">Send report to your inbox</span>
+                  <span className="text-[11px] text-[#8e8b82]">Direct email (no UI session created)</span>
                 </div>
               </div>
             ) : (

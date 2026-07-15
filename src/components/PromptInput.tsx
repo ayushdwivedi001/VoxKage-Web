@@ -227,12 +227,50 @@ export default function PromptInput({
   const handleSelectModel = (modelName: string) => {
     setSelectedModel(modelName);
     setModelDropdownOpen(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("voxkage_selected_model", modelName);
+    }
+    try {
+      const token = localStorage.getItem("voxkage_jwt_token");
+      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      if (token) {
+        fetch(`${apiBase}/user/settings-profile`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ selected_model: modelName })
+        }).catch((err) => console.error("Failed to sync model choice:", err));
+      }
+    } catch (err) {
+      console.warn("Model sync error:", err);
+    }
   };
 
   const handleSelectVariant = (variantName: string) => {
     setSelectedVariant(variantName);
     setIsHoveringVariantRow(false);
     setIsHoveringVariantPopup(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("voxkage_selected_variant", variantName);
+    }
+    try {
+      const token = localStorage.getItem("voxkage_jwt_token");
+      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      if (token) {
+        fetch(`${apiBase}/user/settings-profile`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ selected_variant: variantName })
+        }).catch((err) => console.error("Failed to sync variant choice:", err));
+      }
+    } catch (err) {
+      console.warn("Variant sync error:", err);
+    }
   };
 
   const handleOpenMoreModels = () => {

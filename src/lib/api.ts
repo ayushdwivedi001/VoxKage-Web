@@ -47,6 +47,9 @@ async function apiRequest(endpoint: string, method: string = "GET", body: any = 
 
   if (!response.ok) {
     const errorText = await response.text();
+    if (errorText.includes("<!DOCTYPE html>") || errorText.includes("<html") || response.status === 500) {
+      throw new Error("FastAPI backend is restarting on Hugging Face. Please retry in 5 seconds.");
+    }
     throw new Error(errorText || response.statusText);
   }
 
