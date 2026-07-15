@@ -207,6 +207,7 @@ class PreparePayloadRequest(BaseModel):
     model: Optional[str] = "deepseek-flash"
     variant: Optional[str] = "High"
     client_time: Optional[str] = None
+    skip_tools: Optional[bool] = False
 
 class ExecuteToolsRequest(BaseModel):
     tool_calls: List[dict]
@@ -248,6 +249,69 @@ def get_root():
 @app.get("/health")
 def health():
     return {"status": "alive", "engine": "VoxKage Web Backend", "timestamp": "2026-06-30"}
+
+@app.get("/user/boot-payload")
+async def get_boot_payload(user: str = Depends(get_current_user)):
+    from memory_engine import recall_user
+    from database import get_user_settings_profile, get_user_favorites
+    from opencode_client import list_opencode_models
+    import asyncio
+
+    # Run DB queries concurrently
+    async def fetch_soul():
+        return await asyncio.to_thread(recall_user, user, "")
+    async def fetch_profile():
+        return await asyncio.to_thread(get_user_settings_profile, user)
+    async def fetch_favorites():
+        return await asyncio.to_thread(get_user_favorites, user)
+
+    soul_context, profile, favorites = await asyncio.gather(
+        fetch_soul(),
+        fetch_profile(),
+        fetch_favorites()
+    )
+
+    # Process MCP tools
+    mcp_info = ""
+    mcp_tools = []
+    connections = profile.get("mcp_connections") or {}
+    if connections:
+        mcp_info = "\n--- ACTIVE MCP CONNECTIONS ---\n"
+        for provider, conn in connections.items():
+            if provider == "gmail":
+                mcp_info += (
+                    "- Gmail is connected and fully authenticated via OAuth.\n"
+                    "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
+                    "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
+                )
+                from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
+                tools_list = GMAIL_TOOLS
+            else:
+                mcp_info += f"- {provider.title()} is connected.\n"
+                tools_list = conn.get("tools") or []
+            
+            for t in tools_list:
+                mcp_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": f"{provider}__{t['name']}",
+                        "description": f"[{provider.upper()} MCP] {t['description']}",
+                        "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
+                    }
+                })
+
+    models = list_opencode_models()
+    from tool_schemas import TOOLS_SCHEMA
+
+    return {
+        "user_name": profile.get("userName") or profile.get("user_name") or "",
+        "soul_context": soul_context,
+        "mcp_connections": list(connections.keys()),
+        "mcp_tools": TOOLS_SCHEMA + mcp_tools,
+        "mcp_info": mcp_info,
+        "favorites": favorites,
+        "models": models
+    }
 
 @app.post("/auth/master-login")
 def master_login(req: MasterLoginRequest):
@@ -770,9 +834,23 @@ async def prepare_agent_payload(
     asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
     asyncio.create_task(asyncio.to_thread(handle_first_message_rename, session_id, query, user))
 
-    # Retrieve history
-    messages_history = get_session_messages(session_id)
-    soul_context = recall_user(user, "")
+    # Retrieve history, soul context, and profile in parallel using asyncio.gather
+    async def fetch_history():
+        return await asyncio.to_thread(get_session_messages, session_id)
+
+    async def fetch_soul():
+        return await asyncio.to_thread(recall_user, user, "")
+
+    async def fetch_profile():
+        from database import get_user_settings_profile
+        return await asyncio.to_thread(get_user_settings_profile, user)
+
+    messages_history, soul_context, profile = await asyncio.gather(
+        fetch_history(),
+        fetch_soul(),
+        fetch_profile()
+    )
+
     current_time_str = req.client_time or datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
 
     system_prompt = get_system_prompt()
@@ -780,37 +858,37 @@ async def prepare_agent_payload(
     # Check connected MCP providers
     mcp_info = ""
     mcp_tools = []
-    try:
-        from database import get_user_settings_profile
-        profile = get_user_settings_profile(user)
-        connections = profile.get("mcp_connections") or {}
-        print(f"[*] /prepare user: {user}, active mcp connections: {list(connections.keys())}")
-        if connections:
-            mcp_info = "\n--- ACTIVE MCP CONNECTIONS ---\n"
-            for provider, conn in connections.items():
-                if provider == "gmail":
-                    mcp_info += (
-                        "- Gmail is connected and fully authenticated via OAuth.\n"
-                        "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
-                        "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
-                    )
-                    from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
-                    tools_list = GMAIL_TOOLS
-                else:
-                    mcp_info += f"- {provider.title()} is connected.\n"
-                    tools_list = conn.get("tools") or []
-                
-                for t in tools_list:
-                    mcp_tools.append({
-                        "type": "function",
-                        "function": {
-                            "name": f"{provider}__{t['name']}",
-                            "description": f"[{provider.upper()} MCP] {t['description']}",
-                            "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
-                        }
-                    })
-    except Exception as e:
-        print(f"[-] Failed to get MCP info/tools for /prepare: {e}")
+    if profile:
+        try:
+            connections = profile.get("mcp_connections") or {}
+            print(f"[*] /prepare user: {user}, active mcp connections: {list(connections.keys())}")
+            if connections:
+                mcp_info = "\n--- ACTIVE MCP CONNECTIONS ---\n"
+                for provider, conn in connections.items():
+                    if provider == "gmail":
+                        mcp_info += (
+                            "- Gmail is connected and fully authenticated via OAuth.\n"
+                            "  You MUST use the 'gmail__search_threads', 'gmail__get_thread', 'gmail__create_draft', 'gmail__list_drafts', and 'gmail__list_labels' tools to access and manage the user's mailbox.\n"
+                            "  Do not claim you cannot access emails, do not ask the user for passwords/credentials, and do not suggest opening a browser/laptop client; execute the tools directly.\n"
+                        )
+                        from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
+                        tools_list = GMAIL_TOOLS
+                    else:
+                        mcp_info += f"- {provider.title()} is connected.\n"
+                        tools_list = conn.get("tools") or []
+                    
+                    if not req.skip_tools:
+                        for t in tools_list:
+                            mcp_tools.append({
+                                "type": "function",
+                                "function": {
+                                    "name": f"{provider}__{t['name']}",
+                                    "description": f"[{provider.upper()} MCP] {t['description']}",
+                                    "parameters": t.get("inputSchema") or {"type": "object", "properties": {}}
+                                }
+                            })
+        except Exception as e:
+            print(f"[-] Failed to get MCP info/tools for /prepare: {e}")
 
     system_prompt += (
         f"\n\n--- DYNAMIC SESSION CONTEXT ---\n"
@@ -839,7 +917,7 @@ async def prepare_agent_payload(
     return {
         "model": model_id,
         "messages": messages,
-        "tools": TOOLS_SCHEMA + mcp_tools,
+        "tools": None if req.skip_tools else (TOOLS_SCHEMA + mcp_tools),
         "variant_overrides": get_variant_overrides(req.variant)
     }
 

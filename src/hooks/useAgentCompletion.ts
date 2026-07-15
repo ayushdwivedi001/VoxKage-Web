@@ -13,6 +13,75 @@ import {
   logMessageFeedback,
 } from "@/lib/api";
 
+// Session-level tool definitions cache to avoid re-fetching on every message
+export const sessionToolsCache: Record<string, any[]> = {};
+export let cachedSoulContext = "";
+export let cachedMcpInfo = "";
+
+export function clearToolsCache() {
+  for (const k in sessionToolsCache) {
+    delete sessionToolsCache[k];
+  }
+  cachedSoulContext = "";
+  cachedMcpInfo = "";
+  console.log("[Tools Cache] Cleared all session cached tools.");
+}
+
+function formatToolCallLabel(tc: any): string {
+  const name = tc.function?.name || "";
+  const argsStr = tc.function?.arguments || "{}";
+  let args: any = {};
+  try {
+    args = JSON.parse(argsStr);
+  } catch (e) {}
+
+  if (name === "web_search" || name === "web_search_deep") {
+    return `Search: '${args.query || ""}'`;
+  } else if (name === "web_fetch") {
+    return `Fetch URL: ${args.url || ""}`;
+  } else if (name === "web_search_parallel") {
+    return `Parallel Search: ${args.queries && args.queries.length > 0 ? args.queries.join(", ") : ""}`;
+  } else if (name === "web_fetch_parallel") {
+    return `Parallel Fetch: ${args.urls && args.urls.length > 0 ? args.urls.length + " resources" : ""}`;
+  } else if (name === "show_map") {
+    return `Show Map: '${args.label || "Coordinate Location"}'`;
+  } else if (name === "get_weather") {
+    const loc = args.latitude !== undefined ? `${args.latitude}, ${args.longitude}` : "Current Geolocation";
+    return `Get Weather: '${loc}'`;
+  } else if (name === "get_images") {
+    return `Search Images: '${args.query || ""}'`;
+  } else if (name === "laptop_command") {
+    return `Laptop Cmd: ${args.command || ""}`;
+  } else if (name === "open_application") {
+    return `Open App: ${args.app_name || ""}`;
+  } else if (name === "close_application") {
+    return `Close App: ${args.app_name || ""}`;
+  } else if (name === "remember_user") {
+    return `Remember Fact: ${args.key || ""}`;
+  } else if (name === "recall_user") {
+    return "Recall Fact";
+  } else if (name === "forget_user") {
+    return `Forget Fact: ${args.key || ""}`;
+  } else if (name === "query_rag") {
+    return `RAG Query: '${args.query || ""}'`;
+  } else if (name === "list_indexed_documents") {
+    return "List RAG Docs";
+  } else if (name === "delete_indexed_document") {
+    return "Delete RAG Doc";
+  } else if (name === "index_document") {
+    return `Indexing ${args.original_name || args.filename || ""}...`;
+  } else if (name.includes("__")) {
+    const parts = name.split("__");
+    const provider = parts[0];
+    const mcpTool = parts.slice(1).join("__");
+    const formattedProvider = provider.charAt(0).toUpperCase() + provider.slice(1);
+    const formattedTool = mcpTool.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+    return `[${formattedProvider} MCP] ${formattedTool}`;
+  } else {
+    return name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+  }
+}
+
 interface UseAgentCompletionProps {
   currentSessionId: string | null;
   setCurrentSessionId: (id: string | null) => void;
@@ -106,37 +175,7 @@ export default function useAgentCompletion({
     let sessionId = currentSessionId;
     let finalAttachments = [...attachments];
 
-    // Check if new transient session
-    if (!sessionId) {
-      try {
-        const words = text.trim().split(" ");
-        const defaultName = words.slice(0, 4).join(" ") + (words.length > 4 ? "..." : "");
-        const newSess = await createSession(defaultName);
-        sessionId = newSess.id;
-        setCurrentSessionId(sessionId);
-        setChatTitle(defaultName);
-        setSessionsList((prev) => [newSess, ...prev]);
-
-        // Adopt draft files if they were uploaded
-        const activeDraftId = draftSessionId;
-        if (activeDraftId) {
-          try {
-            await adoptDraftFiles(newSess.id, activeDraftId);
-            finalAttachments = finalAttachments.map((att) => ({
-              ...att,
-              url: att.url.replace(activeDraftId, newSess.id),
-            }));
-            setDraftSessionId(null);
-          } catch (adoptErr) {
-            console.error("Failed to adopt draft files:", adoptErr);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to create session on message send", e);
-        return;
-      }
-    }
-
+    // Build the user message content
     let userMsgContent = text;
     if (finalAttachments.length > 0) {
       const xmlParts = ["<attachments>"];
@@ -171,10 +210,10 @@ export default function useAgentCompletion({
       thinkingSteps: [],
     };
 
+    // Transition UI instantly to chat screen
     setAttachments([]);
     setComments([]);
     setEditingFile(null);
-
     setIsChatActive(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
@@ -207,23 +246,42 @@ export default function useAgentCompletion({
       promptText = `${text}\n\n---\nCode Comments Context:\n${commentCtx}`;
     }
 
-    const runClientAgentLoop = async () => {
+    // Now, run the actual request flow:
+    const startAgentLoop = async (actualSessionId: string, finalAtts: any[]) => {
       let finalAssistantContent = "";
       let activeAssistantMsgId = assistantMsg.id;
 
       try {
+        if (
+          actualSessionId &&
+          (!sessionToolsCache[actualSessionId] || sessionToolsCache[actualSessionId].length === 0) &&
+          sessionToolsCache["__boot_tools__"] &&
+          sessionToolsCache["__boot_tools__"].length > 0
+        ) {
+          sessionToolsCache[actualSessionId] = sessionToolsCache["__boot_tools__"];
+        }
+
+        const hasToolsCached = !!(actualSessionId && sessionToolsCache[actualSessionId] && sessionToolsCache[actualSessionId].length > 0);
+
         const prepRes = await prepareSessionPayload(
-          sessionId!,
+          actualSessionId,
           promptText,
-          finalAttachments,
+          finalAtts,
           modelNameToKey(selectedModel),
-          selectedVariant
+          selectedVariant,
+          hasToolsCached
         );
 
         let messagesPayload = prepRes.messages;
         const modelId = prepRes.model;
-        const tools = prepRes.tools;
         const variantOverrides = prepRes.variant_overrides;
+
+        let tools = prepRes.tools;
+        if (hasToolsCached) {
+          tools = sessionToolsCache[actualSessionId];
+        } else if (prepRes.tools) {
+          sessionToolsCache[actualSessionId] = prepRes.tools;
+        }
 
         const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
         const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
@@ -233,16 +291,12 @@ export default function useAgentCompletion({
         }
 
         let targetUrl = "/api/completions/proxy";
-        if (
-          customProxyUrl &&
-          customProxyUrl.trim() !== ""
-        ) {
+        if (customProxyUrl && customProxyUrl.trim() !== "") {
           targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
         }
 
         let loopCount = 0;
         const maxLoop = 12;
-
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
@@ -256,8 +310,7 @@ export default function useAgentCompletion({
             ...variantOverrides,
           };
 
-          const isAgentic =
-            (selectedVariant || "High").toUpperCase() in { HIGH: 1, XHIGH: 1, MAX: 1 };
+          const isAgentic = (selectedVariant || "High").toUpperCase() in { HIGH: 1, XHIGH: 1, MAX: 1 };
           if (isAgentic && tools && tools.length > 0) {
             body.tools = tools;
             body.tool_choice = "auto";
@@ -298,24 +351,12 @@ export default function useAgentCompletion({
           }
 
           const reader = res.body?.getReader();
-          if (!reader) {
-            throw new Error("Failed to get response stream reader.");
-          }
+          if (!reader) throw new Error("Response body is not readable.");
 
           const decoder = new TextDecoder("utf-8");
           let buffer = "";
-          let currentToolCalls: any[] = [];
           let currentContent = "";
-
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const copy = [...prev];
-            const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
-            if (idx !== -1) {
-              copy[idx].status = "streaming";
-            }
-            return copy;
-          });
+          let currentToolCalls: any[] = [];
 
           while (true) {
             const { done, value } = await reader.read();
@@ -332,27 +373,22 @@ export default function useAgentCompletion({
 
               if (cleanLine.startsWith("data:")) {
                 const sseData = cleanLine.substring(5).trim();
-                if (!sseData) continue;
-
-                if (sseData.startsWith("Error")) {
-                  throw new Error(sseData);
-                }
-
                 try {
-                  const parsed = JSON.parse(sseData);
-                  const delta = parsed.choices?.[0]?.delta;
-                  if (!delta) continue;
+                  const dataJson = JSON.parse(sseData);
+                  const choice = dataJson.choices?.[0];
+                  if (!choice) continue;
 
+                  const delta = choice.delta;
                   if (delta.content) {
                     currentContent += delta.content;
                     finalAssistantContent += delta.content;
-
                     setMessages((prev) => {
                       if (prev.length === 0) return prev;
                       const copy = [...prev];
                       const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                       if (idx !== -1) {
                         copy[idx].content = finalAssistantContent;
+                        copy[idx].status = "streaming";
                       }
                       return copy;
                     });
@@ -388,12 +424,9 @@ export default function useAgentCompletion({
                 const steps = copy[idx].thinkingSteps || [];
                 const newSteps = [...steps];
                 currentToolCalls.forEach((tc) => {
-                  const label = tc.function.name
-                    .replace(/_/g, " ")
-                    .replace(/\b\w/g, (c: string) => c.toUpperCase());
                   newSteps.push({
                     id: tc.id,
-                    label: `Executing tool: ${label}`,
+                    label: formatToolCallLabel(tc),
                     status: "pending",
                   });
                 });
@@ -403,7 +436,7 @@ export default function useAgentCompletion({
               return copy;
             });
 
-            const toolExecRes = await executeBackendTools(sessionId!, currentToolCalls);
+            const toolExecRes = await executeBackendTools(actualSessionId, currentToolCalls);
 
             messagesPayload.push({
               role: "assistant",
@@ -456,7 +489,9 @@ export default function useAgentCompletion({
           }
         }
 
-        await logAssistantResponse(sessionId!, finalAssistantContent);
+        logAssistantResponse(actualSessionId, finalAssistantContent).catch((err) =>
+          console.error("Failed to log assistant response:", err)
+        );
 
         setMessages((prev) => {
           if (prev.length === 0) return prev;
@@ -470,21 +505,14 @@ export default function useAgentCompletion({
           return copy;
         });
       } catch (err: any) {
-        if (err.name === "AbortError") {
-          console.log("Completions generation aborted by user.");
-          return;
-        }
-        console.error("Client agent loop failed:", err);
-        const errMsg = err.message || String(err);
+        if (err.name === "AbortError") return;
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const copy = [...prev];
           const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
           if (idx !== -1) {
-            copy[idx].content = `[System Error: ${errMsg}]`;
+            copy[idx].content = `[System Error: ${err.message}]`;
             copy[idx].status = "completed";
-            const elapsed = (Date.now() - (copy[idx].thinkingStart || Date.now())) / 1000;
-            copy[idx].thinkingDuration = Math.max(elapsed, 0.1);
           }
           return copy;
         });
@@ -493,7 +521,56 @@ export default function useAgentCompletion({
       }
     };
 
-    runClientAgentLoop();
+    // Database session creation wrapper (if needed)
+    if (!sessionId) {
+      try {
+        const words = text.trim().split(" ");
+        const defaultName = words.slice(0, 4).join(" ") + (words.length > 4 ? "..." : "");
+        
+        // Start session creation in the background
+        createSession(defaultName).then(async (newSess) => {
+          const realSessionId = newSess.id;
+          setCurrentSessionId(realSessionId);
+          setChatTitle(defaultName);
+          setSessionsList((prev) => [newSess, ...prev]);
+
+          // Adopt draft files if they were uploaded
+          const activeDraftId = draftSessionId;
+          if (activeDraftId) {
+            try {
+              await adoptDraftFiles(realSessionId, activeDraftId);
+              finalAttachments = finalAttachments.map((att) => ({
+                ...att,
+                url: att.url.replace(activeDraftId, realSessionId),
+              }));
+              setDraftSessionId(null);
+            } catch (adoptErr) {
+              console.error("Failed to adopt draft files:", adoptErr);
+            }
+          }
+
+          // Start loop
+          startAgentLoop(realSessionId, finalAttachments);
+        }).catch((e) => {
+          console.error("Failed to create session on message send", e);
+          setMessages((prev) => {
+            if (prev.length === 0) return prev;
+            const copy = [...prev];
+            const idx = copy.findIndex((m) => m.id === assistantMsg.id);
+            if (idx !== -1) {
+              copy[idx].content = `[System Error: Failed to create database session]`;
+              copy[idx].status = "completed";
+            }
+            return copy;
+          });
+        });
+      } catch (e) {
+        console.error("Outer session creation failure:", e);
+      }
+    } else {
+      // Session already exists, run immediately
+      startAgentLoop(sessionId, finalAttachments);
+    }
   };
 
   const resubmitUserMessage = async (userMsgId: string, updatedContent?: string) => {
@@ -553,18 +630,36 @@ export default function useAgentCompletion({
             }
           }
 
+          if (
+            currentSessionId &&
+            (!sessionToolsCache[currentSessionId] || sessionToolsCache[currentSessionId].length === 0) &&
+            sessionToolsCache["__boot_tools__"] &&
+            sessionToolsCache["__boot_tools__"].length > 0
+          ) {
+            sessionToolsCache[currentSessionId] = sessionToolsCache["__boot_tools__"];
+          }
+
+          const hasToolsCached = !!(currentSessionId && sessionToolsCache[currentSessionId] && sessionToolsCache[currentSessionId].length > 0);
+
           const prepRes = await prepareSessionPayload(
             currentSessionId!,
             newText,
             finalAttachments,
             modelNameToKey(selectedModel),
-            selectedVariant
+            selectedVariant,
+            hasToolsCached
           );
 
           let messagesPayload = prepRes.messages;
           const modelId = prepRes.model;
-          const tools = prepRes.tools;
           const variantOverrides = prepRes.variant_overrides;
+
+          let tools = prepRes.tools;
+          if (hasToolsCached) {
+            tools = sessionToolsCache[currentSessionId!];
+          } else if (prepRes.tools) {
+            sessionToolsCache[currentSessionId!] = prepRes.tools;
+          }
 
           const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
           const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
@@ -727,25 +822,13 @@ export default function useAgentCompletion({
                 if (idx !== -1) {
                   const steps = copy[idx].thinkingSteps || [];
                   const newSteps = [...steps];
-                  currentToolCalls.forEach((tc) => {
-                    let label = tc.function.name
-                      .replace(/_/g, " ")
-                      .replace(/\b\w/g, (c: string) => c.toUpperCase());
-                    try {
-                      const args = JSON.parse(tc.function.arguments);
-                      if (tc.function.name === "web_search" || tc.function.name === "web_search_deep") {
-                        label = args.query || label;
-                      } else if (tc.function.name === "web_search_parallel") {
-                        label =
-                          args.queries && args.queries.length > 0 ? args.queries.join(", ") : label;
-                      } else if (tc.function.name === "web_fetch" && args.url) {
-                        label = `Fetch: ${args.url}`;
-                      } else if (tc.function.name === "web_fetch_parallel" && args.urls) {
-                        label = `Fetching ${args.urls.length} resources`;
-                      }
-                    } catch (e) {}
-                    newSteps.push({ id: tc.id, label, status: "pending" });
-                  });
+                   currentToolCalls.forEach((tc) => {
+                     newSteps.push({
+                       id: tc.id,
+                       label: formatToolCallLabel(tc),
+                       status: "pending",
+                     });
+                   });
                   copy[idx].thinkingSteps = newSteps;
                   copy[idx].status = "thinking";
                 }
@@ -822,7 +905,9 @@ export default function useAgentCompletion({
             }
           }
 
-          await logAssistantResponse(currentSessionId!, finalAssistantContent);
+          logAssistantResponse(currentSessionId!, finalAssistantContent).catch((err) =>
+            console.error("Failed to log assistant response:", err)
+          );
 
           setMessages((prev) => {
             if (prev.length === 0) return prev;

@@ -11,6 +11,7 @@ import SettingsModal from "@/components/SettingsModal";
 import SearchModal from "@/components/SearchModal";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 import ScheduleListModal from "@/components/ScheduleListModal";
+import { clearToolsCache } from "@/hooks/useAgentCompletion";
 
 interface OverlayManagerProps {
   moreModelsModalOpen: boolean;
@@ -150,6 +151,7 @@ export default function OverlayManager({
             localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
             localStorage.setItem("voxkage_user_name", userName.trim());
+            clearToolsCache();
             setShowSettingsModal(false);
           }}
           onLogout={handleLogout}
@@ -196,9 +198,11 @@ export default function OverlayManager({
             if (prev.includes(id)) return prev;
             return [...prev, id];
           });
+          clearToolsCache();
         }}
         onDisconnectSuccess={(id) => {
           setConnectedServers((prev) => prev.filter((s) => s !== id));
+          clearToolsCache();
         }}
       />
 
@@ -212,6 +216,7 @@ export default function OverlayManager({
             if (connectingServer) {
               setConnectedServers((prev) => [...prev, connectingServer.id]);
               setConnectingServer(null);
+              clearToolsCache();
             }
           }}
         />

@@ -34,9 +34,11 @@ def get_db() -> Client:
             detail="Supabase credentials (SUPABASE_URL, SUPABASE_KEY) are not set in backend environment."
         )
     try:
-        # Create a custom httpx Client with a 30s timeout and HTTP/2 disabled.
-        # This prevents httpcore.RemoteProtocolError on Hugging Face Spaces and read timeouts on cold DB starts.
-        custom_client = httpx.Client(http2=False, timeout=30.0)
+        custom_client = httpx.Client(
+            http2=False,
+            timeout=30.0,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10)
+        )
         options = ClientOptions(httpx_client=custom_client)
         _client = create_client(SUPABASE_URL, SUPABASE_KEY, options=options)
         return _client

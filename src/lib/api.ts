@@ -223,7 +223,8 @@ export async function prepareSessionPayload(
   query: string,
   attachments: any[],
   model: string,
-  variant: string
+  variant: string,
+  skipTools?: boolean
 ) {
   const options: Intl.DateTimeFormatOptions = {
     weekday: 'long',
@@ -242,7 +243,8 @@ export async function prepareSessionPayload(
     attachments,
     model,
     variant,
-    client_time: clientTime
+    client_time: clientTime,
+    skip_tools: !!skipTools
   });
 }
 
@@ -274,5 +276,9 @@ export async function logMessageFeedback(
     feedback_type: feedbackType,
     comments
   });
+}
+
+export async function fetchBootPayload() {
+  return apiRequest("/user/boot-payload", "GET");
 }
 

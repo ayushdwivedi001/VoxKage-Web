@@ -16,7 +16,7 @@ import OverlayManager from "@/components/OverlayManager";
 // Extracted Hooks
 import useChatSessions from "@/hooks/useChatSessions";
 import useAttachments from "@/hooks/useAttachments";
-import useAgentCompletion from "@/hooks/useAgentCompletion";
+import useAgentCompletion, { sessionToolsCache } from "@/hooks/useAgentCompletion";
 import usePanelResizer from "@/hooks/usePanelResizer";
 import useAuth from "@/hooks/useAuth";
 
@@ -32,6 +32,7 @@ import {
   fetchSettingsProfile,
   fetchModels,
   deleteSession,
+  fetchBootPayload,
 } from "@/lib/api";
 
 export default function Home() {
@@ -93,14 +94,19 @@ export default function Home() {
       const sess = await fetchSessions();
       chatSessions.setSessionsList(sess);
 
-      const profile = await fetchSettingsProfile();
-      const mcpConnections = profile?.mcp_connections || {};
-      setConnectedServers(Object.keys(mcpConnections));
+      const boot = await fetchBootPayload();
+      
+      setConnectedServers(boot.mcp_connections || []);
+      setModelsList(mapModelsList(boot.models || [], boot.favorites || []));
+      
+      if (boot.user_name) {
+        localStorage.setItem("voxkage_user_name", boot.user_name);
+        setUserName(boot.user_name);
+      }
 
-      const favs = await fetchFavorites();
-      const apiModels = await fetchModels();
-
-      setModelsList(mapModelsList(apiModels, favs));
+      if (boot.mcp_tools) {
+        sessionToolsCache["__boot_tools__"] = boot.mcp_tools;
+      }
     } catch (e) {
       console.error("Failed to load initial data", e);
     }
