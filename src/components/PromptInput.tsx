@@ -39,6 +39,7 @@ interface PromptInputProps {
   onPreviewDocument?: (file: Attachment) => void;
   editingFile?: string | null;
   onRemoveEditingFile?: () => void;
+  isSession?: boolean;
 }
 
 export default function PromptInput({
@@ -63,6 +64,7 @@ export default function PromptInput({
   onPreviewDocument,
   editingFile,
   onRemoveEditingFile,
+  isSession = false,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -464,22 +466,20 @@ export default function PromptInput({
   const hasText = value.trim().length > 0;
 
   return (
-    <div
-      className={`w-full max-w-[720px] bg-[#18181c]/90 border transition-all duration-300 ${
-        isFocused ? "border-zinc-700 shadow-lg shadow-black/20" : "border-zinc-800/80"
-      } rounded-[28px] p-5 pb-4 flex flex-col backdrop-blur-md relative`}
-    >
+    <div className={`w-full max-w-[720px] rounded-[28px] p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
+      isSession ? "fluid-glass-box-session" : "fluid-glass-box"
+    }`}>
       {/* / Commands Popup */}
       {showPopup && (
         <div 
-          className="absolute bottom-full left-0 right-0 mb-3 bg-[#131316]/98 border border-zinc-800/80 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fadeIn"
+          className="absolute bottom-full left-0 right-0 mb-3 fluid-glass-popup rounded-2xl overflow-hidden z-50 animate-fadeIn"
           style={{
             width: "100%",
           }}
         >
-          <div className="px-4 py-2 border-b border-zinc-800/50 flex justify-between items-center select-none bg-[#0e0e11]/50">
-            <span className="text-[11px] font-mono text-zinc-550 uppercase tracking-wider">Available Commands</span>
-            <span className="text-[10px] text-zinc-600 font-sans">Use arrow keys & enter to select</span>
+          <div className="px-4 py-2 border-b border-white/10 flex justify-between items-center select-none bg-white/[0.03]">
+            <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">Available Commands</span>
+            <span className="text-[10px] text-zinc-500 font-sans">Use arrow keys & enter to select</span>
           </div>
           <div className="flex flex-col max-h-[220px] overflow-y-auto p-1.5 custom-scrollbar">
             {filtered.map((cmd, idx) => {
@@ -491,8 +491,8 @@ export default function PromptInput({
                   onMouseEnter={() => setSelectedIndex(idx)}
                   className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[14.5px] cursor-pointer transition-all duration-150 ${
                     isSelected 
-                      ? "bg-blue-600/10 border border-blue-500/20 text-white" 
-                      : "border border-transparent text-zinc-300 hover:bg-zinc-850/40 hover:text-zinc-100"
+                      ? "bg-white/10 border border-white/20 text-white shadow-sm" 
+                      : "border border-transparent text-zinc-300 hover:bg-white/5 hover:text-zinc-100"
                   }`}
                 >
                   <span className="font-mono font-medium">{cmd}</span>
@@ -511,10 +511,10 @@ export default function PromptInput({
         <div className="flex flex-wrap gap-2 mb-3.5 animate-fadeIn">
           {editingFile && (
             <div 
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-600/10 border border-blue-500/20 transition-all duration-200 cursor-default select-none"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl fluid-glass-pill text-blue-300 border-blue-400/30 transition-all duration-200 cursor-default select-none"
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-              <span className="text-[12.5px] text-blue-300 font-sans font-medium">
+              <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-[12.5px] font-sans font-medium">
                 Editing: {editingFile}
               </span>
               <button
@@ -525,7 +525,7 @@ export default function PromptInput({
                     onRemoveEditingFile();
                   }
                 }}
-                className="flex items-center justify-center w-4 h-4 rounded-full bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 hover:text-blue-200 transition-colors cursor-pointer"
+                className="flex items-center justify-center w-4 h-4 rounded-full bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 hover:text-white transition-colors cursor-pointer"
                 title="Remove file context"
               >
                 <X className="w-2.5 h-2.5" />
@@ -540,10 +540,10 @@ export default function PromptInput({
                   onClickComment(comment.fileName, comment.line);
                 }
               }}
-              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-[#202024] border border-zinc-800 hover:border-zinc-700 transition-all duration-200 cursor-pointer select-none max-w-[280px]"
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl fluid-glass-pill transition-all duration-200 cursor-pointer select-none max-w-[280px]"
             >
-              <div className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-              <span className="text-[12.5px] text-zinc-300 font-sans truncate font-medium">
+              <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+              <span className="text-[12.5px] text-zinc-200 font-sans truncate font-medium">
                 {comment.fileName}:{comment.line} - {comment.text}
               </span>
               <button
@@ -554,7 +554,7 @@ export default function PromptInput({
                     onRemoveComment(comment.id);
                   }
                 }}
-                className="flex items-center justify-center w-4 h-4 rounded-full bg-zinc-900/60 hover:bg-zinc-800 text-zinc-450 hover:text-zinc-200 transition-colors cursor-pointer"
+                className="flex items-center justify-center w-4 h-4 rounded-full bg-white/10 hover:bg-white/20 text-zinc-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-2.5 h-2.5" />
               </button>
@@ -574,8 +574,8 @@ export default function PromptInput({
 
             if (isUploading) {
               return (
-                <div key={file.filename} className="flex items-center justify-center rounded-xl bg-zinc-900/40 border border-zinc-850/60 w-[90px] h-[60px] animate-pulse flex-shrink-0">
-                  <div className="w-5 h-5 rounded bg-zinc-800" />
+                <div key={file.filename} className="flex items-center justify-center rounded-xl fluid-glass-pill w-[90px] h-[60px] animate-pulse flex-shrink-0">
+                  <div className="w-5 h-5 rounded bg-white/10" />
                 </div>
               );
             }
@@ -583,9 +583,9 @@ export default function PromptInput({
             if (isFailed) {
               return (
                 <div key={file.filename} className="relative group/failed w-[90px] h-[60px] flex-shrink-0 select-none">
-                  <div className="w-full h-full flex flex-col items-center justify-center rounded-xl bg-red-950/10 border border-red-900/30">
+                  <div className="w-full h-full flex flex-col items-center justify-center rounded-xl bg-red-950/20 border border-red-500/30">
                     <span className="text-[10px] font-mono font-bold text-red-400">ERR</span>
-                    <span className="text-[8.5px] text-zinc-550 truncate mt-0.5 w-full text-center px-1">
+                    <span className="text-[8.5px] text-zinc-400 truncate mt-0.5 w-full text-center px-1">
                       Failed
                     </span>
                   </div>
@@ -596,7 +596,7 @@ export default function PromptInput({
                       e.stopPropagation();
                       onRemoveAttachment?.(file.filename);
                     }}
-                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/failed:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/failed:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-white/20 text-zinc-400 hover:text-white transition-all duration-200 cursor-pointer shadow-md z-20"
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -653,8 +653,8 @@ export default function PromptInput({
           onPaste={handlePaste}
           rows={1}
           className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
-            value ? "text-transparent" : "text-zinc-100"
-          } caret-zinc-200 placeholder-zinc-500 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10 prompt-textarea`}
+            value ? "text-transparent" : "text-white"
+          } caret-white placeholder-white/35 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10 prompt-textarea`}
           placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
             minHeight: "28px",
@@ -670,10 +670,10 @@ export default function PromptInput({
             ref={plusButtonRef}
             type="button"
             onClick={() => setPlusPopupOpen(!plusPopupOpen)}
-            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 active:scale-95 cursor-pointer"
+            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 active:scale-95 cursor-pointer"
             aria-label="Add attachment"
           >
-            <Plus className={`w-[22px] h-[22px] stroke-[2.2] transition-transform duration-200 ${plusPopupOpen ? "rotate-45" : ""}`} />
+            <Plus className={`w-[20px] h-[20px] stroke-[2.2] transition-transform duration-200 ${plusPopupOpen ? "rotate-45" : ""}`} />
           </button>
 
           {/* Hidden File Input */}
@@ -689,25 +689,25 @@ export default function PromptInput({
           {plusPopupOpen && (
             <div 
               ref={plusPopupRef}
-              className="absolute bottom-11 left-0 bg-[#121215]/98 border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-40 w-[200px] flex flex-col animate-fadeIn select-none backdrop-blur-md"
+              className="absolute bottom-11 left-0 fluid-glass-popup rounded-2xl p-1.5 z-40 w-[210px] flex flex-col animate-fadeIn select-none"
             >
               <button
                 type="button"
                 onClick={() => {
                   fileInputRef.current?.click();
                 }}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-200 hover:bg-white/10 hover:text-white transition-colors text-left cursor-pointer"
               >
-                <FileUp className="w-4 h-4 text-zinc-400" />
+                <FileUp className="w-4 h-4 text-zinc-300" />
                 <span>Add files or Images</span>
               </button>
               
               <button
                 type="button"
                 onClick={handleTakeScreenshot}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-200 hover:bg-white/10 hover:text-white transition-colors text-left cursor-pointer"
               >
-                <Monitor className="w-4 h-4 text-zinc-400" />
+                <Monitor className="w-4 h-4 text-zinc-300" />
                 <span>Take a Screenshot</span>
               </button>
               
@@ -717,9 +717,9 @@ export default function PromptInput({
                   setPlusPopupOpen(false);
                   window.dispatchEvent(new CustomEvent("open-schedules-modal"));
                 }}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-300 hover:bg-[#1d1d21]/60 hover:text-zinc-100 transition-colors text-left cursor-pointer"
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-200 hover:bg-white/10 hover:text-white transition-colors text-left cursor-pointer"
               >
-                <Clock className="w-4 h-4 text-zinc-400" />
+                <Clock className="w-4 h-4 text-zinc-300" />
                 <span>Check Schedules</span>
               </button>
             </div>
@@ -733,10 +733,10 @@ export default function PromptInput({
             <button
               type="button"
               onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 text-[13.5px] font-medium border border-transparent hover:border-zinc-800 bg-transparent select-none cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[13.5px] font-medium select-none cursor-pointer"
             >
               <span>{selectedModel}</span>
-              <span className="text-zinc-500 font-normal text-[12.5px] ml-0.5">{selectedVariant}</span>
+              <span className="text-zinc-400 font-normal text-[12.5px] ml-0.5">{selectedVariant}</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5" />
             </button>
 
@@ -767,17 +767,17 @@ export default function PromptInput({
           {/* Context Window HUD indicator */}
           <div className="relative group/hud flex items-center">
             <div 
-              className={`flex items-center justify-center px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/80 text-[12.5px] font-mono select-none cursor-help transition-all duration-200 ${
+              className={`flex items-center justify-center px-2.5 py-1 rounded-lg fluid-glass-pill text-[12.5px] font-mono select-none cursor-help transition-all duration-200 ${
                 contextPercent >= 85 
-                  ? "text-red-500 border-red-900/40 bg-red-950/10 font-bold" 
-                  : "text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                  ? "text-red-400 border-red-500/40 bg-red-950/30 font-bold" 
+                  : "text-zinc-300 hover:text-white"
               }`}
             >
               <span>{contextPercent}%</span>
             </div>
             
             {/* Tooltip */}
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 bg-[#121214] border border-zinc-850 text-zinc-350 text-[11px] font-sans px-2.5 py-1.5 rounded-lg shadow-xl whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50">
               Context window. Run <span className="font-mono text-blue-400">/compact</span> to compact the context window.
             </div>
           </div>
@@ -785,10 +785,10 @@ export default function PromptInput({
           {/* Voice Input Button */}
           <button
             type="button"
-            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-400 hover:text-zinc-200 hover:bg-white/5 transition-all duration-200 active:scale-95"
+            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 active:scale-95"
             aria-label="Voice input"
           >
-            <Mic className="w-5 h-5 opacity-90" />
+            <Mic className="w-4.5 h-4.5 opacity-90" />
           </button>
 
           {/* Submit / Stop Button */}
@@ -796,10 +796,10 @@ export default function PromptInput({
             <button
               type="button"
               onClick={onStop}
-              className="flex items-center justify-center w-9 h-9 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 active:scale-95 cursor-pointer ml-1 transition-all duration-200"
+              className="flex items-center justify-center w-9 h-9 rounded-full fluid-glass-pill text-white active:scale-95 cursor-pointer ml-1 transition-all duration-200"
               aria-label="Stop generation"
             >
-              <Square className="w-4 h-4 fill-zinc-300 stroke-none" />
+              <Square className="w-4 h-4 fill-white stroke-none" />
             </button>
           ) : (
             <button
@@ -807,8 +807,8 @@ export default function PromptInput({
               onClick={handleSubmit}
               className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-300 ml-1 ${
                 hasText
-                  ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
-                  : "bg-zinc-700/50 text-zinc-500 cursor-default"
+                  ? "bg-blue-600 border border-blue-600 hover:bg-blue-500 hover:border-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+                  : "bg-white/[0.04] border border-white/[0.08] text-white/30 cursor-default"
               }`}
               aria-label="Submit prompt"
             >

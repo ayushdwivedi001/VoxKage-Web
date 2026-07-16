@@ -162,6 +162,7 @@ export default function ChatWorkspace({
             {greeting}
           </h1>
           <PromptInput
+            isSession={false}
             onSubmit={handleSendMessage}
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}
@@ -211,6 +212,7 @@ export default function ChatWorkspace({
               </button>
             )}
             <PromptInput
+              isSession={true}
               onSubmit={handleSendMessage}
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
@@ -243,7 +245,7 @@ export default function ChatWorkspace({
               editingFile={editingFile}
               onRemoveEditingFile={() => setEditingFile(null)}
             />
-            <span className="text-[12px] text-zinc-500 font-sans tracking-wide select-none">
+            <span className="text-[12px] text-zinc-300 font-sans tracking-wide select-none">
               VoxKage can make mistakes. Please double check responses.
             </span>
           </div>

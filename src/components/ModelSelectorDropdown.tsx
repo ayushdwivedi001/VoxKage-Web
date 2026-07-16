@@ -34,10 +34,10 @@ export default function ModelSelectorDropdown({
   const favourites = modelsList.filter((m) => m.isFavourite);
 
   return (
-    <div className="absolute bottom-full mb-2 right-0 w-[300px] rounded-2xl border border-zinc-800 bg-[#18181c] p-1.5 shadow-2xl z-40 select-none flex flex-col font-sans animate-fadeIn text-zinc-300">
+    <div className="absolute bottom-full mb-2 right-0 w-[300px] rounded-2xl fluid-glass-popup p-1.5 shadow-2xl z-40 select-none flex flex-col font-sans animate-fadeIn text-zinc-300">
       {/* Favourite Models Section */}
-      <div className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold text-zinc-500 tracking-wider uppercase border-b border-zinc-800/60 mb-1">
-        <Star className="w-3.5 h-3.5 text-zinc-400 stroke-[2]" />
+      <div className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase border-b border-white/10 mb-1">
+        <Star className="w-3.5 h-3.5 text-zinc-300 stroke-[2]" />
         <span>Favourite models</span>
       </div>
 
@@ -60,24 +60,24 @@ export default function ModelSelectorDropdown({
               className={`flex flex-col w-full text-left px-3.5 py-2.5 rounded-xl transition-all duration-200 ${
                 model.unavailable
                   ? "opacity-40 cursor-not-allowed"
-                  : "hover:bg-zinc-800/60 cursor-pointer"
+                  : "hover:bg-white/10 cursor-pointer"
               }`}
             >
               <div className="flex items-center justify-between w-full">
-                <span className="text-[13.5px] font-medium text-zinc-200">
+                <span className="text-[13.5px] font-medium text-zinc-100">
                   {model.name}
                 </span>
                 
                 {/* Checkmark or Upgrade badge */}
                 {isSelected ? (
-                  <Check className="w-4 h-4 text-blue-500 stroke-[2.5]" />
+                  <Check className="w-4 h-4 text-blue-400 stroke-[2.5]" />
                 ) : model.requiresUpgrade ? (
-                  <span className="px-2 py-0.5 rounded-full text-[9.5px] font-medium bg-zinc-800/80 text-zinc-400 border border-zinc-700/30">
+                  <span className="px-2 py-0.5 rounded-full text-[9.5px] font-medium bg-white/10 text-zinc-300 border border-white/10">
                     Upgrade
                   </span>
                 ) : null}
               </div>
-              <span className="text-[11.5px] text-zinc-500 font-normal mt-0.5">
+              <span className="text-[11.5px] text-zinc-400 font-normal mt-0.5">
                 {model.desc}
               </span>
             </button>
@@ -86,18 +86,18 @@ export default function ModelSelectorDropdown({
       </div>
 
       {/* Separator line */}
-      <div className="border-t border-zinc-800/60 my-1" />
+      <div className="border-t border-white/10 my-1" />
 
       {/* Variant Row Button */}
       <button
         type="button"
         onMouseEnter={onMouseEnterVariant}
         onMouseLeave={onMouseLeaveVariant}
-        className="flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800/60 transition-all duration-200 text-left cursor-pointer"
+        className="flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-200 text-left cursor-pointer"
       >
-        <span className="text-[13.5px] font-medium text-zinc-200">Variant</span>
-        <div className="flex items-center gap-1.5 text-zinc-400">
-          <span className="text-[13px] font-normal text-zinc-500">{selectedVariant}</span>
+        <span className="text-[13.5px] font-medium text-zinc-100">Variant</span>
+        <div className="flex items-center gap-1.5 text-zinc-300">
+          <span className="text-[13px] font-normal text-zinc-400">{selectedVariant}</span>
           <ChevronRight className="w-3.5 h-3.5 opacity-70" />
         </div>
       </button>
@@ -106,9 +106,9 @@ export default function ModelSelectorDropdown({
       <button
         type="button"
         onClick={onOpenMoreModels}
-        className="flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl hover:bg-zinc-800/60 transition-all duration-200 text-left cursor-pointer"
+        className="flex items-center justify-between w-full px-3.5 py-2.5 rounded-xl hover:bg-white/10 transition-all duration-200 text-left cursor-pointer"
       >
-        <span className="text-[13.5px] font-medium text-zinc-200">More models</span>
+        <span className="text-[13.5px] font-medium text-zinc-100">More models</span>
         <ChevronRight className="w-3.5 h-3.5 text-zinc-400 opacity-70" />
       </button>
 

@@ -22,10 +22,10 @@ export default function VariantSubPopup({
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="absolute bottom-0 right-[304px] w-[280px] rounded-2xl border border-zinc-800 bg-[#18181c] p-4 shadow-2xl z-50 select-none flex flex-col font-sans animate-fadeIn text-zinc-300"
+      className="absolute bottom-0 right-[304px] w-[280px] rounded-2xl fluid-glass-popup p-4 shadow-2xl z-50 select-none flex flex-col font-sans animate-fadeIn text-zinc-300"
     >
       {/* Header Description */}
-      <span className="text-[11.5px] leading-relaxed text-zinc-500 font-normal border-b border-zinc-800/60 pb-3.5 mb-2.5">
+      <span className="text-[11.5px] leading-relaxed text-zinc-400 font-normal border-b border-white/10 pb-3.5 mb-2.5">
         Higher effort means more thorough responses, but takes longer and uses your limits faster.
       </span>
 
@@ -39,17 +39,17 @@ export default function VariantSubPopup({
               key={v}
               type="button"
               onClick={() => onSelectVariant(v)}
-              className="flex items-center justify-between w-full px-3 py-2 rounded-xl hover:bg-zinc-800/60 transition-all duration-200 text-left cursor-pointer"
+              className="flex items-center justify-between w-full px-3 py-2 rounded-xl hover:bg-white/10 transition-all duration-200 text-left cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <span className="text-[13.5px] font-medium text-zinc-200">{v}</span>
+                <span className="text-[13.5px] font-medium text-zinc-100">{v}</span>
                 {v === "Low" && (
-                  <span className="text-[10px] text-zinc-600 font-normal px-1.5 py-0.5 bg-zinc-900 border border-zinc-800/60 rounded">
+                  <span className="text-[10px] text-zinc-400 font-normal px-1.5 py-0.5 bg-white/10 border border-white/10 rounded">
                     Default
                   </span>
                 )}
               </div>
-              {isSelected && <Check className="w-4 h-4 text-blue-500 stroke-[2.5]" />}
+              {isSelected && <Check className="w-4 h-4 text-blue-400 stroke-[2.5]" />}
             </button>
           );
         })}
