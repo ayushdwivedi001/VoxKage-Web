@@ -118,9 +118,11 @@ async def query_opencode_proxy(
                             break
                         try:
                             chunk = json.loads(clean_line)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            if delta:
-                                yield delta
+                            choices = chunk.get("choices")
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                if delta:
+                                    yield delta
                         except json.JSONDecodeError:
                             # Skip non-JSON metadata lines or keepalive signals in SSE stream
                             continue

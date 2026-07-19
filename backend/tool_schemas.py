@@ -546,5 +546,22 @@ TOOLS_SCHEMA = [
                 "required": ["filename"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "rename_session",
+            "description": "Rename the current chat session to a clean, professional title. Use this as your first action if the current session name is 'New Chat'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Concise, professional title (2 to 5 words maximum) capturing the core topic of the user's initial message. No quotes, prefixes, or punctuation."
+                    }
+                },
+                "required": ["title"]
+            }
+        }
     }
 ]

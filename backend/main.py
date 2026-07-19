@@ -130,65 +130,6 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def handle_first_message_rename(session_id: str, query: str, user: str, websocket=None):
-    try:
-        from database import get_session, update_session_name
-        from opencode_client import query_opencode_zen
-        
-        session = await asyncio.to_thread(get_session, session_id, user)
-        if not session or session.get("name") != "New Chat":
-            return
-
-        system_instr = (
-            "You are a professional session title generator.\n"
-            "Analyze the user's initial message and generate a concise, professional title (2 to 5 words maximum) capturing the core topic.\n"
-            "Rules:\n"
-            "1. Output ONLY the raw title text. Do not include quotes, markdown formatting, prefixes, or punctuation.\n"
-            "2. Make it sound like a clean workspace topic title (e.g., 'Cognizant Interview Preparation', 'Checking Japanese Pronunciation', 'Next.js Routing Setup').\n"
-            "3. Do not start with generic phrases like 'How to', 'Question about', or 'Checking'."
-        )
-        
-        generated_title = ""
-        try:
-            generated_title = await query_opencode_zen(
-                prompt=f"Generate a title for this user message: {query}",
-                model_key="deepseek-flash",
-                history=[{"role": "system", "content": system_instr}]
-            )
-            generated_title = generated_title.strip().strip('"\'`#*')
-            # Clean single lines and trailing periods
-            generated_title = generated_title.split("\n")[0].rstrip(".")
-        except Exception as llm_err:
-            print(f"[-] LLM title generation failed, using fallback: {llm_err}")
-            words = [w for w in query.split() if not w.startswith('/')]
-            generated_title = " ".join(words[:5])
-            if len(words) > 5:
-                generated_title += "..."
-            for char in ['"', "'", '`', '*', '#', '.', ',']:
-                generated_title = generated_title.replace(char, '')
-            generated_title = generated_title.strip()
-
-        if not generated_title:
-            generated_title = "New Chat"
-
-        await asyncio.to_thread(update_session_name, session_id, user, generated_title)
-
-        chat_sockets = manager._active_chats.get(user, [])
-        for s in chat_sockets:
-            try:
-                if is_websocket_connected(s):
-                    await s.send_text(json.dumps({"type": "rename", "name": generated_title}))
-            except Exception:
-                pass
-        if websocket:
-            try:
-                if is_websocket_connected(websocket):
-                    await websocket.send_text(json.dumps({"type": "rename", "name": generated_title}))
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"[-] Session auto-rename failed: {e}")
-
 
 
 async def websocket_heartbeat_loop():
@@ -869,11 +810,7 @@ async def prepare_agent_payload(
         attachments_xml_parts.append("</attachments>")
         db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
 
-    # Log user query and handle rename in non-blocking background tasks
-    asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
-    asyncio.create_task(handle_first_message_rename(session_id, query, user))
-
-    # Retrieve history, soul context, and profile in parallel using asyncio.gather
+    # Retrieve history, soul context, and profile in parallel using asyncio.gather first
     async def fetch_history():
         return await asyncio.to_thread(get_session_messages, session_id)
 
@@ -889,6 +826,9 @@ async def prepare_agent_payload(
         fetch_soul(),
         fetch_profile()
     )
+
+    # Log user query asynchronously in the background AFTER retrieving history (avoids race condition)
+    asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
 
     current_time_str = req.client_time or datetime.now().strftime("%A, %B %d, %Y, %I:%M:%S %p")
 
@@ -938,8 +878,8 @@ async def prepare_agent_payload(
 
     messages = [{"role": "system", "content": system_prompt}]
     formatted_history = []
-    # Include all previous logs from DB history except the very last user message we just logged (as we will send the enriched version)
-    for msg in messages_history[:-1]:
+    # Include all previous logs from DB history in full
+    for msg in messages_history:
         formatted_history.append({"role": msg["role"], "content": msg["content"]})
         
     for msg in sanitize_history_roles(formatted_history):
@@ -1336,9 +1276,8 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                 attachments_xml_parts.append("</attachments>")
                 db_content = f"{query}\n\n" + "\n".join(attachments_xml_parts)
 
-            # Log user query and handle rename in non-blocking background tasks
+            # Log user query synchronously as the first step
             asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
-            asyncio.create_task(asyncio.to_thread(handle_first_message_rename, session_id, query, user, websocket))
 
             formatted_history = []
             for msg in messages_history:

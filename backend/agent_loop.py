@@ -133,6 +133,8 @@ def get_tool_label(name: str, args: dict) -> str:
         return "Delete RAG Doc"
     elif name == "index_document":
         return f"Indexing {args.get('original_name') or args.get('filename') or ''}..."
+    elif name == "rename_session":
+        return f"Rename Session: '{args.get('title', '')}'"
     elif "__" in name:
         provider, mcp_tool = name.split("__", 1)
         return f"[{provider.title()} MCP] {mcp_tool.replace('_', ' ').title()}"
@@ -806,6 +808,28 @@ async def execute_tool_call_v2(
                 except Exception as e:
                     tool_output = json.dumps({"valid": False, "error": f"Internal Verification Error: {str(e)}"})
 
+        elif name == "rename_session":
+            title = args.get("title", "").strip()
+            if title:
+                from database import update_session_name
+                await asyncio.to_thread(update_session_name, session_id, user_id, title)
+                if manager_ref:
+                    chat_sockets = manager_ref._active_chats.get(user_id, [])
+                    for s in chat_sockets:
+                        try:
+                            await s.send_text(json.dumps({"type": "rename", "name": title}))
+                        except:
+                            pass
+                if client_websocket:
+                    try:
+                        await client_websocket.send_text(json.dumps({"type": "rename", "name": title}))
+                    except:
+                        pass
+                tool_output = json.dumps({"status": "success", "message": f"Session renamed to: {title}"})
+            else:
+                tool_output = json.dumps({"status": "error", "message": "Missing title argument."})
+            return (tc_id, tool_output, True)
+
         # --- Route Memories & Problems ---
         elif name == "remember_user":
             await send_to_client({"type": "hud_log", "content": "Saving user memory..."})
@@ -1027,6 +1051,19 @@ async def run_agentic_loop(
     variant: str = "High"
 ) -> AsyncGenerator[str, None]:
     api_key = os.getenv("OPENCODE_API_KEY")
+    async def send_to_client(payload_dict):
+        if client_websocket:
+            try:
+                await client_websocket.send_text(json.dumps(payload_dict))
+            except:
+                pass
+        elif manager_ref and user_id in manager_ref.active_chats:
+            for ws in manager_ref.active_chats[user_id]:
+                try:
+                    await ws.send_text(json.dumps(payload_dict))
+                except:
+                    pass
+
     consulted_sources = []
     web_search_called = False
     tool_context = {
@@ -1072,8 +1109,19 @@ async def run_agentic_loop(
     except Exception as e:
         print(f"[-] Failed to get MCP info for system prompt: {e}")
 
+    # Retrieve current session name
+    session_name = "New Chat"
+    try:
+        from database import get_session
+        session = get_session(session_id, user_id)
+        if session:
+            session_name = session.get("name", "New Chat")
+    except Exception as e:
+        print(f"[-] Failed to get session name for prompt: {e}")
+
     system_prompt += (
         f"\n\n--- DYNAMIC SESSION CONTEXT ---\n"
+        f"The current session name is '{session_name}'.\n"
         f"The current local date and time is {current_time_str}. Use this exact timestamp when answering any queries. Never guess the time.\n"
         f"{mcp_info}"
         f"--- USER SOUL PROFILE MEMORIES ---\n{soul_context}\n\n"
@@ -1270,6 +1318,8 @@ async def run_agentic_loop(
             nodes_plan = []
             for tc in current_tool_calls:
                 tc_name = tc["function"]["name"]
+                if tc_name == "rename_session":
+                    continue
                 try:
                     tc_args = json.loads(tc["function"]["arguments"] or "{}")
                 except:
@@ -1280,7 +1330,7 @@ async def run_agentic_loop(
                     "status": "pending"
                 })
 
-            if client_websocket:
+            if client_websocket and nodes_plan:
                 await client_websocket.send_text(json.dumps({
                     "type": "tool_plan",
                     "nodes": nodes_plan
