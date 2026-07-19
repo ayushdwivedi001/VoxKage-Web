@@ -370,7 +370,7 @@ export default function Home() {
         }}
       >
         {isChatActive && (
-          <div className="absolute bottom-0 left-0 right-0 h-[28%] z-0 pointer-events-none bg-gradient-to-t from-[#041285]/24 via-[#041285]/06 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 h-[28%] z-0 pointer-events-none bg-gradient-to-t from-[#0438c2]/24 via-[#0438c2]/06 to-transparent" />
         )}
 
         <ChatHeader

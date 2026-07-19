@@ -24,8 +24,10 @@ const FRAGMENT_SHADER_SOURCE = `
   }
 
   void main() {
-    // Generate a slow-motion horizontal wave traveling from left to right
-    float wave = sin(vUv.x * 2.2 - u_time * 0.33) * 0.045;
+    // Generate a premium fluid organic double-wave traveling horizontally
+    float wave1 = sin(vUv.x * 2.8 - u_time * 0.45) * 0.08;
+    float wave2 = cos(vUv.x * 1.6 + u_time * 0.28) * 0.05;
+    float wave = wave1 + wave2;
     
     // Slide the linear gradient down by 65% when chat is active
     float chatOffset = u_chat_active * 0.65;
@@ -50,26 +52,26 @@ const FRAGMENT_SHADER_SOURCE = `
     // Blend between stable gradient and pure black based on the rising transition line
     float factor = mix(stableFactor, 1.0, transition);
     
-    // Colors: Gemini-inspired vertical gradient
-    // 1. Light Sky Blue (Bottom)
-    vec3 lightBlue = vec3(0.0, 0.72, 1.0); // #00b8e8
-    // 2. Rich Dark Blue (Middle)
-    vec3 darkBlue = vec3(0.015, 0.07, 0.52); // #041285 (Vibrant Dark Blue)
-    // 3. Deep Indigo Transition
-    vec3 deepIndigo = vec3(0.01, 0.02, 0.12); // #03051f
-    // 4. Pure Black (Top)
-    vec3 black = vec3(0.02, 0.02, 0.04); // #05050a
+    // Colors: Cobalt Blue to Black premium vertical gradient
+    // 1. Vibrant Cobalt Blue (Bottom Glow)
+    vec3 cobalt = vec3(0.015, 0.22, 0.76); // #0438c2
+    // 2. Rich Navy Blue (Middle)
+    vec3 navy = vec3(0.01, 0.05, 0.32); // #030d52
+    // 3. Deep Twilight Space (Transition)
+    vec3 twilight = vec3(0.004, 0.01, 0.08); // #010314
+    // 4. Velvet Black (Top)
+    vec3 black = vec3(0.01, 0.01, 0.012); // #030303
     
     // Progressive multi-color blend for a completely seamless, continuous transition (no bands)
-    // 1. Blend from light blue to dark blue: finishes earlier (at 0.35) to push light blue down
+    // 1. Blend from cobalt to navy: finishes earlier (at 0.35) to push cobalt down
     float t1 = smoothstep(0.0, 0.35, factor);
-    vec3 col1 = mix(lightBlue, darkBlue, t1);
+    vec3 col1 = mix(cobalt, navy, t1);
     
-    // 2. Blend into deep indigo: starts earlier (at 0.22) and ends around 0.80
+    // 2. Blend into twilight: starts earlier (at 0.22) and ends around 0.80
     float t2 = smoothstep(0.22, 0.80, factor);
-    vec3 col2 = mix(col1, deepIndigo, t2);
+    vec3 col2 = mix(col1, twilight, t2);
     
-    // 3. Blend into pure black at the top: starts earlier (at 0.52) and completes at 0.96
+    // 3. Blend into velvet black at the top: starts earlier (at 0.52) and completes at 0.96
     float t3 = smoothstep(0.52, 0.96, factor);
     vec3 color = mix(col2, black, t3);
     
@@ -206,7 +208,7 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
       currentChatActive += (chatActiveTarget - currentChatActive) * 0.055; // Smooth interpolation
       gl.uniform1f(chatLoc, currentChatActive);
 
-      gl.clearColor(0.02, 0.02, 0.04, 1.0);
+      gl.clearColor(0.01, 0.01, 0.012, 1.0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -234,7 +236,7 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
           position: "fixed",
           inset: 0,
           zIndex: 0,
-          backgroundColor: "#05050a",
+          backgroundColor: "#030303",
         }}
       />
 
