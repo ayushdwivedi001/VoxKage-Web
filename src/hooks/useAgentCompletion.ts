@@ -11,6 +11,7 @@ import {
   logAssistantResponse,
   editSessionMessage,
   logMessageFeedback,
+  compactSession,
 } from "@/lib/api";
 
 // Session-level tool definitions cache to avoid re-fetching on every message
@@ -207,7 +208,7 @@ export default function useAgentCompletion({
       status: "thinking",
       thinkingDuration: 0,
       thinkingStart: Date.now(),
-      thinkingSteps: [],
+      thinkingSteps: text.trim() === "/compact" ? [{ id: "step-compact-1", label: "Compacting session context...", status: "pending" }] : [],
     };
 
     // Transition UI instantly to chat screen
@@ -216,6 +217,57 @@ export default function useAgentCompletion({
     setEditingFile(null);
     setIsChatActive(true);
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
+
+    // Handle /compact slash command interceptor directly
+    if (text.trim() === "/compact") {
+      const runCompaction = async (actualSessionId: string) => {
+        try {
+          const compRes = await compactSession(actualSessionId, modelNameToKey(selectedModel));
+          setMessages((prev) => {
+            const copy = [...prev];
+            const idx = copy.findIndex((m) => m.id === assistantMsg.id);
+            if (idx !== -1) {
+              copy[idx].content = compRes.full_message || `\n[Chat history has been successfully compacted.]\n\n**Compaction Summary Brief:**\n${compRes.summary}\n`;
+              copy[idx].status = "completed";
+              copy[idx].thinkingSteps = [
+                { id: "step-compact-1", label: "Compacting session context...", status: "success" }
+              ];
+              copy[idx].thinkingDuration = 1.2;
+            }
+            return copy;
+          });
+        } catch (compactErr: any) {
+          console.error("Compaction failed:", compactErr);
+          setMessages((prev) => {
+            const copy = [...prev];
+            const idx = copy.findIndex((m) => m.id === assistantMsg.id);
+            if (idx !== -1) {
+              copy[idx].content = `[Compaction Error: ${compactErr.message || "Failed to compact session history"}]`;
+              copy[idx].status = "completed";
+              copy[idx].thinkingSteps = [
+                { id: "step-compact-1", label: "Compacting session context...", status: "failed" }
+              ];
+            }
+            return copy;
+          });
+        }
+      };
+
+      if (!sessionId) {
+        try {
+          const newSess = await createSession("/compact");
+          setCurrentSessionId(newSess.id);
+          setChatTitle("/compact");
+          setSessionsList((prev) => [newSess, ...prev]);
+          runCompaction(newSess.id);
+        } catch (err: any) {
+          console.error("Failed to create session for compaction:", err);
+        }
+      } else {
+        runCompaction(sessionId);
+      }
+      return;
+    }
 
     let promptText = text;
     if (editingFile) {

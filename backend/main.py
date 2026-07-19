@@ -1057,6 +1057,43 @@ async def log_agent_response(
     asyncio.create_task(asyncio.to_thread(log_message, session_id, "assistant", req.content))
     return {"status": "success"}
 
+@app.post("/sessions/{session_id}/compact")
+async def compact_session_endpoint(
+    session_id: str,
+    body: dict = {},
+    user: str = Depends(get_current_user)
+):
+    from compaction import compact_session_history
+    model_key = body.get("model", "deepseek-flash")
+    
+    # Log user query "/compact"
+    log_message(session_id, "user", "/compact")
+    
+    summary = await compact_session_history(
+        session_id=session_id,
+        user_id=user,
+        model_key=model_key,
+        manager_ref=manager,
+        client_websocket=None
+    )
+    
+    confirm_header = "\n[Chat history has been successfully compacted.]\n\n**Compaction Summary Brief:**\n"
+    confirm_footer = "\n"
+    full_compact_msg = f"{confirm_header}{summary}{confirm_footer}"
+    
+    # Log assistant response to DB
+    log_message(session_id, "assistant", full_compact_msg)
+    
+    latest_msgs = get_session_messages(session_id)
+    new_percent = calculate_context_percent(latest_msgs)
+    
+    return {
+        "summary": summary,
+        "full_message": full_compact_msg,
+        "messages": latest_msgs,
+        "context_percent": new_percent
+    }
+
 @app.put("/sessions/{session_id}/messages/{message_id}/edit")
 def edit_session_message(
     session_id: str,

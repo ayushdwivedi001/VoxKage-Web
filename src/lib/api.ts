@@ -285,3 +285,7 @@ export async function fetchBootPayload() {
   return apiRequest("/user/boot-payload", "GET");
 }
 
+export async function compactSession(sessionId: string, model: string) {
+  return apiRequest(`/sessions/${sessionId}/compact`, "POST", { model });
+}
+
