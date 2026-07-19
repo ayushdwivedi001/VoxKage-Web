@@ -130,11 +130,36 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-def handle_first_message_rename(session_id: str, query: str, user: str, websocket=None):
+async def handle_first_message_rename(session_id: str, query: str, user: str, websocket=None):
     try:
         from database import get_session, update_session_name
-        session = get_session(session_id, user)
-        if session.get("name") == "New Chat":
+        from opencode_client import query_opencode_zen
+        
+        session = await asyncio.to_thread(get_session, session_id, user)
+        if not session or session.get("name") != "New Chat":
+            return
+
+        system_instr = (
+            "You are a professional session title generator.\n"
+            "Analyze the user's initial message and generate a concise, professional title (2 to 5 words maximum) capturing the core topic.\n"
+            "Rules:\n"
+            "1. Output ONLY the raw title text. Do not include quotes, markdown formatting, prefixes, or punctuation.\n"
+            "2. Make it sound like a clean workspace topic title (e.g., 'Cognizant Interview Preparation', 'Checking Japanese Pronunciation', 'Next.js Routing Setup').\n"
+            "3. Do not start with generic phrases like 'How to', 'Question about', or 'Checking'."
+        )
+        
+        generated_title = ""
+        try:
+            generated_title = await query_opencode_zen(
+                prompt=f"Generate a title for this user message: {query}",
+                model_key="deepseek-flash",
+                history=[{"role": "system", "content": system_instr}]
+            )
+            generated_title = generated_title.strip().strip('"\'`#*')
+            # Clean single lines and trailing periods
+            generated_title = generated_title.split("\n")[0].rstrip(".")
+        except Exception as llm_err:
+            print(f"[-] LLM title generation failed, using fallback: {llm_err}")
             words = [w for w in query.split() if not w.startswith('/')]
             generated_title = " ".join(words[:5])
             if len(words) > 5:
@@ -142,31 +167,28 @@ def handle_first_message_rename(session_id: str, query: str, user: str, websocke
             for char in ['"', "'", '`', '*', '#', '.', ',']:
                 generated_title = generated_title.replace(char, '')
             generated_title = generated_title.strip()
-            if not generated_title:
-                generated_title = "New Chat"
-                
-            update_session_name(session_id, user, generated_title)
-            
-            async def notify_rename(title):
-                # Wait 1.5 seconds for UI telemetry socket to connect/stabilize
-                await asyncio.sleep(1.5)
-                chat_sockets = manager._active_chats.get(user, [])
-                for s in chat_sockets:
-                    try:
-                        if is_websocket_connected(s):
-                            await s.send_text(json.dumps({"type": "rename", "name": title}))
-                    except:
-                        pass
-                if websocket:
-                    try:
-                        if is_websocket_connected(websocket):
-                            await websocket.send_text(json.dumps({"type": "rename", "name": title}))
-                    except:
-                        pass
-                        
-            asyncio.create_task(notify_rename(generated_title))
+
+        if not generated_title:
+            generated_title = "New Chat"
+
+        await asyncio.to_thread(update_session_name, session_id, user, generated_title)
+
+        chat_sockets = manager._active_chats.get(user, [])
+        for s in chat_sockets:
+            try:
+                if is_websocket_connected(s):
+                    await s.send_text(json.dumps({"type": "rename", "name": generated_title}))
+            except Exception:
+                pass
+        if websocket:
+            try:
+                if is_websocket_connected(websocket):
+                    await websocket.send_text(json.dumps({"type": "rename", "name": generated_title}))
+            except Exception:
+                pass
     except Exception as e:
-        print(f"[-] Heuristic rename failed: {e}")
+        print(f"[-] Session auto-rename failed: {e}")
+
 
 
 async def websocket_heartbeat_loop():
@@ -849,7 +871,7 @@ async def prepare_agent_payload(
 
     # Log user query and handle rename in non-blocking background tasks
     asyncio.create_task(asyncio.to_thread(log_message, session_id, "user", db_content))
-    asyncio.create_task(asyncio.to_thread(handle_first_message_rename, session_id, query, user))
+    asyncio.create_task(handle_first_message_rename(session_id, query, user))
 
     # Retrieve history, soul context, and profile in parallel using asyncio.gather
     async def fetch_history():
