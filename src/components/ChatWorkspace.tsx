@@ -199,53 +199,55 @@ export default function ChatWorkspace({
       )}
 
       {isChatActive && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5">
+        <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5 pointer-events-none">
           <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
             {showScrollBottom && (
               <button
                 type="button"
                 onClick={scrollToBottom}
-                className="flex items-center justify-center w-8 h-8 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-lg transition-all duration-200 cursor-pointer animate-fadeIn mb-1"
+                className="flex items-center justify-center w-8 h-8 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-lg transition-all duration-200 cursor-pointer animate-fadeIn mb-1 pointer-events-auto"
                 aria-label="Scroll to bottom"
               >
                 <ArrowDown className="w-4 h-4" />
               </button>
             )}
-            <PromptInput
-              isSession={true}
-              onSubmit={handleSendMessage}
-              selectedModel={selectedModel}
-              setSelectedModel={setSelectedModel}
-              selectedVariant={selectedVariant}
-              setSelectedVariant={setSelectedVariant}
-              modelsList={modelsList}
-              onOpenMoreModels={() => setMoreModelsModalOpen(true)}
-              isStreaming={isStreaming}
-              onStop={handleStopGeneration}
-              comments={comments}
-              contextPercent={contextPercent}
-              onRemoveComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
-              onClickComment={(fileName, line) => {
-                const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
-                if (matchingFile) {
-                  setActiveFile({
-                    name: fileName,
-                    code: matchingFile.versions[matchingFile.versions.length - 1].code,
-                  });
-                  setJumpToLine(line);
-                  setShowArtifactsPanel(false);
-                }
-              }}
-              attachments={attachments}
-              uploadingStates={uploadingStates}
-              onUpload={handleUploadAttachment}
-              onRemoveAttachment={handleRemoveAttachment}
-              onPreviewImage={handlePreviewImage}
-              onPreviewDocument={setZoomDocument}
-              editingFile={editingFile}
-              onRemoveEditingFile={() => setEditingFile(null)}
-            />
-            <span className="text-[12px] text-zinc-300 font-sans tracking-wide select-none">
+            <div className="w-full flex justify-center pointer-events-auto">
+              <PromptInput
+                isSession={true}
+                onSubmit={handleSendMessage}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                selectedVariant={selectedVariant}
+                setSelectedVariant={setSelectedVariant}
+                modelsList={modelsList}
+                onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                isStreaming={isStreaming}
+                onStop={handleStopGeneration}
+                comments={comments}
+                contextPercent={contextPercent}
+                onRemoveComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+                onClickComment={(fileName, line) => {
+                  const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
+                  if (matchingFile) {
+                    setActiveFile({
+                      name: fileName,
+                      code: matchingFile.versions[matchingFile.versions.length - 1].code,
+                    });
+                    setJumpToLine(line);
+                    setShowArtifactsPanel(false);
+                  }
+                }}
+                attachments={attachments}
+                uploadingStates={uploadingStates}
+                onUpload={handleUploadAttachment}
+                onRemoveAttachment={handleRemoveAttachment}
+                onPreviewImage={handlePreviewImage}
+                onPreviewDocument={setZoomDocument}
+                editingFile={editingFile}
+                onRemoveEditingFile={() => setEditingFile(null)}
+              />
+            </div>
+            <span className="text-[12px] text-zinc-300 font-sans tracking-wide select-none pointer-events-auto">
               VoxKage can make mistakes. Please double check responses.
             </span>
           </div>
