@@ -5,7 +5,8 @@ import { ArrowDown } from "lucide-react";
 import UserBubble from "@/components/UserBubble";
 import AssistantResponseBubble from "@/components/AssistantResponseBubble";
 import PromptInput from "@/components/PromptInput";
-import VoxKageIdleCreature from "@/components/VoxKageIdleCreature";
+// import VoxKageIdleCreature from "@/components/VoxKageIdleCreature"; // ← kept for reference
+import VoxKageCreature from "@/components/VoxKageCreature";
 import { Message } from "@/lib/chatHelpers";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 
@@ -53,6 +54,7 @@ interface ChatWorkspaceProps {
   handleSendMessage: (text: string) => void;
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
+  isDesignMode?: boolean;
 }
 
 export default function ChatWorkspace({
@@ -95,6 +97,7 @@ export default function ChatWorkspace({
   handleSendMessage,
   setShowArtifactsPanel,
   setJumpToLine,
+  isDesignMode = false,
 }: ChatWorkspaceProps) {
   return (
     <div
@@ -157,12 +160,21 @@ export default function ChatWorkspace({
 
       {!isChatActive && (
         <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 pb-32 z-20">
-          <VoxKageIdleCreature />
-          <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight mb-7 text-center font-serif">
-            {greeting}
-          </h1>
+          <div
+            className={`flex flex-col items-center transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+              isDesignMode
+                ? "opacity-0 pointer-events-none -translate-y-4 max-h-0 overflow-hidden mb-0"
+                : "opacity-100 translate-y-0 mb-7"
+            }`}
+          >
+            <VoxKageCreature />
+            <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2">
+              {greeting}
+            </h1>
+          </div>
           <PromptInput
             isSession={false}
+            isDesignMode={isDesignMode}
             onSubmit={handleSendMessage}
             selectedModel={selectedModel}
             setSelectedModel={setSelectedModel}

@@ -141,6 +141,7 @@ const LoaderStyles = () => (
     }
 
     /* VoxKage Thinking Creature Animations */
+    /* Ponder/Eureka alternating cycle */
     @keyframes eureka-cycle {
       0%, 65%  { opacity: 1; }
       70%, 95% { opacity: 0; }
@@ -151,95 +152,114 @@ const LoaderStyles = () => (
       70%, 95% { opacity: 1; }
       100%     { opacity: 0; }
     }
+    /* Bulb glow pulse & sparkle flicker */
     @keyframes bulb-pulse {
       0%, 100% { opacity: 0.75; }
       50%      { opacity: 1; }
     }
     @keyframes sparkle-flicker {
-      0%, 100% { opacity: 0.25; }
+      0%, 100% { opacity: 0.2; }
       50%      { opacity: 1; }
     }
-    @keyframes blink-left {
-      0%, 94%, 100% { opacity: 0; }
-      95%, 97%       { opacity: 1; }
+    /* Bulb outer glow ring expand/fade */
+    @keyframes bulb-aura {
+      0%, 100% { opacity: 0.18; r: 11; }
+      50%      { opacity: 0.38; r: 13; }
     }
-    @keyframes blink-right {
-      0%, 93%, 100% { opacity: 0; }
-      94%, 96%       { opacity: 1; }
-    }
-    .frame-ponder {
-      animation: eureka-cycle 2.2s steps(1) infinite;
-    }
-    .frame-idea {
-      animation: eureka-cycle-rev 2.2s steps(1) infinite;
-    }
-    .bulb-glow {
-      animation: bulb-pulse 0.4s infinite ease-in-out;
-    }
-    .bulb-sparkle {
-      animation: sparkle-flicker 0.3s infinite ease-in-out;
-    }
-    .eye-l-lid {
-      animation: blink-left 6s steps(1, end) infinite 0s;
-    }
-    .eye-r-lid {
-      animation: blink-right 7.5s steps(1, end) infinite 1.8s;
-    }
+    .frame-ponder { animation: eureka-cycle 2.2s steps(1) infinite; }
+    .frame-idea   { animation: eureka-cycle-rev 2.2s steps(1) infinite; }
+    .bulb-glow    { animation: bulb-pulse 0.4s infinite ease-in-out; }
+    .bulb-sparkle { animation: sparkle-flicker 0.3s infinite ease-in-out; }
+    .bulb-aura    { animation: bulb-aura 0.4s infinite ease-in-out; }
   `}</style>
 );
 
-const VoxKageThinkingCreature = ({ className = "w-5 h-[17.5px]" }: { className?: string }) => (
-  <span className="inline-flex items-center justify-center" style={{ transform: "translateY(-4px)" }}>
+/**
+ * VoxKageThinkingCreature — New egg-shaped creature for the thinking/reasoning accordion.
+ *
+ * Ponder state: both eyes shift up-right (🤔 expression), body normal.
+ * Eureka state: same upward gaze + premium glowing yellow bulb top-right of body.
+ * Size: ~24×28px in UI (slightly larger than the old 20×17.5px pixel creature).
+ * The SVG uses overflow:visible so the bulb can float above the egg body.
+ */
+const VoxKageThinkingCreature = ({ className = "" }: { className?: string }) => (
+  <span
+    className={`inline-flex items-end justify-center flex-shrink-0 ${className}`}
+    style={{ width: 24, height: 28, position: "relative" }}
+  >
     <LoaderStyles />
+    {/*
+      Single SVG — viewBox 0 0 100 130.
+      Body occupies y=40..120 (80px tall egg).
+      Bulb area uses y=0..40 (above body, top-right quadrant).
+      overflow:visible lets the bulb render above the inline element box.
+    */}
     <svg
-      className={className}
-      viewBox="0 0 16 14"
+      width="24"
+      height="28"
+      viewBox="0 0 100 130"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ imageRendering: "pixelated" }}
+      style={{ overflow: "visible", display: "block" }}
     >
-      {/* SKELETON (Body, Left Arm, Legs, Eyelids - Always Visible, y=6..13) */}
-      <g fill="currentColor">
-        <rect x="2" y="6" width="12" height="1" />
-        <rect x="2" y="7" width="2" height="2" />
-        <rect x="6" y="7" width="4" height="2" />
-        <rect x="12" y="7" width="2" height="2" />
-        <rect x="2" y="9" width="12" height="2" />
-        <rect x="0" y="9" width="2" height="2" />
-        <rect x="2" y="11" width="12" height="1" />
-        <rect x="4" y="12" width="2" height="2" />
-        <rect x="10" y="12" width="2" height="2" />
-        <rect className="eye-l-lid" x="4" y="7" width="2" height="2" opacity={0} />
-        <rect className="eye-r-lid" x="10" y="7" width="2" height="2" opacity={0} />
+      {/* ── DEFS: egg clip-path ── */}
+      <defs>
+        <clipPath id="think-body-clip">
+          <path d="M 50 42 C 71 42, 86 56, 86 75 C 86 93, 70 108, 50 108 C 30 108, 14 93, 14 75 C 14 56, 29 42, 50 42 Z" />
+        </clipPath>
+      </defs>
+
+      {/* ── BASE EGG BODY (always visible) ── */}
+      <path
+        d="M 50 42 C 71 42, 86 56, 86 75 C 86 93, 70 108, 50 108 C 30 108, 14 93, 14 75 C 14 56, 29 42, 50 42 Z"
+        fill="currentColor"
+        opacity={0.92}
+      />
+
+      {/* ── FRAME 1: PONDER — eyes glance upper-right (🤔 look), no bulb ── */}
+      <g className="frame-ponder">
+        {/* Left eye: shifted up (cy=62) and slightly right (cx=38) */}
+        <ellipse cx="38" cy="63" rx="6.5" ry="9" fill="#141413" />
+        {/* Right eye: shifted up more (cy=60) and right (cx=63) — asymmetric for 🤔 */}
+        <ellipse cx="63" cy="60" rx="6.5" ry="9" fill="#141413" />
+        {/* Subtle upper-right glance glint on right pupil */}
+        <ellipse cx="65.5" cy="57.5" rx="2" ry="2" fill="#ffffff" opacity={0.55} />
+        <ellipse cx="40.5" cy="60.5" rx="1.5" ry="1.5" fill="#ffffff" opacity={0.4} />
       </g>
 
-      {/* FRAME 1: PONDER STATE */}
-      <g className="frame-ponder" fill="currentColor">
-        <rect x="14" y="9" width="2" height="2" />
-      </g>
-
-      {/* FRAME 2: EUREKA STATE */}
+      {/* ── FRAME 2: EUREKA — same upward gaze + glowing yellow bulb top-right ── */}
       <g className="frame-idea">
-        <g fill="currentColor">
-          <rect x="14" y="7" width="1" height="2" />
-          <rect x="12" y="4" width="3" height="3" />
-          <rect x="11" y="5" width="1" height="1" />
-          <rect x="12" y="2" width="1" height="2" />
-        </g>
-        <rect x="8" y="4" width="2" height="1" fill="#71717a" />
-        <g fill="#fbbf24" className="bulb-glow">
-          <rect x="7" y="0" width="4" height="1" />
-          <rect x="6" y="1" width="6" height="2" />
-          <rect x="7" y="3" width="1" height="1" />
-          <rect x="10" y="3" width="1" height="1" />
-        </g>
-        <rect x="8" y="3" width="2" height="1" fill="#ea580c" className="bulb-glow" />
-        <g fill="#fbbf24" className="bulb-sparkle">
-          <rect x="4" y="0" width="1" height="1" />
-          <rect x="13" y="0" width="1" height="1" />
-          <rect x="4" y="2" width="1" height="1" />
-          <rect x="13" y="2" width="1" height="1" />
-        </g>
+        {/* Eyes: same upward-right gaze */}
+        <ellipse cx="38" cy="63" rx="6.5" ry="9" fill="#141413" />
+        <ellipse cx="63" cy="60" rx="6.5" ry="9" fill="#141413" />
+        <ellipse cx="65.5" cy="57.5" rx="2" ry="2" fill="#ffffff" opacity={0.55} />
+        <ellipse cx="40.5" cy="60.5" rx="1.5" ry="1.5" fill="#ffffff" opacity={0.4} />
+
+        {/* ── PREMIUM YELLOW BULB (top-right, outside/above the egg) ── */}
+        {/* Outer ambient aura */}
+        <circle cx="76" cy="18" r="12" fill="#fbbf24" opacity={0.12} className="bulb-aura" />
+
+        {/* Bulb glass dome (rounded, smooth vector — not pixel art) */}
+        <ellipse cx="76" cy="16" rx="9" ry="10" fill="#fbbf24" className="bulb-glow" />
+        {/* Inner warm highlight */}
+        <ellipse cx="73" cy="13" rx="4" ry="5" fill="#fef9c3" opacity={0.65} className="bulb-glow" />
+        {/* Core hot spot */}
+        <ellipse cx="73" cy="13" rx="2" ry="2.5" fill="#ffffff" opacity={0.55} className="bulb-glow" />
+
+        {/* Bulb neck / socket */}
+        <rect x="72" y="25" width="8" height="3" rx="1" fill="#78716c" />
+        {/* Socket base / connecting line to body top */}
+        <rect x="74" y="28" width="4" height="5" rx="1" fill="#57534e" />
+        {/* Filament warm orange center */}
+        <ellipse cx="76" cy="18" rx="3" ry="4" fill="#ea580c" opacity={0.45} className="bulb-glow" />
+
+        {/* Sparkle rays — 4 small dots around the bulb */}
+        <circle cx="61" cy="10" r="2" fill="#fbbf24" className="bulb-sparkle" />
+        <circle cx="91" cy="10" r="2" fill="#fbbf24" className="bulb-sparkle" />
+        <circle cx="58" cy="22" r="1.5" fill="#fbbf24" className="bulb-sparkle" />
+        <circle cx="94" cy="22" r="1.5" fill="#fbbf24" className="bulb-sparkle" />
+        {/* Top sparkle */}
+        <circle cx="76" cy="3" r="1.5" fill="#fbbf24" className="bulb-sparkle" />
       </g>
     </svg>
   </span>
@@ -783,7 +803,7 @@ export default function AssistantResponseBubble({
               }`}
             />
             {isThinkingActive && (
-              <VoxKageThinkingCreature className="w-5 h-[17.5px] flex-shrink-0 text-zinc-100" />
+              <VoxKageThinkingCreature className="flex-shrink-0 text-zinc-100" />
             )}
             <span className={`text-[13px] font-medium tracking-wide font-sans ${showGlow ? "animate-thinking-glow text-zinc-400" : ""}`}>
               {displayLabel}

@@ -93,9 +93,13 @@ const FRAGMENT_SHADER_SOURCE = `
 
 interface GradientBackgroundProps {
   isChatActive?: boolean;
+  isDesignMode?: boolean;
 }
 
-export default function GradientBackground({ isChatActive = false }: GradientBackgroundProps) {
+export default function GradientBackground({
+  isChatActive = false,
+  isDesignMode = false,
+}: GradientBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [mounted, setMounted] = useState(false);
   
@@ -237,6 +241,8 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
           inset: 0,
           zIndex: 0,
           backgroundColor: "#030303",
+          opacity: isDesignMode ? 0 : 1,
+          transition: "opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       />
 
@@ -251,6 +257,8 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
           zIndex: 1,
           display: "block",
           pointerEvents: "none",
+          opacity: isDesignMode ? 0 : 1,
+          transition: "opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       />
 
@@ -264,13 +272,15 @@ export default function GradientBackground({ isChatActive = false }: GradientBac
           zIndex: 2,
           pointerEvents: "none",
           overflow: "hidden",
+          opacity: isChatActive || isDesignMode ? 0.0 : 1.0,
+          transition: "opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
         <svg
           style={{
             width: "100%",
             height: "100%",
-            opacity: isChatActive ? 0.0 : 0.035, // Disable noise overlay in active chat
+            opacity: isChatActive || isDesignMode ? 0.0 : 0.035, // Disable noise overlay in active chat & design mode
             animation: "noiseAnimation 0.22s steps(4) infinite",
             transition: "opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
           }}

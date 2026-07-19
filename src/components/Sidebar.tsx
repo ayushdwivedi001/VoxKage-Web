@@ -69,11 +69,15 @@ export default function Sidebar({
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filterType, setFilterType] = useState<"none" | "alphabetical">("none");
 
+  const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";
+
   return (
     <aside
       onClick={() => !isExpanded && setIsExpanded(true)}
-      className={`relative flex flex-col h-screen bg-[#0e0e11] border-r border-zinc-800/85 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none z-40 text-zinc-300 ${
-        isExpanded ? "w-[260px] cursor-default" : "w-[48px] cursor-pointer"
+      className={`relative flex flex-col h-screen transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none z-40 text-zinc-300 ${
+        isExpanded
+          ? "w-[260px] cursor-default bg-[#0e0e11] border-r border-zinc-800/85"
+          : "w-[48px] cursor-pointer bg-transparent border-r border-transparent hover:bg-[#0e0e11] hover:border-zinc-800/85"
       }`}
     >
       {/* === HEADER === */}
@@ -111,7 +115,7 @@ export default function Sidebar({
                 e.stopPropagation();
                 setIsExpanded(true);
               }}
-              className="flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 active:scale-95 cursor-pointer"
+              className={`flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-100 hover:text-white hover:bg-white/10 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 active:scale-95 cursor-pointer ${glassBtnStyle}`}
               aria-label="Expand sidebar"
             >
               <PanelLeft className="w-[18px] h-[18px] flex-shrink-0" />
@@ -146,7 +150,7 @@ export default function Sidebar({
                   e.stopPropagation();
                   onCreateNewChat();
                 }}
-                className="flex items-center justify-center w-[36px] h-[36px] rounded-full border border-zinc-800 bg-zinc-900/60 text-zinc-100 hover:text-white hover:bg-zinc-800 transition-all duration-200 cursor-pointer"
+                className={`flex items-center justify-center w-[36px] h-[36px] rounded-full text-zinc-100 hover:text-white hover:bg-white/10 transition-all duration-200 cursor-pointer ${glassBtnStyle}`}
                 aria-label="New chat"
               >
                 <Plus className="w-[18px] h-[18px] stroke-[2.5] flex-shrink-0" />
@@ -156,7 +160,7 @@ export default function Sidebar({
         </div>
 
         {/* Navigation Section */}
-        <nav className="flex flex-col gap-0.5 px-[6px] w-full">
+        <nav className="flex flex-col gap-1 px-[6px] w-full">
           {/* Projects Link */}
           <SidebarTooltip text="Projects" show={!isExpanded}>
             <button
@@ -164,7 +168,11 @@ export default function Sidebar({
               onClick={(e) => {
                 e.stopPropagation();
               }}
-              className="flex items-center w-full h-[40px] pl-[9px] rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer"
+              className={`flex items-center w-full rounded-xl text-zinc-400 hover:text-zinc-100 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer ${
+                isExpanded
+                  ? "h-[40px] pl-[9px] hover:bg-white/5"
+                  : `h-[36px] pl-[9px] hover:bg-white/10 ${glassBtnStyle}`
+              }`}
             >
               <Layers className="w-[18px] h-[18px] stroke-[2.2] flex-shrink-0 transition-all duration-200 group-hover:text-white group-hover:filter group-hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.65)]" />
               <span
@@ -184,7 +192,11 @@ export default function Sidebar({
               onClick={(e) => {
                 e.stopPropagation();
               }}
-              className="flex items-center w-full h-[40px] pl-[9px] rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer"
+              className={`flex items-center w-full rounded-xl text-zinc-400 hover:text-zinc-100 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer ${
+                isExpanded
+                  ? "h-[40px] pl-[9px] hover:bg-white/5"
+                  : `h-[36px] pl-[9px] hover:bg-white/10 ${glassBtnStyle}`
+              }`}
             >
               <Box className="w-[18px] h-[18px] stroke-[2.2] flex-shrink-0 transition-all duration-200 group-hover:text-white group-hover:filter group-hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.65)]" />
               <span
@@ -204,7 +216,11 @@ export default function Sidebar({
               onClick={(e) => {
                 e.stopPropagation();
               }}
-              className="flex items-center w-full h-[40px] pl-[9px] rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer"
+              className={`flex items-center w-full rounded-xl text-zinc-400 hover:text-zinc-100 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer ${
+                isExpanded
+                  ? "h-[40px] pl-[9px] hover:bg-white/5"
+                  : `h-[36px] pl-[9px] hover:bg-white/10 ${glassBtnStyle}`
+              }`}
             >
               {/* Premium Skills SVG: Shield with star */}
               <svg
@@ -239,7 +255,11 @@ export default function Sidebar({
                 e.stopPropagation();
                 onOpenConnect();
               }}
-              className="flex items-center w-full h-[40px] pl-[9px] rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-white/5 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer"
+              className={`flex items-center w-full rounded-xl text-zinc-400 hover:text-zinc-100 transition-all duration-200 group text-left relative overflow-hidden cursor-pointer ${
+                isExpanded
+                  ? "h-[40px] pl-[9px] hover:bg-white/5"
+                  : `h-[36px] pl-[9px] hover:bg-white/10 ${glassBtnStyle}`
+              }`}
             >
               {/* Premium Suitcase SVG */}
               <svg
@@ -541,7 +561,7 @@ export default function Sidebar({
                 e.stopPropagation();
                 onOpenSettings();
               }}
-              className="w-[30px] h-[30px] rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 cursor-pointer"
+              className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-all duration-200 cursor-pointer ${glassBtnStyle}`}
               aria-label="Settings"
             >
               <Settings className="w-[16px] h-[16px]" />
