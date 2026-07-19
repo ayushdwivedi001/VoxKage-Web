@@ -194,6 +194,15 @@ export default function useChatSessions({
         } else if (data.type === "rename") {
           setChatTitle(data.name);
           loadSessionsOnly();
+        } else if (data.type === "messages_synced" && Array.isArray(data.messages)) {
+          const mapped = data.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            status: "completed" as const,
+            thinkingSteps: [],
+          }));
+          setMessages(mapped);
         }
       } catch (err) {
         console.warn("Failed to parse telemetry socket message:", err);

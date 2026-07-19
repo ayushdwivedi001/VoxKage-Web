@@ -160,9 +160,19 @@ async def get_valid_token(user_id: str, provider: str, connection: dict) -> str:
             connection["expires_at"] = (datetime.utcnow() + timedelta(seconds=expires_in)).isoformat()
             if new_tokens.get("refresh_token"):
                 connection["refresh_token"] = encrypt_token(new_tokens["refresh_token"])
+            # Ensure existing refresh_token is preserved if new response doesn't rotate it
+            elif refresh_token:
+                connection["refresh_token"] = encrypt_token(refresh_token)
 
+            connection["auth_status"] = "active"
+            connection.pop("error_message", None)
             save_mcp_connection(user_id, provider, connection)
     except Exception as e:
-        print(f"[-] Token refresh failed for {provider}: {e}")
+        err_str = str(e)
+        print(f"[-] Token refresh failed for {provider}: {err_str}")
+        if "invalid_grant" in err_str.lower() or "revoked" in err_str.lower():
+            connection["auth_status"] = "expired"
+            connection["error_message"] = "OAuth token expired or revoked. Please re-authenticate."
+            save_mcp_connection(user_id, provider, connection)
 
     return access_token

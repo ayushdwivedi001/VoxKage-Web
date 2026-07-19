@@ -116,11 +116,11 @@ async def run_cron_agent_loop(
         current_content = ""
         current_tool_calls = []
         
-        target_urls = [
-            "https://voxkage-proxy.ayushdwivedi001.workers.dev/zen/v1/chat/completions",
-            "http://localhost:3000/api/completions/proxy",
-            "https://opencode.ai/zen/v1/chat/completions"
-        ]
+        is_local = os.getenv("IS_LOCAL", "").lower() in ("true", "1")
+        target_urls = ["https://voxkage-proxy.ayushdwivedi001.workers.dev/zen/v1/chat/completions"]
+        if is_local:
+            target_urls.append("http://localhost:3000/api/completions/proxy")
+        target_urls.append("https://opencode.ai/zen/v1/chat/completions")
 
         stream_success = False
         last_fetch_err = ""

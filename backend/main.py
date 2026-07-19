@@ -46,22 +46,28 @@ app.add_middleware(
 )
 
 def estimate_tokens(messages: list) -> int:
-    total_chars = 30000  # system prompt + tools schema baseline
+    total_chars = 25000  # baseline for system prompt + tools schemas
     for m in messages:
         content = ""
         role = ""
         if isinstance(m, dict):
             content = m.get("content") or ""
             role = m.get("role") or ""
+            # Include tool calls arguments length if present
+            tool_calls = m.get("tool_calls") or []
+            for tc in tool_calls:
+                if isinstance(tc, dict):
+                    fn = tc.get("function") or {}
+                    content += str(fn.get("name", "")) + str(fn.get("arguments", ""))
         elif hasattr(m, "content") and hasattr(m, "role"):
             content = m.content or ""
             role = m.role or ""
         total_chars += len(str(content)) + len(str(role))
-    return int(total_chars / 4.2)
+    return int(total_chars / 4.0)
 
 def calculate_context_percent(messages: list) -> int:
     tokens = estimate_tokens(messages)
-    percent = int((tokens / 1000000) * 100)  # 1M-token context window
+    percent = int((tokens / 1000000) * 100)  # 1M-token baseline context window for all models
     return min(100, max(0, percent))
 
 # --- Connection Registry Manager ---
@@ -742,6 +748,14 @@ async def oauth_callback(req: OAuthCallbackRequest):
                 transport=transport
             )
             
+            # Preserve existing refresh_token if re-authenticating without OAuth prompt consent
+            if not encrypted_refresh:
+                from database import get_user_settings_profile
+                existing_profile = get_user_settings_profile(user_id)
+                existing_conn = (existing_profile.get("mcp_connections") or {}).get(provider) or {}
+                if existing_conn.get("refresh_token"):
+                    encrypted_refresh = existing_conn["refresh_token"]
+
             connection_data = {
                 "access_token": encrypted_access,
                 "refresh_token": encrypted_refresh,
@@ -750,7 +764,8 @@ async def oauth_callback(req: OAuthCallbackRequest):
                 "tools": tools,
                 "connected_at": datetime.utcnow().isoformat(),
                 "server_url": server_url,
-                "transport": transport
+                "transport": transport,
+                "auth_status": "active"
             }
             save_mcp_connection(user_id, provider, connection_data)
             
@@ -1164,15 +1179,21 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
                     confirm_header = "\n[Chat history has been successfully compacted.]\n\n**Compaction Summary Brief:**\n"
                     confirm_footer = "\n"
                     
+                    full_compact_msg = f"{confirm_header}{summary}{confirm_footer}"
                     # Log assistant response to DB
-                    log_message(session_id, "assistant", f"{confirm_header}{summary}{confirm_footer}")
+                    log_message(session_id, "assistant", full_compact_msg)
                     
                     # Send token chunk confirmation
                     await websocket.send_text(json.dumps({"type": "token", "content": confirm_header}))
                     await websocket.send_text(json.dumps({"type": "token", "content": summary}))
                     await websocket.send_text(json.dumps({"type": "token", "content": confirm_footer}))
                     
-                    # Sync new context percentage
+                    # Sync new context percentage and emit updated full message list
+                    latest_msgs = get_session_messages(session_id)
+                    await websocket.send_text(json.dumps({
+                        "type": "messages_synced",
+                        "messages": latest_msgs
+                    }))
                     await websocket.send_text(json.dumps({"type": "context_sync", "percent": new_percent}))
                     await websocket.send_text(json.dumps({"type": "done"}))
                     
