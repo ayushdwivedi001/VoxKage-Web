@@ -907,42 +907,42 @@ export default function AssistantResponseBubble({
 
       {/* --- Dynamic Map Widget --- */}
       {msg.status !== "thinking" && map && (
-        <ExpandableWrapper label="Map" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Map" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <MapWidget lat={map.lat} lng={map.lng} label={map.label} places={map.places} />
         </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Weather Widget --- */}
       {msg.status !== "thinking" && weather && (
-        <ExpandableWrapper label="Weather" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Weather" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <WeatherWidget lat={weather.lat} lng={weather.lng} />
         </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Chart Widget --- */}
       {msg.status !== "thinking" && chart && (
-        <ExpandableWrapper label="Analytics Chart" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Analytics Chart" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <ChartWidget type={chart.type} title={chart.title} xLabel={chart.xLabel} yLabel={chart.yLabel} data={chart.data} />
         </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Flow Widget --- */}
       {msg.status !== "thinking" && flow && (
-        <ExpandableWrapper label="Process Flow" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Process Flow" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <FlowWidget title={flow.title} nodes={flow.nodes} edges={flow.edges} />
         </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Chemistry Structure Widget --- */}
       {msg.status !== "thinking" && chemistry && (
-        <ExpandableWrapper label="Chemical Structure" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Chemical Structure" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <ChemistryWidget compound={chemistry.compound} formula={chemistry.formula} weight={chemistry.weight} smiles={chemistry.smiles} />
         </ExpandableWrapper>
       )}
 
       {/* --- Dynamic Timeline Widget --- */}
       {msg.status !== "thinking" && timeline && (
-        <ExpandableWrapper label="Timeline" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Timeline" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
           <TimelineWidget title={timeline.title} events={timeline.events} />
         </ExpandableWrapper>
       )}

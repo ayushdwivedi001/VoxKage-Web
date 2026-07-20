@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { ChevronDown, FileText, Star, Edit3, Trash2, Download, AlertTriangle } from "lucide-react";
+import { ChevronDown, FileText, Star, Edit3, Trash2, Download, AlertTriangle, PanelLeft } from "lucide-react";
 import { getToken } from "@/lib/api";
 
 interface ChatHeaderProps {
@@ -19,6 +19,7 @@ interface ChatHeaderProps {
   setShowArtifactsPanel: (show: boolean) => void;
   sessionArtifacts: any[];
   handleDeleteSession: (id: string) => void;
+  onToggleSidebar?: () => void;
 }
 
 export default function ChatHeader({
@@ -36,6 +37,7 @@ export default function ChatHeader({
   setShowArtifactsPanel,
   sessionArtifacts,
   handleDeleteSession,
+  onToggleSidebar,
 }: ChatHeaderProps) {
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
@@ -88,22 +90,36 @@ export default function ChatHeader({
 
   return (
     <div
-      className={`absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-6 z-25 border-b border-transparent transition-all duration-500 select-none ${
+      className={`absolute top-0 left-0 right-0 h-16 flex items-center justify-between px-3 md:px-6 z-25 border-b border-transparent transition-all duration-500 select-none ${
         isChatActive ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4 pointer-events-none"
-      } ${isExpanded ? "hidden" : "flex"}`}
+      } ${isExpanded ? "hidden md:flex" : "flex"}`}
       style={{
         right: activeFile || showArtifactsPanel ? `${rightPanelWidth}px` : 0,
       }}
     >
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setShowHeaderDropdown((prev) => !prev)}
-          className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-white/5 text-zinc-300 hover:text-zinc-100 transition-all duration-200 text-[14.5px] font-medium cursor-pointer"
-        >
-          <span>{chatTitle}</span>
-          <ChevronDown className="w-4 h-4 opacity-75" />
-        </button>
+      <div className="flex items-center gap-2">
+        {/* Mobile Sidebar Toggle Button */}
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="flex md:hidden items-center justify-center w-9 h-9 rounded-xl text-zinc-300 hover:text-white bg-white/5 border border-white/10 active:scale-95 cursor-pointer transition-all duration-200"
+            aria-label="Open sidebar"
+          >
+            <PanelLeft className="w-4 h-4" />
+          </button>
+        )}
+
+        {/* Desktop Chat Title (Hidden on Mobile) */}
+        <div className="relative hidden md:block">
+          <button
+            type="button"
+            onClick={() => setShowHeaderDropdown((prev) => !prev)}
+            className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-white/5 text-zinc-300 hover:text-zinc-100 transition-all duration-200 text-[14.5px] font-medium cursor-pointer"
+          >
+            <span className="truncate max-w-[200px]">{chatTitle}</span>
+            <ChevronDown className="w-4 h-4 opacity-75 flex-shrink-0" />
+          </button>
 
         {showHeaderDropdown && (() => {
           const currentSess = sessionsList.find((s) => s.id === currentSessionId);
@@ -164,8 +180,9 @@ export default function ChatHeader({
           );
         })()}
       </div>
+    </div>
 
-      {!activeFile && !showArtifactsPanel && (
+    {!activeFile && !showArtifactsPanel && (
         <div className="flex items-center gap-2">
           {isScheduled && (
             <button

@@ -282,9 +282,10 @@ export default function FileInspectorPanel({
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>VoxKage Sandbox Preview</title>
 </head>
-<body class="bg-zinc-950 text-zinc-100 min-h-screen">
+<body class="bg-zinc-950 text-zinc-100 min-h-screen overflow-x-hidden">
   <div id="root"></div>
 </body>
 </html>
@@ -580,30 +581,30 @@ export default function FileInspectorPanel({
       <style>{VS_CODE_THEME_CSS}</style>
 
       {/* Top Header Panel */}
-      <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0 gap-4">
+      <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 min-h-[56px] border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0 gap-1.5 sm:gap-3 w-full max-w-full overflow-hidden">
         {/* Left Side: Filename & Preview Mode Toggles */}
-        <div className="min-w-0 flex items-center gap-2">
+        <div className="min-w-0 flex items-center gap-1 sm:gap-2 flex-shrink">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center justify-center w-8 h-8 text-zinc-400 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 mr-1 select-none flex-shrink-0"
+              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 text-zinc-300 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 mr-0.5 select-none flex-shrink-0"
               aria-label="Back"
               title="Back"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
-          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[150px]" title={fileName}>
+          <span className="text-[13px] sm:text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[80px] xs:max-w-[120px] sm:max-w-[200px]" title={fileName}>
             {fileName}
           </span>
           
           {canPreview && (
-            <div className="flex items-center bg-zinc-900/60 p-0.5 rounded-lg border border-zinc-800/50">
+            <div className="flex items-center bg-zinc-900/60 p-0.5 rounded-lg border border-zinc-800/50 flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setMode("code")}
-                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-205 cursor-pointer ${
+                className={`flex items-center justify-center w-6.5 h-6.5 sm:w-7 sm:h-7 rounded-md transition-all duration-205 cursor-pointer ${
                   mode === "code" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
                 }`}
                 title="Code view"
@@ -616,7 +617,7 @@ export default function FileInspectorPanel({
                   setMode("preview");
                   setConsoleLogs([{ type: "info", text: "Initializing virtual sandbox...", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
                 }}
-                className={`flex items-center justify-center w-7 h-7 rounded-md transition-all duration-205 cursor-pointer ${
+                className={`flex items-center justify-center w-6.5 h-6.5 sm:w-7 sm:h-7 rounded-md transition-all duration-205 cursor-pointer ${
                   mode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
                 }`}
                 title="Live preview"
@@ -630,63 +631,64 @@ export default function FileInspectorPanel({
           <button
             type="button"
             onClick={() => onEditClick?.(fileName)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#141416] border border-zinc-800 hover:border-zinc-700 text-zinc-350 hover:text-zinc-100 text-[12px] font-medium rounded-lg cursor-pointer transition-all duration-200"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-[#141416] border border-zinc-800 hover:border-zinc-700 text-zinc-350 hover:text-zinc-100 text-[12px] font-medium rounded-lg cursor-pointer transition-all duration-200 flex-shrink-0"
             title="Attach file context to prompt box for inline editing"
           >
             <Sliders className="w-3.5 h-3.5 text-zinc-450" />
-            <span>Edit</span>
+            <span className="hidden sm:inline">Edit</span>
           </button>
         </div>
 
         {/* Right Side: Header Controls */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
           {mode === "code" ? (
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-300 hover:text-white text-[12.5px] font-medium transition-all duration-200 cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-300 hover:text-white text-[12px] sm:text-[12.5px] font-medium transition-all duration-200 cursor-pointer"
             >
               {copied ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-green-500" />
-                  <span>Copied</span>
+                  <span className="hidden sm:inline">Copied</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>Copy</span>
+                  <span className="hidden sm:inline">Copy</span>
                 </>
               )}
             </button>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 type="button"
                 onClick={() => setReloadKey(prev => prev + 1)}
-                className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+                className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
                 title="Reload preview"
               >
-                <RotateCw className="w-4 h-4" />
+                <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setConsoleOpen(prev => !prev)}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12.5px] font-medium transition-all duration-200 cursor-pointer ${
+                className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] sm:text-[12.5px] font-medium transition-all duration-200 cursor-pointer ${
                   consoleOpen ? "bg-zinc-850 border border-zinc-750 text-white" : "bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
                 }`}
+                title="Console logs"
               >
                 <Terminal className="w-3.5 h-3.5" />
-                <span>Console</span>
+                <span className="hidden sm:inline">Console</span>
               </button>
             </div>
           )}
 
-          {/* Expand/Collapse Toggle Button */}
+          {/* Expand/Collapse Toggle Button (Desktop only) */}
           <button
             type="button"
             onClick={onToggleExpand}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
             aria-label={isExpanded ? "Collapse panel" : "Expand panel"}
           >
             {isExpanded ? (
@@ -700,10 +702,10 @@ export default function FileInspectorPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+            className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
             aria-label="Close panel"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </div>
@@ -714,9 +716,9 @@ export default function FileInspectorPanel({
           /* Code Display Area */
           <div 
             ref={containerRef}
-            className="flex-grow overflow-auto p-4 custom-vscode-scrollbar bg-[#0f0f13] vscode-code-container"
+            className="flex-grow overflow-auto p-2 sm:p-4 custom-vscode-scrollbar bg-[#0f0f13] vscode-code-container"
           >
-            <div className="w-full flex flex-col font-mono text-[13.5px] leading-[22px]">
+            <div className="w-full flex flex-col font-mono text-[12px] sm:text-[13.5px] leading-[20px] sm:leading-[22px]">
               {highlightedLines.map((htmlCode, index) => {
                 const lineNum = index + 1;
                 const lineComments = comments.filter(c => c.fileName === fileName && c.line === lineNum);
@@ -827,7 +829,7 @@ export default function FileInspectorPanel({
         {mode === "preview" && consoleOpen && (
           <div 
             style={{ height: `${consoleHeight}px` }}
-            className="flex flex-col bg-[#07070a] border-t border-zinc-800/80 w-full absolute bottom-0 left-0 right-0 z-30 select-none"
+            className="flex flex-col bg-[#07070a] border-t border-zinc-800/80 w-full absolute bottom-0 left-0 right-0 z-30 select-none max-h-[50vh]"
           >
             {/* Console Drag Resizer Bar */}
             <div 

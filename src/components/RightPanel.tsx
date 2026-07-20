@@ -40,13 +40,15 @@ export default function RightPanel({
   setActiveFileVersions,
   setEditingFile,
 }: RightPanelProps) {
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
   if (displayedActiveFile) {
     return (
       <div
         style={{
-          width: isExpanded ? "100%" : `${rightPanelWidth}px`,
+          width: isMobile ? "100%" : (isExpanded ? "100%" : rightPanelWidth),
         }}
-        className="h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
+        className="fixed inset-0 z-50 w-full h-full max-w-full md:relative md:inset-auto md:z-auto md:h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden"
       >
         <FileInspectorPanel
           fileName={displayedActiveFile.name}
@@ -100,9 +102,9 @@ export default function RightPanel({
     return (
       <div
         style={{
-          width: isExpanded ? "100%" : `${rightPanelWidth}px`,
+          width: isMobile ? "100%" : (isExpanded ? "100%" : rightPanelWidth),
         }}
-        className="h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden bg-[#0d0d11] border-l border-zinc-800/80 flex flex-col"
+        className="fixed inset-0 z-50 w-full h-full max-w-full md:relative md:inset-auto md:z-auto md:h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden bg-[#0d0d11] border-l border-zinc-800/80 flex flex-col"
       >
         <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0">
           <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide">

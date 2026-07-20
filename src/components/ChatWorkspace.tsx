@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, PanelLeft } from "lucide-react";
 import UserBubble from "@/components/UserBubble";
 import AssistantResponseBubble from "@/components/AssistantResponseBubble";
 import PromptInput from "@/components/PromptInput";
@@ -55,6 +55,7 @@ interface ChatWorkspaceProps {
   handleSendMessage: (text: string) => void;
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
+  onToggleSidebar?: () => void;
 }
 
 export default function ChatWorkspace({
@@ -97,6 +98,7 @@ export default function ChatWorkspace({
   handleSendMessage,
   setShowArtifactsPanel,
   setJumpToLine,
+  onToggleSidebar,
 }: ChatWorkspaceProps) {
   return (
     <div
@@ -157,17 +159,73 @@ export default function ChatWorkspace({
         </div>
       </div>
 
+      {/* Mobile Sidebar Toggle — always visible on mobile homepage, not gated by isChatActive */}
+      {!isChatActive && messages.length === 0 && onToggleSidebar && (
+        <button
+          id="mobile-sidebar-toggle-homepage"
+          type="button"
+          onClick={onToggleSidebar}
+          className="md:hidden absolute top-4 left-4 z-30 flex items-center justify-center w-9 h-9 rounded-xl text-zinc-300 hover:text-white bg-white/5 border border-white/10 active:scale-95 cursor-pointer transition-all duration-200"
+          aria-label="Open sidebar"
+        >
+          <PanelLeft className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Unstarted Homepage Container */}
       {!isChatActive && messages.length === 0 && (
-        <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20 pb-32 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
-          {/* Creature & Greeting Header */}
-          <div className="overflow-hidden flex flex-col items-center mb-7">
-            <VoxKageCreature />
-            <AnimatedHomepageGreeting greeting={greeting} />
+        <>
+          {/* ── DESKTOP LAYOUT (md+): exact original — centered column with inline prompt box ── */}
+          <div className="hidden md:flex flex-grow flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20 pb-32 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+            <div className="overflow-hidden flex flex-col items-center mb-7">
+              <VoxKageCreature />
+              <AnimatedHomepageGreeting greeting={greeting} />
+            </div>
+            <div className="w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+              <PromptInput
+                isSession={false}
+                onSubmit={handleSendMessage}
+                selectedModel={selectedModel}
+                setSelectedModel={setSelectedModel}
+                selectedVariant={selectedVariant}
+                setSelectedVariant={setSelectedVariant}
+                modelsList={modelsList}
+                onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+                isStreaming={isStreaming}
+                onStop={handleStopGeneration}
+                comments={comments}
+                contextPercent={contextPercent}
+                onRemoveComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+                onClickComment={(fileName, line) => {
+                  const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
+                  if (matchingFile) {
+                    setActiveFile({ name: fileName, code: matchingFile.versions[matchingFile.versions.length - 1].code });
+                    setJumpToLine(line);
+                    setShowArtifactsPanel(false);
+                  }
+                }}
+                attachments={attachments}
+                uploadingStates={uploadingStates}
+                onUpload={handleUploadAttachment}
+                onRemoveAttachment={handleRemoveAttachment}
+                onPreviewImage={handlePreviewImage}
+                onPreviewDocument={setZoomDocument}
+                editingFile={editingFile}
+                onRemoveEditingFile={() => setEditingFile(null)}
+              />
+            </div>
           </div>
 
-          {/* Universal PromptInput Container */}
-          <div className="w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+          {/* ── MOBILE LAYOUT (<md): creature+greeting centered; prompt box fixed at bottom ── */}
+          <div className="md:hidden flex flex-grow flex-col items-center justify-center w-full z-20 px-4 pb-[130px]">
+            <div className="overflow-hidden flex flex-col items-center mb-7">
+              <VoxKageCreature />
+              <AnimatedHomepageGreeting greeting={greeting} />
+            </div>
+          </div>
+
+          {/* Mobile-only: Prompt box fixed to bottom edge */}
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-5 pt-3 bg-gradient-to-t from-[#05050a] via-[#05050a]/90 to-transparent">
             <PromptInput
               isSession={false}
               onSubmit={handleSendMessage}
@@ -185,10 +243,7 @@ export default function ChatWorkspace({
               onClickComment={(fileName, line) => {
                 const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
                 if (matchingFile) {
-                  setActiveFile({
-                    name: fileName,
-                    code: matchingFile.versions[matchingFile.versions.length - 1].code,
-                  });
+                  setActiveFile({ name: fileName, code: matchingFile.versions[matchingFile.versions.length - 1].code });
                   setJumpToLine(line);
                   setShowArtifactsPanel(false);
                 }
@@ -203,8 +258,10 @@ export default function ChatWorkspace({
               onRemoveEditingFile={() => setEditingFile(null)}
             />
           </div>
-        </div>
+        </>
       )}
+
+
 
       {/* Active Normal Chat Session Container */}
       {isChatActive && (

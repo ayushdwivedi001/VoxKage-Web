@@ -35,6 +35,7 @@ interface SidebarProps {
   connectionStatus: "connected" | "connecting" | "disconnected";
   onOpenSearch: () => void;
   onOpenConnect: () => void;
+  isChatActive?: boolean;
 }
 
 const SidebarTooltip = ({ children, text, show }: { children: React.ReactNode; text: string; show: boolean }) => {
@@ -64,6 +65,7 @@ export default function Sidebar({
   connectionStatus,
   onOpenSearch,
   onOpenConnect,
+  isChatActive = false,
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
@@ -72,15 +74,49 @@ export default function Sidebar({
 
   const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";
 
+  // Touch Swipe to close drawer on mobile
+  const touchStartXRef = React.useRef<number | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartXRef.current = e.touches[0].clientX;
+  };
+
+  const autoCloseMobile = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setIsExpanded(false);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartXRef.current === null) return;
+    const currentX = e.touches[0].clientX;
+    const diffX = currentX - touchStartXRef.current;
+    if (diffX < -50 && isExpanded) {
+      setIsExpanded(false);
+      touchStartXRef.current = null;
+    }
+  };
+
   return (
-    <aside
-      onClick={() => !isExpanded && setIsExpanded(true)}
-      className={`relative flex flex-col h-screen transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none z-40 text-zinc-300 ${
-        isExpanded
-          ? "w-[260px] cursor-default bg-[#0e0e11] border-r border-zinc-800/85"
-          : "w-[48px] cursor-pointer bg-transparent border-r border-transparent hover:bg-[#0e0e11] hover:border-zinc-800/85"
-      }`}
-    >
+    <>
+      {/* Mobile Backdrop Overlay */}
+      <div
+        onClick={() => setIsExpanded(false)}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 md:hidden ${
+          isExpanded ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+      />
+
+      <aside
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onClick={() => !isExpanded && setIsExpanded(true)}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col h-full bg-[#0e0e11] border-r border-zinc-800/85 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none text-zinc-300 shadow-2xl md:shadow-none md:relative md:h-screen ${
+          isExpanded
+            ? "w-[280px] max-w-[85vw] md:w-[260px] translate-x-0 cursor-default"
+            : "-translate-x-full md:translate-x-0 md:w-[48px] cursor-pointer bg-transparent border-transparent md:hover:bg-[#0e0e11] md:hover:border-zinc-800/85"
+        }`}
+      >
       {/* === HEADER === */}
       <div
         className={`flex items-center h-[60px] border-b border-transparent relative w-full ${
@@ -111,14 +147,18 @@ export default function Sidebar({
         ) : (
           <SidebarTooltip text="Side Panel" show={true}>
             <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded(true);
-              }}
-              className={`flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-100 hover:text-white hover:bg-white/10 hover:filter hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.6)] transition-all duration-200 active:scale-95 cursor-pointer ${glassBtnStyle}`}
-              aria-label="Expand sidebar"
-            >
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsExpanded(true);
+                }}
+                className={`flex items-center justify-center w-[36px] h-[36px] rounded-lg text-zinc-100 hover:text-white transition-all duration-200 active:scale-95 cursor-pointer ${
+                  isChatActive
+                    ? "bg-[#141418] border border-zinc-700/80 shadow-md md:border-white/10 md:bg-white/5 md:backdrop-blur-md"
+                    : glassBtnStyle
+                }`}
+                aria-label="Expand sidebar"
+              >
               <PanelLeft className="w-[18px] h-[18px] flex-shrink-0" />
             </button>
           </SidebarTooltip>
@@ -137,6 +177,7 @@ export default function Sidebar({
               onClick={(e) => {
                 e.stopPropagation();
                 onCreateNewChat();
+                autoCloseMobile();
               }}
               className="flex items-center gap-3.5 w-full h-[40px] pl-[9px] rounded-full border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 hover:bg-zinc-800/80 text-zinc-100 hover:text-white transition-all duration-200 active:scale-[0.98] overflow-hidden cursor-pointer"
             >
@@ -150,6 +191,7 @@ export default function Sidebar({
                 onClick={(e) => {
                   e.stopPropagation();
                   onCreateNewChat();
+                  autoCloseMobile();
                 }}
                 className={`flex items-center justify-center w-[36px] h-[36px] rounded-full text-zinc-100 hover:text-white hover:bg-white/10 transition-all duration-200 cursor-pointer ${glassBtnStyle}`}
                 aria-label="New chat"
@@ -310,6 +352,7 @@ export default function Sidebar({
                   onClick={(e) => {
                     e.stopPropagation();
                     onSelectSession(session.id);
+                    autoCloseMobile();
                   }}
                   className={`w-full flex items-center justify-between py-2.5 px-4 rounded-xl text-[14.5px] cursor-pointer transition-all duration-150 relative ${
                     isActive
@@ -325,14 +368,14 @@ export default function Sidebar({
                   </div>
                 </button>
                 
-                {/* Three dots on hover */}
+                {/* Three dots on hover (or always visible on mobile) */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setActivePopupSessionId(activePopupSessionId === session.id ? null : session.id);
                   }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 flex items-center justify-center w-7 h-7 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-150 cursor-pointer z-10"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex items-center justify-center w-7 h-7 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-150 cursor-pointer z-10"
                   aria-label="Session actions"
                 >
                   <MoreHorizontal className="w-4 h-4" />
@@ -631,6 +674,7 @@ export default function Sidebar({
           to { opacity: 1; transform: scale(1); }
         }
       `}</style>
-    </aside>
+      </aside>
+    </>
   );
 }

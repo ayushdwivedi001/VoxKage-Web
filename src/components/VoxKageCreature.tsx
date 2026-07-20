@@ -180,12 +180,21 @@ export default function VoxKageCreature() {
         }, 1200);
       }
     }
+    function onTouchStart(e: TouchEvent) {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+      onClick();
+    }
+
     svgEl.addEventListener("click", onClick);
+    svgEl.addEventListener("touchstart", onTouchStart, { passive: false });
 
     // --- Cleanup ---
     return () => {
       svgEl.removeEventListener("mouseenter", onMouseEnter);
       svgEl.removeEventListener("click", onClick);
+      svgEl.removeEventListener("touchstart", onTouchStart);
       if (winkTimeout) clearTimeout(winkTimeout);
       if (clickDecayTimer) clearTimeout(clickDecayTimer);
       if (rageAnimFrame) cancelAnimationFrame(rageAnimFrame);

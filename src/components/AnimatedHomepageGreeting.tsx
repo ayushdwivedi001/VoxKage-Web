@@ -40,30 +40,48 @@ export default function AnimatedHomepageGreeting({ greeting }: AnimatedHomepageG
 
   if (!greeting) return null;
 
+  // Split greeting into words, preserving spaces
+  const words = greeting.split(" ");
+  let globalCharIndex = 0;
+
   return (
-    <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2 flex flex-wrap justify-center px-4">
-      {greeting.split("").map((char, index) => {
-        const isRevealed = index <= revealedIndex;
-        const isFinished = finishedIndices.has(index);
+    <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2 flex flex-wrap justify-center gap-x-[0.25em] gap-y-1 px-4">
+      {words.map((word, wordIdx) => {
+        const charSpans = word.split("").map((char) => {
+          const index = globalCharIndex++;
+          const isRevealed = index <= revealedIndex;
+          const isFinished = finishedIndices.has(index);
+
+          return (
+            <span
+              key={index}
+              style={{
+                display: "inline-block",
+                transform: isRevealed ? "translateY(0px)" : "translateY(24px)",
+                opacity: isRevealed ? 1 : 0,
+                transition: "transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease-out, color 0.5s ease-out",
+              }}
+              className={`select-none ${
+                !isRevealed
+                  ? "opacity-0"
+                  : isFinished
+                  ? "text-white"
+                  : "bg-gradient-to-b from-[#38bdf8] via-[#0438c2] to-[#020938] bg-clip-text text-transparent font-medium"
+              }`}
+            >
+              {char}
+            </span>
+          );
+        });
+
+        // Increment index for the space character between words
+        if (wordIdx < words.length - 1) {
+          globalCharIndex++;
+        }
 
         return (
-          <span
-            key={index}
-            style={{
-              display: "inline-block",
-              transform: isRevealed ? "translateY(0px)" : "translateY(24px)",
-              opacity: isRevealed ? 1 : 0,
-              transition: "transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease-out, color 0.5s ease-out",
-            }}
-            className={`select-none ${
-              !isRevealed
-                ? "opacity-0"
-                : isFinished
-                ? "text-white"
-                : "bg-gradient-to-b from-[#38bdf8] via-[#0438c2] to-[#020938] bg-clip-text text-transparent font-medium"
-            }`}
-          >
-            {char === " " ? "\u00A0" : char}
+          <span key={wordIdx} className="inline-flex whitespace-nowrap">
+            {charSpans}
           </span>
         );
       })}

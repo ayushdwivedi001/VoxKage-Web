@@ -67,8 +67,9 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
     window.addEventListener("resize", resize);
     resize();
 
-    const dotSpacing = 22;
-    const baseDotRadius = 1.35;
+    const isMobile = window.innerWidth < 768;
+    const dotSpacing = isMobile ? 14 : 22;
+    const baseDotRadius = isMobile ? 1.0 : 1.35;
 
     const render = (timestamp: number) => {
       if (!startTime) startTime = timestamp;

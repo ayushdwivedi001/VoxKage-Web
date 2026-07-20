@@ -6,7 +6,7 @@ import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
 import { Attachment } from "./MessageAttachmentsRow";
-import { Monitor, FileUp, Clock } from "lucide-react";
+import { Monitor, FileUp, Clock, Camera } from "lucide-react";
 import PDFHoverCard from "./PDFHoverCard";
 
 interface ModelOption {
@@ -93,6 +93,24 @@ export default function PromptInput({
   const [buildDropdownOpen, setBuildDropdownOpen] = useState(false);
   const buildDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  // Context window HUD popup state
+  const [contextHudOpen, setContextHudOpen] = useState(false);
+  const contextHudRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutsideHud = (event: MouseEvent) => {
+      if (contextHudRef.current && !contextHudRef.current.contains(event.target as Node)) {
+        setContextHudOpen(false);
+      }
+    };
+    if (contextHudOpen) {
+      document.addEventListener("mousedown", handleClickOutsideHud);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutsideHud);
+    };
+  }, [contextHudOpen]);
+
   useEffect(() => {
     const handleClickOutsideBuild = (event: MouseEvent) => {
       if (buildDropdownRef.current && !buildDropdownRef.current.contains(event.target as Node)) {
@@ -130,14 +148,34 @@ export default function PromptInput({
   const handleTakeScreenshot = async () => {
     try {
       setPlusPopupOpen(false);
-      
+
+      // Detect mobile/touch — use camera instead of screen capture
+      const isMobile = typeof window !== "undefined" && ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
+      if (isMobile) {
+        // Mobile: open camera via <input type="file" capture>
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.capture = "environment"; // rear camera by default
+        input.onchange = () => {
+          const file = input.files?.[0];
+          if (file && onUpload) {
+            onUpload(file);
+          }
+        };
+        input.click();
+        return;
+      }
+
+      // Desktop: screen capture flow
       const CaptureControllerClass = (window as any).CaptureController || (globalThis as any).CaptureController;
       const controller = CaptureControllerClass ? new CaptureControllerClass() : null;
 
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: "browser" },
         audio: false,
-        ...(controller ? { controller } : {})
+        ...(controller ? { controller } : {}),
       } as any);
 
       if (controller && "setFocusBehavior" in controller) {
@@ -147,28 +185,27 @@ export default function PromptInput({
           console.warn("Failed to set focus behavior:", focusErr);
         }
       }
-      
+
       const video = document.createElement("video");
       video.autoplay = true;
       video.playsInline = true;
       video.srcObject = stream;
-      
+
       video.onloadedmetadata = () => {
         const canvas = document.createElement("canvas");
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        
+
         const ctx = canvas.getContext("2d");
         if (ctx) {
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          
-          // Stop capturing tracks and return focus
+
           stream.getTracks().forEach((track) => track.stop());
           setTimeout(() => {
             window.focus();
             textareaRef.current?.focus();
           }, 150);
-          
+
           canvas.toBlob((blob) => {
             if (blob && onUpload) {
               const file = new File([blob], "screenshot.png", { type: "image/png" });
@@ -181,6 +218,7 @@ export default function PromptInput({
       console.error("Screen capture screenshot failed:", err);
     }
   };
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0 && onUpload) {
@@ -210,7 +248,7 @@ export default function PromptInput({
   };
 
   // --- / Commands Popup States ---
-  const commands = ["/compact", "/agents", "/drill", "/schedule"];
+  const commands = ["/agents", "/drill", "/schedule"];
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const getActiveCommandQuery = (text: string) => {
@@ -428,8 +466,8 @@ export default function PromptInput({
 
   const renderHighlightedText = (text: string) => {
     if (!text) return null;
-    const cmdList = ["/compact", "/agents", "/drill", "/schedule"];
-    const parts = text.split(/(\/(?:compact|agents|drill|schedule))\b/g);
+    const cmdList = ["/agents", "/drill", "/schedule"];
+    const parts = text.split(/(\/(?:agents|drill|schedule))\b/g);
     
     const rendered = parts.map((part, index) => {
       if (cmdList.includes(part)) {
@@ -587,7 +625,7 @@ export default function PromptInput({
                       e.stopPropagation();
                       onRemoveAttachment?.(file.filename);
                     }}
-                    className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/failed:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-white/20 text-zinc-400 hover:text-white transition-all duration-200 cursor-pointer shadow-md z-20"
+                    className="absolute -top-1.5 -right-1.5 opacity-100 md:opacity-0 md:group-hover/failed:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-white/20 text-zinc-400 hover:text-white transition-all duration-200 cursor-pointer shadow-md z-20"
                   >
                     <X className="w-2.5 h-2.5" />
                   </button>
@@ -724,8 +762,11 @@ export default function PromptInput({
                 onClick={handleTakeScreenshot}
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] text-zinc-200 hover:bg-white/10 hover:text-white transition-colors text-left cursor-pointer"
               >
-                <Monitor className="w-4 h-4 text-zinc-300" />
-                <span>Take a Screenshot</span>
+                {/* Show Camera on mobile, Monitor on desktop */}
+                <Camera className="w-4 h-4 text-zinc-300 md:hidden" />
+                <Monitor className="w-4 h-4 text-zinc-300 hidden md:block" />
+                <span className="md:hidden">Take a Photo</span>
+                <span className="hidden md:inline">Take a Screenshot</span>
               </button>
               
               <button
@@ -744,17 +785,17 @@ export default function PromptInput({
         </div>
 
         {/* Right Side: Options and Submit */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           {/* Model Selector Dropdown & Button Wrapper */}
-          <div ref={dropdownRef} className="relative">
+          <div ref={dropdownRef} className="relative min-w-0">
             <button
               type="button"
               onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[13.5px] font-medium select-none cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-medium select-none cursor-pointer max-w-[130px] sm:max-w-none"
             >
-              <span>{selectedModel}</span>
-              <span className="text-zinc-400 font-normal text-[12.5px] ml-0.5">{selectedVariant}</span>
-              <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5" />
+              <span className="truncate max-w-[75px] sm:max-w-none">{selectedModel}</span>
+              <span className="text-zinc-400 font-normal text-[11.5px] sm:text-[12.5px] ml-0.5 hidden xs:inline sm:inline">{selectedVariant}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5 flex-shrink-0" />
             </button>
 
             {/* Main Dropdown */}
@@ -782,36 +823,56 @@ export default function PromptInput({
           </div>
 
           {/* Context Window HUD indicator */}
-          <div className="relative group/hud flex items-center">
-            <div 
-              className={`flex items-center justify-center px-2.5 py-1 rounded-lg fluid-glass-pill text-[12.5px] font-mono select-none cursor-help transition-all duration-200 ${
+          <div ref={contextHudRef} className="relative flex items-center flex-shrink-0">
+            <button 
+              type="button"
+              onClick={() => setContextHudOpen((prev) => !prev)}
+              className={`flex items-center justify-center px-2 sm:px-2.5 py-1 rounded-lg fluid-glass-pill text-[11.5px] sm:text-[12.5px] font-mono select-none cursor-pointer transition-all duration-200 ${
                 contextPercent >= 85 
                   ? "text-red-400 border-red-500/40 bg-red-950/30 font-bold" 
                   : "text-zinc-300 hover:text-white"
               }`}
             >
               <span>{contextPercent}%</span>
-            </div>
+            </button>
             
-            {/* Tooltip */}
-            <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-30 select-none">
-              Context window. Run <span className="font-mono text-blue-400">/compact</span> to compact the context window.
-            </div>
+            {/* Click/Tap Toggleable Popup */}
+            {contextHudOpen && (
+              <div className="absolute bottom-full mb-2 right-0 w-[230px] fluid-glass-popup text-zinc-200 text-[11.5px] font-sans p-3 rounded-2xl shadow-2xl z-50 select-none flex flex-col gap-2.5 animate-fadeIn border border-white/10">
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[12px] font-medium text-white font-sans">Context Window</span>
+                  <span className="text-[11px] text-zinc-400 leading-snug">
+                    {contextPercent}% used. Compact context to summarize history and free up space.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContextHudOpen(false);
+                    onSubmit?.("/compact");
+                  }}
+                  className="flex items-center justify-center gap-1.5 w-full py-1.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-medium transition-all duration-200 active:scale-95 cursor-pointer shadow-md shadow-blue-500/20"
+                >
+                  <Square className="w-3 h-3 fill-current rotate-45" />
+                  <span>Compact Context</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Work / Plan Mode Dropdown */}
-          <div ref={buildDropdownRef} className="relative animate-fadeIn">
+          <div ref={buildDropdownRef} className="relative animate-fadeIn flex-shrink-0">
             <button
               type="button"
               onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] font-sans font-medium select-none cursor-pointer"
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[11.5px] sm:text-[12.5px] font-sans font-medium select-none cursor-pointer"
             >
               <span>{buildMode}</span>
               <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
             </button>
 
             {buildDropdownOpen && (
-              <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-2xl p-2 z-[70] flex flex-col gap-1.5 w-[220px] shadow-2xl animate-fadeIn select-none">
+              <div className="absolute bottom-full right-0 mb-2 min-w-[180px] w-[220px] fluid-glass-popup rounded-2xl p-2 z-[70] flex flex-col gap-1.5 shadow-2xl animate-fadeIn select-none">
                 {/* Option 1: Work */}
                 <button
                   type="button"
@@ -857,6 +918,7 @@ export default function PromptInput({
                 </button>
               </div>
             )}
+
           </div>
 
           {/* Submit / Stop Button */}
@@ -864,23 +926,23 @@ export default function PromptInput({
             <button
               type="button"
               onClick={onStop}
-              className="flex items-center justify-center w-9 h-9 rounded-full fluid-glass-pill text-white active:scale-95 cursor-pointer ml-1 transition-all duration-200"
+              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full fluid-glass-pill text-white active:scale-95 cursor-pointer ml-0.5 sm:ml-1 transition-all duration-200 flex-shrink-0"
               aria-label="Stop generation"
             >
-              <Square className="w-4 h-4 fill-white stroke-none" />
+              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white stroke-none" />
             </button>
           ) : (
             <button
               type="button"
               onClick={handleSubmit}
-              className={`flex items-center justify-center w-9 h-9 rounded-full transition-all duration-300 ml-1 ${
+              className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all duration-300 ml-0.5 sm:ml-1 flex-shrink-0 ${
                 hasText
                   ? "bg-blue-600 border border-blue-600 hover:bg-blue-500 hover:border-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
                   : "bg-white/[0.04] border border-white/[0.08] text-white/30 cursor-default"
               }`}
               aria-label="Submit prompt"
             >
-              <ArrowUp className="w-5 h-5 stroke-[2.5]" />
+              <ArrowUp className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
             </button>
           )}
         </div>
@@ -1004,7 +1066,7 @@ function DocumentAttachmentPreviewItem({
           e.stopPropagation();
           onRemove?.(file.filename);
         }}
-        className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/doc:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+        className="absolute -top-1.5 -right-1.5 opacity-100 md:opacity-0 md:group-hover/doc:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
       >
         <X className="w-2.5 h-2.5" />
       </button>
@@ -1051,7 +1113,7 @@ function ImageAttachmentPreviewItem({
           e.stopPropagation();
           onRemove?.(filename);
         }}
-        className="absolute -top-1.5 -right-1.5 opacity-0 group-hover/img:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
+        className="absolute -top-1.5 -right-1.5 opacity-100 md:opacity-0 md:group-hover/img:opacity-100 flex items-center justify-center w-5 h-5 rounded-full bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer shadow-md z-20"
       >
         <X className="w-2.5 h-2.5" />
       </button>

@@ -138,7 +138,7 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
       onClick={onClose}
     >
       <div 
-        className="relative w-full max-w-[680px] bg-[#181715] border border-[#e6dfd8]/15 rounded-lg p-6 text-[#efe9de] flex flex-col max-h-[85vh] shadow-2xl cursor-default"
+        className="relative w-full sm:max-w-[680px] bg-[#181715] border border-[#e6dfd8]/15 rounded-none sm:rounded-lg p-4 sm:p-6 text-[#efe9de] flex flex-col max-h-screen sm:max-h-[85vh] shadow-2xl cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         
@@ -184,11 +184,11 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
             schedules.map((s) => (
               <div
                 key={s.id}
-                className="bg-[#252320] border border-[#e6dfd8]/10 rounded-lg p-4 transition-all hover:border-[#e6dfd8]/20 flex flex-col gap-3"
+                className="bg-[#252320] border border-[#e6dfd8]/10 rounded-lg p-3 sm:p-4 transition-all hover:border-[#e6dfd8]/20 flex flex-col gap-3"
               >
                 {/* Top Row: Name, Status, Switch */}
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex-1 flex items-center gap-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex-1 flex flex-wrap items-center gap-2">
                     {editingId === s.id ? (
                       <div className="flex items-center gap-1.5 w-full max-w-[320px]">
                         <input
@@ -293,12 +293,12 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
 
                 {/* Details Section */}
                 <div className="bg-[#181715]/75 border border-[#e6dfd8]/5 rounded px-3 py-2 text-[12px] text-[#efe9de] space-y-1.5 font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-[#8e8b82]">Timing (Cron):</span>
-                    <span>{s.cron_expression} ({s.timezone})</span>
+                  <div className="flex flex-col xs:flex-row xs:justify-between gap-0.5">
+                    <span className="text-[#8e8b82] shrink-0">Timing (Cron):</span>
+                    <span className="break-all text-right">{s.cron_expression} ({s.timezone})</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#8e8b82]">Delivery:</span>
+                  <div className="flex flex-col xs:flex-row xs:justify-between gap-0.5">
+                    <span className="text-[#8e8b82] shrink-0">Delivery:</span>
                     <span className="flex items-center gap-1">
                       {s.retrieval_method === "gmail" ? (
                         <>
@@ -313,8 +313,8 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
                       )}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#8e8b82]">Last Run:</span>
+                  <div className="flex flex-col xs:flex-row xs:justify-between gap-0.5">
+                    <span className="text-[#8e8b82] shrink-0">Last Run:</span>
                     <span>
                       {s.last_run
                         ? new Date(s.last_run).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })

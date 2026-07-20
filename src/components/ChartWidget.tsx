@@ -52,24 +52,25 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data, isExpan
   const hasSecondary = data.some(pt => pt.secondary_value !== undefined);
 
   return (
-    <div className={`relative w-full mx-auto bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-4.5 shadow-2xl flex flex-col gap-4.5 select-none transition-all duration-300 ${
-      isExpanded ? "max-w-[1000px] my-0 p-6 md:p-8" : "max-w-[680px] my-4"
+    <div className={`relative w-full max-w-full overflow-hidden mx-auto bg-[#0c0c0e]/90 border border-zinc-850/60 rounded-2xl p-3 sm:p-4.5 shadow-2xl flex flex-col gap-3 sm:gap-4.5 select-none transition-all duration-300 ${
+      isExpanded ? "max-w-[1000px] my-0 p-4 sm:p-6 md:p-8" : "max-w-[680px] my-4"
     }`}>
       {/* Header and Style Switcher */}
       <div className="flex justify-between items-center select-text">
         <div className="flex flex-col gap-1 min-w-0">
-          <div className="flex items-center gap-1.5 text-zinc-500">
-            <TrendingUp className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[11px] font-mono tracking-wider uppercase font-medium">Analytics Output</span>
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-[#cc785c] flex-shrink-0" />
+            <h4 className="text-zinc-200 font-medium text-[13.5px] sm:text-[14.5px] font-sans truncate">{title}</h4>
           </div>
-          <span className="text-[14px] font-semibold text-zinc-300 truncate">
-            {title}
+          <span className="text-[10px] font-mono text-zinc-550 uppercase tracking-wider pl-6">
+            Analytics Output
           </span>
         </div>
 
-        {/* Style Switcher Selector */}
-        <div className="flex gap-1 bg-zinc-950/60 border border-zinc-850 p-0.5 rounded-lg flex-shrink-0">
+        {/* Style selector */}
+        <div className="flex items-center gap-1 bg-[#141419] p-1 rounded-lg border border-zinc-800/60 flex-shrink-0">
           <button
+            type="button"
             onClick={() => setChartStyle("area")}
             className={`p-1 px-2 rounded-md text-[11px] font-medium transition-all select-none flex items-center gap-1 ${
               chartStyle === "area"
@@ -77,10 +78,12 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data, isExpan
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            <Activity className="w-3 h-3 text-[#cc785c]" />
+            <TrendingUp className="w-3 h-3 text-sky-400" />
             <span className="hidden sm:inline">Area</span>
           </button>
+
           <button
+            type="button"
             onClick={() => setChartStyle("line")}
             className={`p-1 px-2 rounded-md text-[11px] font-medium transition-all select-none flex items-center gap-1 ${
               chartStyle === "line"
@@ -88,10 +91,12 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data, isExpan
                 : "text-zinc-500 hover:text-zinc-300"
             }`}
           >
-            <LineIcon className="w-3 h-3 text-sky-400" />
+            <LineIcon className="w-3 h-3 text-[#cc785c]" />
             <span className="hidden sm:inline">Line</span>
           </button>
+
           <button
+            type="button"
             onClick={() => setChartStyle("bar")}
             className={`p-1 px-2 rounded-md text-[11px] font-medium transition-all select-none flex items-center gap-1 ${
               chartStyle === "bar"
@@ -106,8 +111,8 @@ export default function ChartWidget({ type, title, xLabel, yLabel, data, isExpan
       </div>
 
       {/* Chart Canvas */}
-      <div className={`w-full relative z-0 transition-all duration-300 ${
-        isExpanded ? "h-[450px]" : "h-[240px]"
+      <div className={`w-full max-w-full relative z-0 transition-all duration-300 ${
+        isExpanded ? "h-[320px] sm:h-[450px]" : "h-[200px] sm:h-[240px]"
       }`}>
         <ResponsiveContainer width="100%" height="100%">
           {chartStyle === "area" ? (

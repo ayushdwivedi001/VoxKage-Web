@@ -362,6 +362,7 @@ export default function Home() {
           setSearchQuery("");
         }}
         onOpenConnect={() => setShowConnectModal(true)}
+        isChatActive={isChatActive}
       />
 
       {/* === BACKGROUND LAYERS === */}
@@ -389,6 +390,7 @@ export default function Home() {
           setShowArtifactsPanel={setShowArtifactsPanel}
           sessionArtifacts={sessionArtifacts}
           handleDeleteSession={chatSessions.handleDeleteSession}
+          onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
         />
 
         <div className="relative flex flex-grow w-full h-full overflow-hidden">
@@ -434,6 +436,7 @@ export default function Home() {
             handleSendMessage={agentCompletion.handleSendMessage}
             setShowArtifactsPanel={setShowArtifactsPanel}
             setJumpToLine={setJumpToLine}
+            onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
           />
 
           {(activeFile || showArtifactsPanel) && !isExpanded && (
