@@ -852,67 +852,69 @@ export default function PromptInput({
             </div>
           </div>
 
-          {/* Build / Plan Mode Dropdown */}
-          <div ref={buildDropdownRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] font-sans font-medium select-none cursor-pointer"
-            >
-              <span>{buildMode}</span>
-              <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
-            </button>
+          {/* Build / Plan Mode Dropdown (Design Mode Only) */}
+          {isDesignMode && (
+            <div ref={buildDropdownRef} className="relative animate-fadeIn">
+              <button
+                type="button"
+                onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] font-sans font-medium select-none cursor-pointer"
+              >
+                <span>{buildMode}</span>
+                <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
+              </button>
 
-            {buildDropdownOpen && (
-              <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-xl p-1.5 z-50 flex flex-col gap-1 min-w-[130px] shadow-2xl animate-fadeIn select-none">
-                {/* Option 1: Build */}
-                <div className="relative group/opt">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuildMode("Build");
-                      setBuildDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                      buildMode === "Build"
-                        ? "bg-white/10 text-white font-medium"
-                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>Build</span>
-                    {buildMode === "Build" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                    VoxKage will directly start working on the Projects.
+              {buildDropdownOpen && (
+                <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-xl p-1.5 z-50 flex flex-col gap-1 min-w-[130px] shadow-2xl animate-fadeIn select-none">
+                  {/* Option 1: Build */}
+                  <div className="relative group/opt">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuildMode("Build");
+                        setBuildDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
+                        buildMode === "Build"
+                          ? "bg-white/10 text-white font-medium"
+                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <span>Build</span>
+                      {buildMode === "Build" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                    </button>
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
+                      VoxKage will directly start working on the Projects.
+                    </div>
+                  </div>
+
+                  {/* Option 2: Plan */}
+                  <div className="relative group/opt">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBuildMode("Plan");
+                        setBuildDropdownOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
+                        buildMode === "Plan"
+                          ? "bg-white/10 text-white font-medium"
+                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                      }`}
+                    >
+                      <span>Plan</span>
+                      {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                    </button>
+                    {/* Tooltip */}
+                    <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
+                      VoxKage plans before generating designs
+                    </div>
                   </div>
                 </div>
-
-                {/* Option 2: Plan */}
-                <div className="relative group/opt">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuildMode("Plan");
-                      setBuildDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                      buildMode === "Plan"
-                        ? "bg-white/10 text-white font-medium"
-                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>Plan</span>
-                    {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                    VoxKage plans before generating designs
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Submit / Stop Button */}
           {isStreaming ? (

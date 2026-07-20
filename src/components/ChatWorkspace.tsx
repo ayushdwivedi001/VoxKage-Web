@@ -7,6 +7,7 @@ import AssistantResponseBubble from "@/components/AssistantResponseBubble";
 import PromptInput from "@/components/PromptInput";
 // import VoxKageIdleCreature from "@/components/VoxKageIdleCreature"; // ← kept for reference
 import VoxKageCreature from "@/components/VoxKageCreature";
+import DesignPoeticSubtitle from "@/components/DesignPoeticSubtitle";
 import { Message } from "@/lib/chatHelpers";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 
@@ -159,54 +160,62 @@ export default function ChatWorkspace({
       </div>
 
       {!isChatActive && (
-        <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 pb-32 z-20">
+        <div className={`flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 pb-32 z-20 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isDesignMode ? "pt-12 sm:pt-20" : ""
+        }`}>
           <div
-            className={`flex flex-col items-center transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            className={`w-full grid transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
               isDesignMode
-                ? "opacity-0 pointer-events-none -translate-y-4 max-h-0 overflow-hidden mb-0"
-                : "opacity-100 translate-y-0 mb-7"
+                ? "grid-rows-[0fr] opacity-0 mb-0 pointer-events-none"
+                : "grid-rows-[1fr] opacity-100 mb-7 pointer-events-auto"
             }`}
           >
-            <VoxKageCreature />
-            <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2">
-              {greeting}
-            </h1>
+            <div className="overflow-hidden flex flex-col items-center">
+              <VoxKageCreature />
+              <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2">
+                {greeting}
+              </h1>
+            </div>
           </div>
-          <PromptInput
-            isSession={false}
-            isDesignMode={isDesignMode}
-            onSubmit={handleSendMessage}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            selectedVariant={selectedVariant}
-            setSelectedVariant={setSelectedVariant}
-            modelsList={modelsList}
-            onOpenMoreModels={() => setMoreModelsModalOpen(true)}
-            isStreaming={isStreaming}
-            onStop={handleStopGeneration}
-            comments={comments}
-            contextPercent={contextPercent}
-            onRemoveComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
-            onClickComment={(fileName, line) => {
-              const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
-              if (matchingFile) {
-                setActiveFile({
-                  name: fileName,
-                  code: matchingFile.versions[matchingFile.versions.length - 1].code,
-                });
-                setJumpToLine(line);
-                setShowArtifactsPanel(false);
-              }
-            }}
-            attachments={attachments}
-            uploadingStates={uploadingStates}
-            onUpload={handleUploadAttachment}
-            onRemoveAttachment={handleRemoveAttachment}
-            onPreviewImage={handlePreviewImage}
-            onPreviewDocument={setZoomDocument}
-            editingFile={editingFile}
-            onRemoveEditingFile={() => setEditingFile(null)}
-          />
+
+          <div className="w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+            <PromptInput
+              isSession={false}
+              isDesignMode={isDesignMode}
+              onSubmit={handleSendMessage}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              selectedVariant={selectedVariant}
+              setSelectedVariant={setSelectedVariant}
+              modelsList={modelsList}
+              onOpenMoreModels={() => setMoreModelsModalOpen(true)}
+              isStreaming={isStreaming}
+              onStop={handleStopGeneration}
+              comments={comments}
+              contextPercent={contextPercent}
+              onRemoveComment={(id) => setComments((prev) => prev.filter((c) => c.id !== id))}
+              onClickComment={(fileName, line) => {
+                const matchingFile = sessionArtifacts.find((f) => f.name === fileName);
+                if (matchingFile) {
+                  setActiveFile({
+                    name: fileName,
+                    code: matchingFile.versions[matchingFile.versions.length - 1].code,
+                  });
+                  setJumpToLine(line);
+                  setShowArtifactsPanel(false);
+                }
+              }}
+              attachments={attachments}
+              uploadingStates={uploadingStates}
+              onUpload={handleUploadAttachment}
+              onRemoveAttachment={handleRemoveAttachment}
+              onPreviewImage={handlePreviewImage}
+              onPreviewDocument={setZoomDocument}
+              editingFile={editingFile}
+              onRemoveEditingFile={() => setEditingFile(null)}
+            />
+            <DesignPoeticSubtitle isDesignMode={isDesignMode} />
+          </div>
         </div>
       )}
 
