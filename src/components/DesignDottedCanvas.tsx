@@ -4,33 +4,44 @@ import React, { useEffect, useRef } from "react";
 
 interface DesignDottedCanvasProps {
   active?: boolean;
+  isChatActive?: boolean;
 }
 
-export default function DesignDottedCanvas({ active = false }: DesignDottedCanvasProps) {
+export default function DesignDottedCanvas({ active = false, isChatActive = false }: DesignDottedCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
-    x: -1000,
-    y: -1000,
-    active: false,
-  });
+  const ripplesRef = useRef<Array<{ x: number; y: number; startTime: number; maxRadius: number; duration: number }>>([]);
+  const chatActiveRef = useRef(isChatActive);
+  const dimProgressRef = useRef(isChatActive ? 1 : 0);
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = e.clientX;
-      mouseRef.current.y = e.clientY;
-      mouseRef.current.active = true;
+    chatActiveRef.current = isChatActive;
+  }, [isChatActive]);
+
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Check if user clicked on interactive elements (buttons, prompt box, input, links, etc.)
+      const isInteractive = target.closest(
+        'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="option"], .prompt-textarea, .prompt-overlay, .fluid-glass-box-frosty, .fluid-glass-pill, .fluid-glass-popup, header, sidebar, nav, [data-interactive="true"]'
+      );
+
+      if (isInteractive) return;
+
+      // Spawn a new click ripple wave (tiny 2-dot circular click effect)
+      ripplesRef.current.push({
+        x: e.clientX,
+        y: e.clientY,
+        startTime: performance.now(),
+        maxRadius: 45,
+        duration: 350,
+      });
     };
 
-    const handleMouseLeave = () => {
-      mouseRef.current.active = false;
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseleave", handleMouseLeave);
-
+    window.addEventListener("click", handleClick);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseleave", handleMouseLeave);
+      window.removeEventListener("click", handleClick);
     };
   }, []);
 
@@ -63,31 +74,37 @@ export default function DesignDottedCanvas({ active = false }: DesignDottedCanva
       if (!startTime) startTime = timestamp;
       const elapsed = (timestamp - startTime) / 1000;
 
+      // Smooth dimming interpolation towards target (0.0 homepage -> 1.0 active session)
+      const targetDim = chatActiveRef.current ? 1 : 0;
+      dimProgressRef.current += (targetDim - dimProgressRef.current) * 0.08;
+      const dim = dimProgressRef.current; // 0.0 -> 1.0
+
+      // Filter active ripples
+      ripplesRef.current = ripplesRef.current.filter((r) => timestamp - r.startTime < r.duration);
+      const activeRipples = ripplesRef.current;
+
       // 1. Left-to-Right Entrance Sweep Progress (0.0 -> 1.0 over 1.6s)
       const sweepDuration = 1.6;
       const rawSweep = Math.min(1, elapsed / sweepDuration);
-      // cubic-bezier easeOutCubic
       const sweepProgress = 1 - Math.pow(1 - rawSweep, 3);
 
       const width = window.innerWidth;
       const height = window.innerHeight;
-      const mouse = mouseRef.current;
 
       // Pitch black background
       ctx.fillStyle = "#040406";
       ctx.fillRect(0, 0, width, height);
 
-      // Subtle ambient bottom VoxKage blue background gradient
+      // Subtle ambient bottom VoxKage blue background gradient (softly tuned during active session)
+      const ambientAlpha = 0.07 * (1 - dim * 0.35);
       const bgGrad = ctx.createLinearGradient(0, height, 0, height * 0.35);
-      bgGrad.addColorStop(0, "rgba(4, 56, 194, 0.07)");
+      bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
       bgGrad.addColorStop(1, "rgba(4, 4, 6, 0)");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
       const cols = Math.ceil(width / dotSpacing) + 1;
       const rows = Math.ceil(height / dotSpacing) + 1;
-
-      // Sweep boundary position
       const sweepBoundaryX = width * sweepProgress;
 
       for (let i = 0; i < cols; i++) {
@@ -95,9 +112,8 @@ export default function DesignDottedCanvas({ active = false }: DesignDottedCanva
           const baseX = i * dotSpacing;
           const baseY = j * dotSpacing;
 
-          // Normalized coordinates (0.0 to 1.0)
           const normX = baseX / width;
-          const normY = baseY / height; // 0.0 top, 1.0 bottom
+          const normY = baseY / height;
 
           // 2. High-amplitude ocean wave formula
           const wave1 = Math.sin(normX * 3.6 - elapsed * 0.85) * 0.16;
@@ -105,11 +121,9 @@ export default function DesignDottedCanvas({ active = false }: DesignDottedCanva
           const wave3 = Math.sin(normX * 5.2 - elapsed * 1.25) * 0.06;
           const waveVal = wave1 + wave2 + wave3;
 
-          // Wave crest surface height (peaks higher up to ~65% height from bottom, i.e., normY ~ 0.52)
           const waveSurfaceNormY = 0.52 - waveVal;
           const isBelowWaveSurface = normY >= waveSurfaceNormY;
 
-          // Sweep activation factor (left to right transition)
           const distFromSweep = (baseX - sweepBoundaryX) / 180;
           const sweepFactor = Math.max(0, Math.min(1, 1 - distFromSweep));
 
@@ -121,74 +135,81 @@ export default function DesignDottedCanvas({ active = false }: DesignDottedCanva
 
           if (isBelowWaveSurface && sweepFactor > 0) {
             isBlueWaveDot = true;
-
-            // Distance ratio inside the wave region (0 at surface, 1 at bottom)
             const depthRatio = Math.min(1, (normY - waveSurfaceNormY) / (1 - waveSurfaceNormY));
             waveZoneIntensity = (1 - depthRatio * 0.35) * sweepFactor;
 
-            // Deep ocean wave vertical & horizontal rolling motion
             dy = (Math.sin(normX * 4.5 - elapsed * 1.8 + normY * 5.0) * 26 +
                   Math.cos(normX * 2.8 + elapsed * 1.2) * 14) * waveZoneIntensity;
             dx = Math.cos(normX * 3.2 + elapsed * 1.1 + normY * 3.0) * 10 * waveZoneIntensity;
           }
 
-          // Render coordinates before cursor displacement
           let renderX = baseX + dx;
           let renderY = baseY + dy;
 
-          // 4. Ocean Wave Cursor Reactivity (Ocean ripple effect)
-          let cursorIntensity = 0;
-          let cursorDx = 0;
-          let cursorDy = 0;
+          // 4. Click Ripple Wave Animation (tiny 2-dot circular click effect)
+          let totalRippleDx = 0;
+          let totalRippleDy = 0;
+          let maxRippleIntensity = 0;
 
-          if (mouse.active) {
-            const mdx = renderX - mouse.x;
-            const mdy = renderY - mouse.y;
-            const dist = Math.sqrt(mdx * mdx + mdy * mdy);
-            const oceanRadius = 190;
+          for (let k = 0; k < activeRipples.length; k++) {
+            const ripple = activeRipples[k];
+            const age = (timestamp - ripple.startTime) / ripple.duration;
+            if (age < 0 || age > 1) continue;
 
-            if (dist < oceanRadius) {
-              const force = Math.pow(1 - dist / oceanRadius, 1.4);
-              cursorIntensity = force;
+            const currentRadius = ripple.maxRadius * Math.pow(age, 0.7);
+            const rdx = renderX - ripple.x;
+            const rdy = renderY - ripple.y;
+            const dist = Math.sqrt(rdx * rdx + rdy * rdy);
 
-              // Ocean wave ripple push direction & amplitude
-              const angle = Math.atan2(mdy, mdx);
-              const waveRipple = Math.sin(dist * 0.07 - elapsed * 4.0) * 18 * force;
-              cursorDx = Math.cos(angle) * waveRipple;
-              cursorDy = Math.sin(angle) * waveRipple;
+            const ringDist = Math.abs(dist - currentRadius);
+            const ringWidth = 16;
+
+            if (ringDist < ringWidth) {
+              const fadeOut = Math.sin((1 - age) * Math.PI);
+              const ringForce = Math.cos((ringDist / ringWidth) * (Math.PI / 2)) * fadeOut;
+
+              if (ringForce > 0) {
+                const angle = Math.atan2(rdy, rdx);
+                const waveDisplacement = Math.sin((dist - currentRadius) * 0.25) * 4 * ringForce;
+                
+                totalRippleDx += Math.cos(angle) * waveDisplacement;
+                totalRippleDy += Math.sin(angle) * waveDisplacement;
+                maxRippleIntensity = Math.max(maxRippleIntensity, ringForce);
+              }
             }
           }
 
-          renderX += cursorDx;
-          renderY += cursorDy;
+          renderX += totalRippleDx;
+          renderY += totalRippleDy;
 
           // 5. Color & Radius Styling
           let radius = baseDotRadius;
           let r = 255;
           let g = 255;
           let b = 255;
-          let alpha = 0.28;
+          // Normal non-wave dots turn pitch dark (0.28 homepage -> 0.03 active session)
+          let alpha = 0.28 * (1 - dim * 0.89);
 
           if (isBlueWaveDot && sweepFactor > 0) {
-            // Wave region dots: VoxKage Cobalt Blue gradient
-            // Surface = Sky cyan (#38bdf8), Core = Cobalt (#0438c2)
             const colorBlend = Math.min(1, (normY - waveSurfaceNormY) / 0.35);
+            const targetR = Math.round(56 + (4 - 56) * colorBlend);
+            const targetG = Math.round(189 + (56 - 189) * colorBlend);
+            const targetB = Math.round(248 + (194 - 248) * colorBlend);
 
-            // Interpolate #38bdf8 (56, 189, 248) -> #0438c2 (4, 56, 194)
-            r = Math.round(56 + (4 - 56) * colorBlend);
-            g = Math.round(189 + (56 - 189) * colorBlend);
-            b = Math.round(248 + (194 - 248) * colorBlend);
-            alpha = (0.35 + 0.35 * (1 - colorBlend)) * sweepFactor;
-            radius = baseDotRadius + 0.45 * sweepFactor;
+            // Blue ocean wave dots stay vibrant & clearly visible
+            r = Math.round(targetR * (1 - dim * 0.22));
+            g = Math.round(targetG * (1 - dim * 0.22));
+            b = Math.round(targetB * (1 - dim * 0.12));
+            alpha = (0.35 + 0.35 * (1 - colorBlend)) * sweepFactor * (1 - dim * 0.22);
+            radius = baseDotRadius + 0.45 * sweepFactor * (1 - dim * 0.15);
           }
 
-          // Cursor interaction boost (Ocean wave highlight)
-          if (cursorIntensity > 0) {
-            r = Math.round(r + (56 - r) * cursorIntensity);
-            g = Math.round(g + (189 - g) * cursorIntensity);
-            b = Math.round(b + (248 - b) * cursorIntensity);
-            alpha = Math.min(0.95, alpha + 0.5 * cursorIntensity);
-            radius = Math.max(radius, baseDotRadius + 1.4 * cursorIntensity);
+          if (maxRippleIntensity > 0) {
+            r = Math.round(r + (56 - r) * maxRippleIntensity);
+            g = Math.round(g + (189 - g) * maxRippleIntensity);
+            b = Math.round(b + (248 - b) * maxRippleIntensity);
+            alpha = Math.min(0.95, alpha + 0.45 * maxRippleIntensity);
+            radius = Math.max(radius, baseDotRadius + 0.85 * maxRippleIntensity);
           }
 
           ctx.beginPath();

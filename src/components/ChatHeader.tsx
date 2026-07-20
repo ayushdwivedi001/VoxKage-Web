@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import { ChevronDown, FileText, Star, Edit3, Trash2, Download, AlertTriangle } from "lucide-react";
 import { getToken } from "@/lib/api";
-import SwitchToDesignButton from "./SwitchToDesignButton";
 
 interface ChatHeaderProps {
   isChatActive: boolean;
@@ -20,8 +19,6 @@ interface ChatHeaderProps {
   setShowArtifactsPanel: (show: boolean) => void;
   sessionArtifacts: any[];
   handleDeleteSession: (id: string) => void;
-  isDesignMode?: boolean;
-  onToggleDesignMode?: () => void;
 }
 
 export default function ChatHeader({
@@ -39,8 +36,6 @@ export default function ChatHeader({
   setShowArtifactsPanel,
   sessionArtifacts,
   handleDeleteSession,
-  isDesignMode,
-  onToggleDesignMode,
 }: ChatHeaderProps) {
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
@@ -199,11 +194,6 @@ export default function ChatHeader({
           >
             Share
           </button>
-
-          <SwitchToDesignButton
-            isDesignMode={isDesignMode}
-            onToggleDesignMode={onToggleDesignMode}
-          />
 
           {showExportConfirm && (
             <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 animate-fadeIn backdrop-blur-md">

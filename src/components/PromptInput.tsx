@@ -40,17 +40,8 @@ interface PromptInputProps {
   editingFile?: string | null;
   onRemoveEditingFile?: () => void;
   isSession?: boolean;
-  isDesignMode?: boolean;
+  hideBoxStyling?: boolean;
 }
-
-const DESIGN_PROMPT_EXAMPLES = [
-  "Ask VoxKage to design your website...",
-  "VoxKage, design me a sleek portfolio website...",
-  "Bring your SaaS ideas to life with VoxKage Design...",
-  "Design a real-time analytics dashboard with dark mode...",
-  "Create an interactive glassmorphic web application...",
-  "VoxKage, design a modern AI landing page...",
-];
 
 export default function PromptInput({
   onSubmit,
@@ -75,46 +66,12 @@ export default function PromptInput({
   editingFile,
   onRemoveEditingFile,
   isSession = false,
-  isDesignMode = false,
+  hideBoxStyling = false,
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-
-  // Typewriter placeholder state for Design Mode
-  const [designPlaceholderText, setDesignPlaceholderText] = useState("");
-  const [exampleIndex, setExampleIndex] = useState(0);
-  const [charIndex, setCharIndex] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    if (!isDesignMode) return;
-
-    const currentFullText = DESIGN_PROMPT_EXAMPLES[exampleIndex];
-    let timeoutMs = isDeleting ? 25 : 45;
-
-    if (!isDeleting && charIndex === currentFullText.length) {
-      timeoutMs = 2200; // Pause at full text
-    } else if (isDeleting && charIndex === 0) {
-      setIsDeleting(false);
-      setExampleIndex((prev) => (prev + 1) % DESIGN_PROMPT_EXAMPLES.length);
-      timeoutMs = 400;
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      if (!isDeleting && charIndex === currentFullText.length) {
-        setIsDeleting(true);
-      } else {
-        const nextCharIndex = isDeleting ? charIndex - 1 : charIndex + 1;
-        setCharIndex(nextCharIndex);
-        setDesignPlaceholderText(currentFullText.substring(0, nextCharIndex));
-      }
-    }, timeoutMs);
-
-    return () => clearTimeout(timer);
-  }, [isDesignMode, exampleIndex, charIndex, isDeleting]);
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
@@ -131,8 +88,8 @@ export default function PromptInput({
 
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // Build / Plan mode dropdown state
-  const [buildMode, setBuildMode] = useState<"Build" | "Plan">("Build");
+  // Work / Plan mode dropdown state
+  const [buildMode, setBuildMode] = useState<"Work" | "Plan">("Work");
   const [buildDropdownOpen, setBuildDropdownOpen] = useState(false);
   const buildDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -359,41 +316,23 @@ export default function PromptInput({
     const textarea = textareaRef.current;
     const overlay = overlayRef.current;
     if (textarea) {
-      const savedScrollTop = textarea.scrollTop;
-      textarea.style.height = "auto";
+      textarea.style.height = "28px";
       const scrollHeight = textarea.scrollHeight;
       const maxHeight = 220; // Maximum height in pixels before showing scrollbar
       
       if (scrollHeight > maxHeight) {
         textarea.style.height = `${maxHeight}px`;
         textarea.style.overflowY = "auto";
-        
-        if (overlay) {
-          overlay.style.overflowY = "scroll";
-          overlay.classList.add("custom-scrollbar-overlay");
-          overlay.classList.remove("overflow-y-hidden");
-        }
-
-        // Auto-scroll to bottom if typing at the end of the text
-        if (textarea.selectionStart === textarea.value.length) {
-          textarea.scrollTop = textarea.scrollHeight;
-        } else {
-          textarea.scrollTop = savedScrollTop;
-        }
       } else {
-        textarea.style.height = `${scrollHeight}px`;
+        textarea.style.height = `${Math.max(28, scrollHeight)}px`;
         textarea.style.overflowY = "hidden";
-        
-        if (overlay) {
-          overlay.style.overflowY = "hidden";
-          overlay.classList.remove("custom-scrollbar-overlay");
-          overlay.classList.add("overflow-y-hidden");
-        }
       }
 
-      // Sync overlay scroll position
       if (overlay) {
+        overlay.style.height = textarea.style.height;
+        overlay.style.overflowY = textarea.style.overflowY;
         overlay.scrollTop = textarea.scrollTop;
+        overlay.scrollLeft = textarea.scrollLeft;
       }
     }
   };
@@ -431,28 +370,7 @@ export default function PromptInput({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const textarea = e.target;
-    let val = textarea.value;
-    const originalSelectionStart = textarea.selectionStart;
-    
-    // Auto-spacing around command keywords:
-    const prevLen = val.length;
-    val = val.replace(/(?<!\s)(\/(?:agents|drill|compact))/g, " $1");
-    val = val.replace(/(\/(?:agents|drill|compact))(?!\s|$)/g, "$1 ");
-    const newLen = val.length;
-
-    setValue(val);
-
-    // Adjust caret position based on added spaces to prevent cursor jumps
-    if (prevLen !== newLen) {
-      const difference = newLen - prevLen;
-      const newSelectionStart = originalSelectionStart + difference;
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.setSelectionRange(newSelectionStart, newSelectionStart);
-        }
-      }, 0);
-    }
+    setValue(e.target.value);
   };
 
   const handleSelectCommand = (command: string) => {
@@ -504,6 +422,7 @@ export default function PromptInput({
   const handleScroll = () => {
     if (textareaRef.current && overlayRef.current) {
       overlayRef.current.scrollTop = textareaRef.current.scrollTop;
+      overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
     }
   };
 
@@ -512,26 +431,34 @@ export default function PromptInput({
     const cmdList = ["/compact", "/agents", "/drill", "/schedule"];
     const parts = text.split(/(\/(?:compact|agents|drill|schedule))\b/g);
     
-    return parts.map((part, index) => {
+    const rendered = parts.map((part, index) => {
       if (cmdList.includes(part)) {
         return (
           <span
             key={index}
-            className="text-blue-400 font-medium"
+            className="text-blue-400 font-normal"
           >
             {part}
           </span>
         );
       }
-      return <span key={index} className="text-zinc-100">{part}</span>;
+      return <span key={index} className="text-zinc-100 font-normal">{part}</span>;
     });
+
+    if (text.endsWith("\n")) {
+      rendered.push(<span key="trailing-newline">\u200b</span>);
+    }
+
+    return rendered;
   };
 
   const hasText = value.trim().length > 0;
 
   return (
-    <div className={`w-full max-w-[720px] rounded-[28px] p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
-      isSession ? "fluid-glass-box-session" : isDesignMode ? "fluid-glass-box-frosty" : "fluid-glass-box"
+    <div className={`w-full max-w-[720px] p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
+      hideBoxStyling
+        ? "bg-transparent border-t border-white/10"
+        : "rounded-[28px] fluid-glass-box-frosty"
     }`}>
       {/* / Commands Popup */}
       {showPopup && (
@@ -697,9 +624,13 @@ export default function PromptInput({
         {/* Background highlight overlay */}
         <div
           ref={overlayRef}
-          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-relaxed p-0 overflow-y-hidden prompt-overlay"
+          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-[1.55] p-0 m-0 border-0 prompt-overlay prompt-overlay-invisible-scrollbar"
           style={{
             minHeight: "28px",
+            wordBreak: "break-word",
+            overflowWrap: "break-word",
+            letterSpacing: "normal",
+            boxSizing: "border-box",
           }}
         >
           {renderHighlightedText(value)}
@@ -718,18 +649,34 @@ export default function PromptInput({
           rows={1}
           className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
             value ? "text-transparent" : "text-white"
-          } caret-white placeholder-white/35 font-sans text-[17px] leading-relaxed resize-none p-0 custom-scrollbar relative z-10 prompt-textarea`}
-          placeholder={
-            value
-              ? ""
-              : isDesignMode
-              ? designPlaceholderText || "Ask VoxKage to design your website..."
-              : "Ask VoxKage, type / for commands"
-          }
+          } caret-white placeholder-white/35 font-sans text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea`}
+          placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
             minHeight: "28px",
+            wordBreak: "break-word",
+            overflowWrap: "break-word",
+            letterSpacing: "normal",
+            boxSizing: "border-box",
           }}
         />
+
+        <style jsx>{`
+          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+          }
+          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar-thumb {
+            background: transparent;
+            border: none;
+          }
+          .prompt-overlay-invisible-scrollbar {
+            scrollbar-width: thin;
+            scrollbar-color: transparent transparent;
+          }
+        `}</style>
       </div>
 
       {/* Bottom Actions Bar */}
@@ -852,69 +799,67 @@ export default function PromptInput({
             </div>
           </div>
 
-          {/* Build / Plan Mode Dropdown (Design Mode Only) */}
-          {isDesignMode && (
-            <div ref={buildDropdownRef} className="relative animate-fadeIn">
-              <button
-                type="button"
-                onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] font-sans font-medium select-none cursor-pointer"
-              >
-                <span>{buildMode}</span>
-                <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
-              </button>
+          {/* Work / Plan Mode Dropdown */}
+          <div ref={buildDropdownRef} className="relative animate-fadeIn">
+            <button
+              type="button"
+              onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] font-sans font-medium select-none cursor-pointer"
+            >
+              <span>{buildMode}</span>
+              <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
 
-              {buildDropdownOpen && (
-                <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-xl p-1.5 z-50 flex flex-col gap-1 min-w-[130px] shadow-2xl animate-fadeIn select-none">
-                  {/* Option 1: Build */}
-                  <div className="relative group/opt">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBuildMode("Build");
-                        setBuildDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                        buildMode === "Build"
-                          ? "bg-white/10 text-white font-medium"
-                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      <span>Build</span>
-                      {buildMode === "Build" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                    </button>
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                      VoxKage will directly start working on the Projects.
-                    </div>
-                  </div>
-
-                  {/* Option 2: Plan */}
-                  <div className="relative group/opt">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBuildMode("Plan");
-                        setBuildDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                        buildMode === "Plan"
-                          ? "bg-white/10 text-white font-medium"
-                          : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      <span>Plan</span>
-                      {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                    </button>
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                      VoxKage plans before generating designs
-                    </div>
+            {buildDropdownOpen && (
+              <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-xl p-1.5 z-50 flex flex-col gap-1 min-w-[130px] shadow-2xl animate-fadeIn select-none">
+                {/* Option 1: Work */}
+                <div className="relative group/opt">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuildMode("Work");
+                      setBuildDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
+                      buildMode === "Work"
+                        ? "bg-white/10 text-white font-medium"
+                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span>Work</span>
+                    {buildMode === "Work" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
+                    VoxKage will directly start working on the Projects.
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Option 2: Plan */}
+                <div className="relative group/opt">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBuildMode("Plan");
+                      setBuildDropdownOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
+                      buildMode === "Plan"
+                        ? "bg-white/10 text-white font-medium"
+                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span>Plan</span>
+                    {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  </button>
+                  {/* Tooltip */}
+                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
+                    VoxKage plans before generating tasks.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Submit / Stop Button */}
           {isStreaming ? (

@@ -7,7 +7,7 @@ import AssistantResponseBubble from "@/components/AssistantResponseBubble";
 import PromptInput from "@/components/PromptInput";
 // import VoxKageIdleCreature from "@/components/VoxKageIdleCreature"; // ← kept for reference
 import VoxKageCreature from "@/components/VoxKageCreature";
-import DesignPoeticSubtitle from "@/components/DesignPoeticSubtitle";
+import AnimatedHomepageGreeting from "@/components/AnimatedHomepageGreeting";
 import { Message } from "@/lib/chatHelpers";
 import { Attachment } from "@/components/MessageAttachmentsRow";
 
@@ -55,7 +55,6 @@ interface ChatWorkspaceProps {
   handleSendMessage: (text: string) => void;
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
-  isDesignMode?: boolean;
 }
 
 export default function ChatWorkspace({
@@ -98,7 +97,6 @@ export default function ChatWorkspace({
   handleSendMessage,
   setShowArtifactsPanel,
   setJumpToLine,
-  isDesignMode = false,
 }: ChatWorkspaceProps) {
   return (
     <div
@@ -159,29 +157,19 @@ export default function ChatWorkspace({
         </div>
       </div>
 
-      {!isChatActive && (
-        <div className={`flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 pb-32 z-20 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-          isDesignMode ? "pt-12 sm:pt-20" : ""
-        }`}>
-          <div
-            className={`w-full grid transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-              isDesignMode
-                ? "grid-rows-[0fr] opacity-0 mb-0 pointer-events-none"
-                : "grid-rows-[1fr] opacity-100 mb-7 pointer-events-auto"
-            }`}
-          >
-            <div className="overflow-hidden flex flex-col items-center">
-              <VoxKageCreature />
-              <h1 className="text-white text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2">
-                {greeting}
-              </h1>
-            </div>
+      {/* Unstarted Homepage Container */}
+      {!isChatActive && messages.length === 0 && (
+        <div className="flex-grow flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 z-20 pb-32 transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
+          {/* Creature & Greeting Header */}
+          <div className="overflow-hidden flex flex-col items-center mb-7">
+            <VoxKageCreature />
+            <AnimatedHomepageGreeting greeting={greeting} />
           </div>
 
+          {/* Universal PromptInput Container */}
           <div className="w-full flex flex-col items-center transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]">
             <PromptInput
               isSession={false}
-              isDesignMode={isDesignMode}
               onSubmit={handleSendMessage}
               selectedModel={selectedModel}
               setSelectedModel={setSelectedModel}
@@ -214,11 +202,11 @@ export default function ChatWorkspace({
               editingFile={editingFile}
               onRemoveEditingFile={() => setEditingFile(null)}
             />
-            <DesignPoeticSubtitle isDesignMode={isDesignMode} />
           </div>
         </div>
       )}
 
+      {/* Active Normal Chat Session Container */}
       {isChatActive && (
         <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5 pointer-events-none">
           <div className="relative z-10 w-full flex flex-col items-center gap-2.5">

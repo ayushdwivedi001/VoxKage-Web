@@ -16,7 +16,8 @@ import {
   Edit3,
   Trash2,
   Settings,
-  Check
+  Check,
+  Palette
 } from "lucide-react";
 
 interface SidebarProps {

@@ -12,7 +12,6 @@ import RightPanel from "@/components/RightPanel";
 import ChatHeader from "@/components/ChatHeader";
 import ChatWorkspace from "@/components/ChatWorkspace";
 import OverlayManager from "@/components/OverlayManager";
-import SwitchToDesignButton from "@/components/SwitchToDesignButton";
 import DesignDottedCanvas from "@/components/DesignDottedCanvas";
 
 // Extracted Hooks
@@ -48,22 +47,6 @@ export default function Home() {
   // Code inspection split pane states
   const [activeFile, setActiveFile] = useState<{ name: string; code: string } | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isDesignMode, setIsDesignMode] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("voxkage_design_mode") === "true";
-    }
-    return false;
-  });
-
-  const handleToggleDesignMode = () => {
-    setIsDesignMode((prev) => {
-      const next = !prev;
-      if (typeof window !== "undefined") {
-        localStorage.setItem("voxkage_design_mode", String(next));
-      }
-      return next;
-    });
-  };
 
   // Comments and versions states
   const [comments, setComments] = useState<Array<{ id: string; fileName: string; line: number; text: string }>>([]);
@@ -382,8 +365,8 @@ export default function Home() {
       />
 
       {/* === BACKGROUND LAYERS === */}
-      <GradientBackground isChatActive={isChatActive} isDesignMode={isDesignMode && !isChatActive} />
-      <DesignDottedCanvas active={isDesignMode && !isChatActive} />
+      <GradientBackground isChatActive={false} isDesignMode={true} />
+      <DesignDottedCanvas active={true} isChatActive={isChatActive} />
 
       <main
         className="relative flex flex-col flex-grow items-center justify-between overflow-hidden bg-transparent transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-10"
@@ -391,19 +374,6 @@ export default function Home() {
           height: "100vh",
         }}
       >
-        {isChatActive && (
-          <div className="absolute bottom-0 left-0 right-0 h-[28%] z-0 pointer-events-none bg-gradient-to-t from-[#0438c2]/24 via-[#0438c2]/06 to-transparent" />
-        )}
-
-        {!isChatActive && (
-          <div className="absolute top-4 right-6 z-30 flex items-center gap-2 select-none animate-fadeIn">
-            <SwitchToDesignButton
-              isDesignMode={isDesignMode}
-              onToggleDesignMode={handleToggleDesignMode}
-            />
-          </div>
-        )}
-
         <ChatHeader
           isChatActive={isChatActive}
           isExpanded={isExpanded}
@@ -419,8 +389,6 @@ export default function Home() {
           setShowArtifactsPanel={setShowArtifactsPanel}
           sessionArtifacts={sessionArtifacts}
           handleDeleteSession={chatSessions.handleDeleteSession}
-          isDesignMode={isDesignMode}
-          onToggleDesignMode={handleToggleDesignMode}
         />
 
         <div className="relative flex flex-grow w-full h-full overflow-hidden">
@@ -466,7 +434,6 @@ export default function Home() {
             handleSendMessage={agentCompletion.handleSendMessage}
             setShowArtifactsPanel={setShowArtifactsPanel}
             setJumpToLine={setJumpToLine}
-            isDesignMode={isDesignMode}
           />
 
           {(activeFile || showArtifactsPanel) && !isExpanded && (
