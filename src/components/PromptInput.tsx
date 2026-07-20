@@ -794,7 +794,7 @@ export default function PromptInput({
             </div>
             
             {/* Tooltip */}
-            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50">
+            <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/hud:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-30 select-none">
               Context window. Run <span className="font-mono text-blue-400">/compact</span> to compact the context window.
             </div>
           </div>
@@ -811,52 +811,50 @@ export default function PromptInput({
             </button>
 
             {buildDropdownOpen && (
-              <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-xl p-1.5 z-50 flex flex-col gap-1 min-w-[130px] shadow-2xl animate-fadeIn select-none">
+              <div className="absolute bottom-full mb-2.5 right-0 fluid-glass-popup rounded-2xl p-2 z-[70] flex flex-col gap-1.5 w-[220px] shadow-2xl animate-fadeIn select-none">
                 {/* Option 1: Work */}
-                <div className="relative group/opt">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuildMode("Work");
-                      setBuildDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                      buildMode === "Work"
-                        ? "bg-white/10 text-white font-medium"
-                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>Work</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuildMode("Work");
+                    setBuildDropdownOpen(false);
+                  }}
+                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer ${
+                    buildMode === "Work"
+                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[13px] font-sans font-semibold text-white">Work</span>
                     {buildMode === "Work" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                    VoxKage will directly start working on the Projects.
                   </div>
-                </div>
+                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1">
+                    VoxKage will directly start working on the tasks.
+                  </span>
+                </button>
 
                 {/* Option 2: Plan */}
-                <div className="relative group/opt">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBuildMode("Plan");
-                      setBuildDropdownOpen(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-sans transition-colors cursor-pointer ${
-                      buildMode === "Plan"
-                        ? "bg-white/10 text-white font-medium"
-                        : "text-zinc-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span>Plan</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBuildMode("Plan");
+                    setBuildDropdownOpen(false);
+                  }}
+                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer ${
+                    buildMode === "Plan"
+                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      : "text-zinc-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <div className="w-full flex items-center justify-between">
+                    <span className="text-[13px] font-sans font-semibold text-white">Plan</span>
                     {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
-                  </button>
-                  {/* Tooltip */}
-                  <div className="absolute bottom-full mb-2 right-0 opacity-0 pointer-events-none group-hover/opt:opacity-100 transition-opacity duration-150 fluid-glass-popup text-zinc-200 text-[11px] font-sans px-2.5 py-1.5 rounded-lg whitespace-nowrap z-50 shadow-xl">
-                    VoxKage plans before generating tasks.
                   </div>
-                </div>
+                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1">
+                    VoxKage will create a plan before working.
+                  </span>
+                </button>
               </div>
             )}
           </div>
