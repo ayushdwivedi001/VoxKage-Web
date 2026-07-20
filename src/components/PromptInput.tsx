@@ -418,7 +418,11 @@ export default function PromptInput({
     const newValue = words.join(" ") + " ";
     setValue(newValue);
     setTimeout(() => {
-      textareaRef.current?.focus();
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const len = newValue.length;
+        textareaRef.current.setSelectionRange(len, len);
+      }
       adjustHeight();
     }, 0);
   };
