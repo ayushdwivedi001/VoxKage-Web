@@ -273,7 +273,8 @@ export async function fetchKiloModels(kiloKey: string): Promise<any[]> {
       });
     }
   } catch (e) {
-    console.error("Direct fetch to Kilo models also failed:", e);
+    // Silent recovery if direct client fetch hits network drop/CORS preflight
+    console.warn("Direct fetch to Kilo models unavailable:", e);
   }
   return [];
 }

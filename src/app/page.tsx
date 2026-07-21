@@ -94,6 +94,7 @@ export default function Home() {
   const { rightPanelWidth, handlePointerDown } = usePanelResizer(480);
 
   const loadInitialData = async () => {
+    if (!auth.isLoggedIn) return;
     try {
       const sess = await fetchSessions();
       chatSessions.setSessionsList(sess);
@@ -253,7 +254,7 @@ export default function Home() {
 
   // Dynamically load Kilo Code models when kiloApiKey updates
   useEffect(() => {
-    if (!kiloApiKey) return;
+    if (!kiloApiKey || !auth.isLoggedIn) return;
     import("@/lib/api").then(({ fetchKiloModels }) => {
       fetchKiloModels(kiloApiKey).then((kiloModels) => {
         if (kiloModels && kiloModels.length > 0) {
