@@ -69,6 +69,7 @@ export default function Home() {
   const [customProxyUrl, setCustomProxyUrl] = useState("");
 
   const [userName, setUserName] = useState("");
+  const [userAvatarUrl, setUserAvatarUrl] = useState("");
   const [greeting, setGreeting] = useState("");
   const hasVisitedRef = useRef(false);
 
@@ -129,6 +130,10 @@ export default function Home() {
       if (boot.user_name) {
         localStorage.setItem("voxkage_user_name", boot.user_name);
         setUserName(boot.user_name);
+      }
+      if (boot.avatar_url) {
+        localStorage.setItem("voxkage_web_avatar_url", boot.avatar_url);
+        setUserAvatarUrl(boot.avatar_url);
       }
 
       if (boot.selected_model && !localStorage.getItem("voxkage_selected_model")) {
@@ -386,6 +391,16 @@ export default function Home() {
         loginError={auth.loginError}
         loginLoading={auth.loginLoading}
         onSubmit={auth.handleLogin}
+        onGoogleSuccess={(token: string, email: string, avatarUrl?: string, name?: string) => {
+          auth.setIsLoggedIn(true);
+          if (avatarUrl) setUserAvatarUrl(avatarUrl);
+          if (name) setUserName(name);
+        }}
+        onAuthSuccess={(token: string, email: string, avatarUrl?: string, name?: string) => {
+          auth.setIsLoggedIn(true);
+          if (avatarUrl) setUserAvatarUrl(avatarUrl);
+          if (name) setUserName(name);
+        }}
       />
     );
   }
@@ -455,6 +470,7 @@ export default function Home() {
         onOpenConnect={() => setShowConnectModal(true)}
         isChatActive={isChatActive}
         userName={userName}
+        userAvatarUrl={userAvatarUrl}
       />
 
       {/* === BACKGROUND LAYERS === */}

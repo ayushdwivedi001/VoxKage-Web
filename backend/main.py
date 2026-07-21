@@ -164,6 +164,26 @@ class MasterLoginRequest(BaseModel):
     email: EmailStr
     master_key: str
 
+class SendOtpRequest(BaseModel):
+    email: EmailStr
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    user_name: Optional[str] = None
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+class SignUpRequest(BaseModel):
+    email: EmailStr
+    password: str
+    user_name: str
+
+class LoginPasswordRequest(BaseModel):
+    email: EmailStr
+    password: str
+
 class SaveFavoritesRequest(BaseModel):
     favorites: List[str]
 
@@ -274,6 +294,7 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
 
     return {
         "user_name": profile.get("userName") or profile.get("user_name") or "",
+        "avatar_url": profile.get("avatar_url") or profile.get("avatarUrl") or "",
         "selected_model": profile.get("selected_model") or profile.get("selectedModel") or "DeepSeek V4 Flash",
         "selected_variant": profile.get("selected_variant") or profile.get("selectedVariant") or "Max",
         "soul_context": soul_context,
@@ -292,11 +313,123 @@ def master_login(req: MasterLoginRequest):
     expected_master = os.getenv("VOXKAGE_MASTER_KEY", "sir")
     if req.master_key == expected_master:
         token = create_access_token(data={"sub": req.email})
-        return {"access_token": token, "token_type": "bearer"}
+        return {"access_token": token, "token_type": "bearer", "user_name": req.email.split("@")[0]}
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unauthorized: Master Key verification failed."
     )
+
+@app.post("/auth/send-otp")
+def send_otp_endpoint(req: SendOtpRequest):
+    from auth import generate_otp
+    code = generate_otp(req.email)
+    return {"status": "success", "message": f"OTP sent to {req.email}", "test_otp": code}
+
+@app.post("/auth/verify-otp")
+def verify_otp_endpoint(req: VerifyOtpRequest):
+    from auth import verify_otp, create_access_token
+    from database import get_user_settings_profile, save_user_settings_profile
+    
+    if not verify_otp(req.email, req.otp):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OTP code."
+        )
+
+    # Sync username to profile if provided
+    profile = get_user_settings_profile(req.email)
+    user_name = req.user_name or profile.get("userName") or profile.get("user_name") or req.email.split("@")[0]
+    profile["userName"] = user_name
+    profile["user_name"] = user_name
+    save_user_settings_profile(req.email, profile)
+
+    token = create_access_token(data={"sub": req.email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": req.email,
+        "user_name": user_name,
+        "avatar_url": profile.get("avatar_url", "")
+    }
+
+@app.post("/auth/google")
+async def google_auth_endpoint(req: GoogleAuthRequest):
+    from auth import verify_google_token, create_access_token
+    from database import get_user_settings_profile, save_user_settings_profile
+    
+    user_data = await verify_google_token(req.credential)
+    email = user_data.get("email")
+    if not email:
+        raise HTTPException(status_code=400, detail="Google authentication failed.")
+
+    profile = get_user_settings_profile(email)
+    user_name = user_data.get("user_name") or profile.get("userName") or email.split("@")[0]
+    avatar_url = user_data.get("avatar_url") or profile.get("avatar_url", "")
+
+    profile["userName"] = user_name
+    profile["user_name"] = user_name
+    profile["avatar_url"] = avatar_url
+    save_user_settings_profile(email, profile)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": email,
+        "user_name": user_name,
+        "avatar_url": avatar_url
+    }
+
+@app.post("/auth/signup")
+def signup_endpoint(req: SignUpRequest):
+    from auth import hash_password, create_access_token
+    from database import get_user_settings_profile, save_user_settings_profile
+    
+    email = req.email.lower().strip()
+    profile = get_user_settings_profile(email)
+    
+    # Store hashed password in settings profile
+    profile["password_hash"] = hash_password(req.password)
+    profile["userName"] = req.user_name.strip()
+    profile["user_name"] = req.user_name.strip()
+    save_user_settings_profile(email, profile)
+
+    token = create_access_token(data={"sub": email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": email,
+        "user_name": req.user_name.strip(),
+        "avatar_url": profile.get("avatar_url", "")
+    }
+
+@app.post("/auth/login-password")
+def login_password_endpoint(req: LoginPasswordRequest):
+    from auth import verify_password, create_access_token
+    from database import get_user_settings_profile
+    
+    email = req.email.lower().strip()
+    profile = get_user_settings_profile(email)
+    stored_hash = profile.get("password_hash")
+    
+    # Verify password if user has signed up, or check master key
+    if stored_hash:
+        if not verify_password(req.password, stored_hash):
+            raise HTTPException(status_code=401, detail="Invalid password.")
+    else:
+        # Fallback master key check if password not set yet
+        expected_master = os.getenv("VOXKAGE_MASTER_KEY", "sir")
+        if req.password != expected_master:
+            raise HTTPException(status_code=401, detail="Invalid password or Master Key.")
+
+    user_name = profile.get("userName") or profile.get("user_name") or email.split("@")[0]
+    token = create_access_token(data={"sub": email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": email,
+        "user_name": user_name,
+        "avatar_url": profile.get("avatar_url", "")
+    }
 
 # --- Sessions REST Endpoints ---
 @app.get("/sessions")

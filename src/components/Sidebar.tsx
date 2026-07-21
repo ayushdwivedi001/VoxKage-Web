@@ -44,6 +44,7 @@ interface SidebarProps {
   onOpenConnect: () => void;
   isChatActive?: boolean;
   userName?: string;
+  userAvatarUrl?: string;
 }
 
 const SidebarTooltip = ({ children, text, show }: { children: React.ReactNode; text: string; show: boolean }) => {
@@ -76,6 +77,7 @@ export default function Sidebar({
   onOpenConnect,
   isChatActive = false,
   userName = "Ayush",
+  userAvatarUrl = "",
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
@@ -796,8 +798,12 @@ export default function Sidebar({
             className="relative flex items-center w-full pl-[7px] py-1 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
           >
             {/* Avatar */}
-            <div className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800 text-zinc-300 text-[13px] font-semibold border border-zinc-700/40 flex-shrink-0 select-none">
-              {userName ? userName.charAt(0).toUpperCase() : "A"}
+            <div className="w-9 h-9 min-w-[36px] min-h-[36px] aspect-square flex-shrink-0 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 text-sm font-medium shadow-sm transition-transform duration-200 group-hover:scale-105 overflow-hidden">
+              {userAvatarUrl ? (
+                <img src={userAvatarUrl} alt={userName || "User"} className="w-full h-full object-cover" />
+              ) : (
+                <span>{userName ? userName.charAt(0).toUpperCase() : "A"}</span>
+              )}
             </div>
 
             {/* User info without Free plan text */}

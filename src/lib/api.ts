@@ -8,17 +8,31 @@ export function getToken(): string | null {
   return null;
 }
 
-export function saveToken(token: string, email: string) {
+export function saveToken(token: string, email: string, avatarUrl?: string, userName?: string) {
   if (typeof window !== "undefined") {
     localStorage.setItem("voxkage_web_token", token);
     localStorage.setItem("voxkage_web_email", email);
+    if (avatarUrl) {
+      localStorage.setItem("voxkage_web_avatar_url", avatarUrl);
+    }
+    if (userName) {
+      localStorage.setItem("voxkage_user_name", userName);
+    }
   }
+}
+
+export function getAvatarUrl(): string {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("voxkage_web_avatar_url") || "";
+  }
+  return "";
 }
 
 export function clearToken() {
   if (typeof window !== "undefined") {
     localStorage.removeItem("voxkage_web_token");
     localStorage.removeItem("voxkage_web_email");
+    localStorage.removeItem("voxkage_web_avatar_url");
   }
 }
 
@@ -88,8 +102,81 @@ export async function login(email: string, masterKey: string): Promise<string> {
 
   const data = await res.json();
   const token = data.access_token;
-  saveToken(token, email);
+  saveToken(token, email, "", data.user_name);
   return token;
+}
+
+export async function sendOtp(email: string): Promise<any> {
+  const res = await fetch(`${BACKEND_URL}/auth/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(errText || "Failed to send OTP.");
+  }
+  return res.json();
+}
+
+export async function verifyOtp(email: string, otp: string, userName?: string): Promise<{ token: string; avatarUrl?: string; userName?: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, otp, user_name: userName }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Invalid or expired OTP code.");
+  }
+  const data = await res.json();
+  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name);
+  return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
+}
+
+export async function loginWithGoogle(credential: string): Promise<{ token: string; avatarUrl?: string; userName?: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/google`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Google authentication failed.");
+  }
+  const data = await res.json();
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
+}
+
+export async function signupUser(email: string, password: string, userName: string): Promise<{ token: string; avatarUrl?: string; userName?: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, user_name: userName }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to create account.");
+  }
+  const data = await res.json();
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
+}
+
+export async function loginWithPassword(email: string, password: string): Promise<{ token: string; avatarUrl?: string; userName?: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/login-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Invalid email or password.");
+  }
+  const data = await res.json();
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 
 export async function fetchSessions() {
