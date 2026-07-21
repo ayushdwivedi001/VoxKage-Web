@@ -992,25 +992,46 @@ async def completions_proxy(
     if not authorization:
         raise HTTPException(status_code=400, detail="Missing Authorization header")
         
+    is_kilo = False
+    model_str = body.get("model", "")
+    if "/" in model_str or "kilo" in model_str.lower() or authorization.startswith("Bearer eyJ"):
+        is_kilo = True
+
     async def stream_generator():
         async with httpx.AsyncClient() as client:
             try:
-                async with client.stream(
-                    "POST",
-                    "https://opencode.ai/zen/v1/chat/completions",
-                    headers={
-                        "Content-Type": "application/json",
-                        "Authorization": authorization
-                    },
-                    json=body,
-                    timeout=60.0
-                ) as response:
-                    if response.status_code != 200:
-                        err_bytes = await response.aread()
-                        yield f"data: Error (HTTP {response.status_code}): {err_bytes.decode(errors='ignore')}\n\n".encode()
-                        return
-                    async for chunk in response.aiter_bytes():
-                        yield chunk
+                # 1. Map target URL
+                url = "https://api.kilo.ai/api/gateway/chat/completions" if is_kilo else "https://opencode.ai/zen/v1/chat/completions"
+                # Strip models prefix if it was passed with kilo-auto/ or similar prefix
+                
+                # 2. Query with retries for resilience
+                last_err = ""
+                for attempt in range(3):
+                    try:
+                        async with client.stream(
+                            "POST",
+                            url,
+                            headers={
+                                "Content-Type": "application/json",
+                                "Authorization": authorization
+                            },
+                            json=body,
+                            timeout=60.0
+                        ) as response:
+                            if response.status_code == 200:
+                                async for chunk in response.aiter_bytes():
+                                    yield chunk
+                                return
+                            else:
+                                err_bytes = await response.aread()
+                                last_err = f"HTTP {response.status_code}: {err_bytes.decode(errors='ignore')}"
+                                if response.status_code == 429:
+                                    await asyncio.sleep(2.0)
+                    except Exception as e:
+                        last_err = str(e)
+                        await asyncio.sleep(2.0)
+                
+                yield f"data: Error (Proxy Retry Failure): {last_err}\n\n".encode()
             except Exception as e:
                 yield f"data: Error (Proxy Exception): {str(e)}\n\n".encode()
 

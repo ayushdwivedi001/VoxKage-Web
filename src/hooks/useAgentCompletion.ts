@@ -369,21 +369,11 @@ export default function useAgentCompletion({
             body.tool_choice = "auto";
           }
 
-          let res: Response;
-          try {
-            res = await fetch(targetUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${openCodeKey}`,
-              },
-              body: JSON.stringify(body),
-              signal: controller.signal,
-            });
-          } catch (fetchErr: any) {
-            if (targetUrl !== "/api/completions/proxy") {
-              console.warn("Custom proxy failed to fetch, falling back to local proxy:", fetchErr);
-              targetUrl = "/api/completions/proxy";
+          let res: Response | null = null;
+          let lastFetchError: any = null;
+
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
               res = await fetch(targetUrl, {
                 method: "POST",
                 headers: {
@@ -393,9 +383,34 @@ export default function useAgentCompletion({
                 body: JSON.stringify(body),
                 signal: controller.signal,
               });
-            } else {
-              throw fetchErr;
+
+              if (res.ok) {
+                lastFetchError = null;
+                break;
+              } else {
+                const status = res.status;
+                const errText = await res.text();
+                lastFetchError = new Error(`OpenCode API Error (HTTP ${status}): ${errText}`);
+                console.warn(`Fetch attempt ${attempt} failed with status ${status}. Retrying...`);
+              }
+            } catch (fetchErr: any) {
+              if (targetUrl !== "/api/completions/proxy") {
+                console.warn("Custom proxy failed to fetch, trying local proxy fallback...");
+                targetUrl = "/api/completions/proxy";
+                attempt--; // retry fallback immediately
+                continue;
+              }
+              lastFetchError = fetchErr;
+              console.warn(`Fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
             }
+            if (attempt < 3) {
+              // Wait 3 seconds before next retry
+              await new Promise((resolve) => setTimeout(resolve, 3000));
+            }
+          }
+
+          if (lastFetchError || !res) {
+            throw lastFetchError || new Error("Failed to get response after 3 attempts.");
           }
 
           if (!res.ok) {
@@ -752,21 +767,11 @@ export default function useAgentCompletion({
               body.tool_choice = "auto";
             }
 
-            let res: Response;
-            try {
-              res = await fetch(targetUrl, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${openCodeKey}`,
-                },
-                body: JSON.stringify(body),
-                signal: controller.signal,
-              });
-            } catch (fetchErr: any) {
-              if (targetUrl !== "/api/completions/proxy") {
-                console.warn("Custom proxy failed to fetch, falling back to local proxy:", fetchErr);
-                targetUrl = "/api/completions/proxy";
+            let res: Response | null = null;
+            let lastFetchError: any = null;
+
+            for (let attempt = 1; attempt <= 3; attempt++) {
+              try {
                 res = await fetch(targetUrl, {
                   method: "POST",
                   headers: {
@@ -776,9 +781,34 @@ export default function useAgentCompletion({
                   body: JSON.stringify(body),
                   signal: controller.signal,
                 });
-              } else {
-                throw fetchErr;
+
+                if (res.ok) {
+                  lastFetchError = null;
+                  break;
+                } else {
+                  const status = res.status;
+                  const errText = await res.text();
+                  lastFetchError = new Error(`OpenCode API Error (HTTP ${status}): ${errText}`);
+                  console.warn(`Completion loop fetch attempt ${attempt} failed with status ${status}. Retrying...`);
+                }
+              } catch (fetchErr: any) {
+                if (targetUrl !== "/api/completions/proxy") {
+                  console.warn("Custom proxy failed to fetch, trying local proxy fallback...");
+                  targetUrl = "/api/completions/proxy";
+                  attempt--; // retry fallback immediately
+                  continue;
+                }
+                lastFetchError = fetchErr;
+                console.warn(`Completion loop fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
               }
+              if (attempt < 3) {
+                // Wait 3 seconds before next retry
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+              }
+            }
+
+            if (lastFetchError || !res) {
+              throw lastFetchError || new Error("Failed to get response after 3 attempts.");
             }
 
             if (!res.ok) {
