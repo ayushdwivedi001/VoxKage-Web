@@ -133,17 +133,22 @@ async def refresh_oauth_token(provider: str, refresh_token: str, client_id: str 
             raise Exception(f"Failed to refresh {provider} token: {res.text}")
         return res.json()
 
-async def get_valid_token(user_id: str, provider: str, connection: dict) -> str:
-    """Decrypt token and refresh if within 5 min of expiry (300s buffer)."""
+async def get_valid_token(user_id: str, provider: str, connection: dict, force_refresh: bool = False) -> str:
+    """Decrypt token and refresh if within 5 min of expiry (300s buffer) or if force_refresh is True."""
     expires_at_str = connection.get("expires_at")
     access_token = decrypt_token(connection["access_token"])
 
-    if not expires_at_str:
-        return access_token
+    should_refresh = force_refresh
+    if not should_refresh and expires_at_str:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_str)
+            if datetime.utcnow() + timedelta(minutes=5) >= expires_at:
+                should_refresh = True
+        except Exception:
+            should_refresh = True
 
-    try:
-        expires_at = datetime.fromisoformat(expires_at_str)
-        if datetime.utcnow() + timedelta(minutes=5) >= expires_at:
+    if should_refresh:
+        try:
             refresh_token = decrypt_token(connection.get("refresh_token", ""))
             if not refresh_token:
                 return access_token
@@ -167,12 +172,12 @@ async def get_valid_token(user_id: str, provider: str, connection: dict) -> str:
             connection["auth_status"] = "active"
             connection.pop("error_message", None)
             save_mcp_connection(user_id, provider, connection)
-    except Exception as e:
-        err_str = str(e)
-        print(f"[-] Token refresh failed for {provider}: {err_str}")
-        if "invalid_grant" in err_str.lower() or "revoked" in err_str.lower():
-            connection["auth_status"] = "expired"
-            connection["error_message"] = "OAuth token expired or revoked. Please re-authenticate."
-            save_mcp_connection(user_id, provider, connection)
+        except Exception as e:
+            err_str = str(e)
+            print(f"[-] Token refresh failed for {provider}: {err_str}")
+            if "invalid_grant" in err_str.lower() or "revoked" in err_str.lower():
+                connection["auth_status"] = "expired"
+                connection["error_message"] = "OAuth token expired or revoked. Please re-authenticate."
+                save_mcp_connection(user_id, provider, connection)
 
     return access_token

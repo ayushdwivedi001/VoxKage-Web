@@ -963,18 +963,29 @@ async def execute_tool_call_v2(
                 from mcp_client import get_valid_token
                 access_token = await get_valid_token(user_id, provider, conn)
  
-                if provider == "gmail":
-                    from mcp_servers.gmail.gmail_mcp import execute_google_tool
-                    tool_output = await execute_google_tool(provider, mcp_tool_name, args, access_token)
-                elif provider == "google_drive":
-                    from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
-                    tool_output = await execute_google_drive_tool(mcp_tool_name, args, access_token)
-                elif provider == "google_calendar":
-                    from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
-                    tool_output = await execute_google_calendar_tool(mcp_tool_name, args, access_token)
-                elif provider == "notion":
-                    from mcp_servers.notion.notion_mcp import execute_notion_tool
-                    tool_output = await execute_notion_tool(mcp_tool_name, args, access_token)
+                async def _run_provider_tool(tok: str) -> str:
+                    if provider == "gmail":
+                        from mcp_servers.gmail.gmail_mcp import execute_google_tool
+                        return await execute_google_tool(provider, mcp_tool_name, args, tok)
+                    elif provider == "google_drive":
+                        from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
+                        return await execute_google_drive_tool(mcp_tool_name, args, tok)
+                    elif provider == "google_calendar":
+                        from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
+                        return await execute_google_calendar_tool(mcp_tool_name, args, tok)
+                    elif provider == "notion":
+                        from mcp_servers.notion.notion_mcp import execute_notion_tool
+                        return await execute_notion_tool(mcp_tool_name, args, tok)
+                    return ""
+
+                if provider in ("gmail", "google_drive", "google_calendar", "notion"):
+                    tool_output = await _run_provider_tool(access_token)
+                    # Check if returned response indicates HTTP 401 / expired token
+                    lower_out = str(tool_output).lower()
+                    if "401" in lower_out or "unauthorized" in lower_out or "invalid credentials" in lower_out or "token expired" in lower_out or "invalid_grant" in lower_out:
+                        print(f"[!] {provider} returned 401/Auth error. Performing automatic token refresh and retrying...")
+                        fresh_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
+                        tool_output = await _run_provider_tool(fresh_token)
                 else:
                     server_url = conn.get("server_url")
                     if not server_url:
@@ -1011,7 +1022,7 @@ async def execute_tool_call_v2(
                         tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
                     except BaseException as first_error:
                         print(f"[-] MCP execution failed for {provider}: {first_error}. Retrying with fresh token.")
-                        access_token = await get_valid_token(user_id, provider, conn)
+                        access_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
                         try:
                             tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
                         except BaseException as retry_error:
