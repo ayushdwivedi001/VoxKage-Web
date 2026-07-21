@@ -143,12 +143,18 @@ export default function OverlayManager({
           setCustomProxyUrl={setCustomProxyUrl}
           onClose={() => {
             setUserName(localStorage.getItem("voxkage_user_name") || "");
-            setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+            import("@/lib/secureStorage").then(({ secureLoadKey }) => {
+              secureLoadKey("voxkage_opencode_api_key").then((key) => {
+                setOpenCodeApiKey(key);
+              });
+            });
             setCustomProxyUrl(localStorage.getItem("voxkage_custom_proxy_url") || "");
             setShowSettingsModal(false);
           }}
           onSave={() => {
-            localStorage.setItem("voxkage_opencode_api_key", openCodeApiKey.trim());
+            import("@/lib/secureStorage").then(({ secureSaveKey }) => {
+              secureSaveKey("voxkage_opencode_api_key", openCodeApiKey.trim());
+            });
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
             localStorage.setItem("voxkage_user_name", userName.trim());
             clearToolsCache();

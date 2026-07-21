@@ -335,7 +335,8 @@ export default function useAgentCompletion({
           sessionToolsCache[actualSessionId] = prepRes.tools;
         }
 
-        const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
+        const { secureLoadKey } = await import("@/lib/secureStorage");
+        const openCodeKey = await secureLoadKey("voxkage_opencode_api_key");
         const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
 
         if (!openCodeKey) {
@@ -713,7 +714,8 @@ export default function useAgentCompletion({
             sessionToolsCache[currentSessionId!] = prepRes.tools;
           }
 
-          const openCodeKey = localStorage.getItem("voxkage_opencode_api_key") || "";
+          const { secureLoadKey } = await import("@/lib/secureStorage");
+          const openCodeKey = await secureLoadKey("voxkage_opencode_api_key");
           const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
 
           if (!openCodeKey) {

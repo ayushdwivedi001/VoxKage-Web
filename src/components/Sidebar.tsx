@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Clock,
   PanelLeft,
@@ -17,7 +17,13 @@ import {
   Trash2,
   Settings,
   Check,
-  Palette
+  Palette,
+  User,
+  Moon,
+  Sun,
+  Monitor,
+  LogOut,
+  ChevronRight
 } from "lucide-react";
 
 interface SidebarProps {
@@ -36,6 +42,7 @@ interface SidebarProps {
   onOpenSearch: () => void;
   onOpenConnect: () => void;
   isChatActive?: boolean;
+  userName?: string;
 }
 
 const SidebarTooltip = ({ children, text, show }: { children: React.ReactNode; text: string; show: boolean }) => {
@@ -66,16 +73,42 @@ export default function Sidebar({
   onOpenSearch,
   onOpenConnect,
   isChatActive = false,
+  userName = "Ayush",
 }: SidebarProps) {
   const [activePopupSessionId, setActivePopupSessionId] = useState<string | null>(null);
   const [confirmDeleteSessionId, setConfirmDeleteSessionId] = useState<string | null>(null);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filterType, setFilterType] = useState<"none" | "alphabetical">("none");
 
+  // User Profile Popover States
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAppearanceMenu, setShowAppearanceMenu] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
+
   const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";
 
   // Touch Swipe to close drawer on mobile
   const touchStartXRef = React.useRef<number | null>(null);
+
+  // Outside-click detection for User Profile Popover
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setShowUserMenu(false);
+        setShowAppearanceMenu(false);
+        setShowSignOutConfirm(false);
+        if (typeof window !== "undefined" && window.innerWidth < 768) {
+          setIsExpanded(false);
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [showUserMenu]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartXRef.current = e.touches[0].clientX;
@@ -101,11 +134,17 @@ export default function Sidebar({
     <>
       {/* Mobile Backdrop Overlay */}
       <div
-        onClick={() => setIsExpanded(false)}
+        onClick={() => {
+          setIsExpanded(false);
+          setShowUserMenu(false);
+          setShowAppearanceMenu(false);
+          setShowSignOutConfirm(false);
+        }}
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity duration-300 md:hidden ${
           isExpanded ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       />
+
 
       <aside
         onTouchStart={handleTouchStart}
@@ -578,41 +617,201 @@ export default function Sidebar({
         })()}
 
       {/* === FOOTER USER SECTION === */}
-      <div className="mt-auto border-t border-zinc-800/80 p-2.5 flex flex-col gap-2.5 items-center w-full flex-shrink-0">
+      <div className="relative mt-auto border-t border-zinc-800/80 p-2.5 flex flex-col gap-2.5 items-center w-full flex-shrink-0">
+        {/* User Profile Popover Menu */}
+        {showUserMenu && (
+          <>
+            <div
+              ref={userMenuRef}
+              className={`absolute bottom-[56px] ${
+                isExpanded ? "left-3.5 w-[232px]" : "left-2 w-[220px]"
+              } bg-[#141418] border border-zinc-800 rounded-2xl p-1.5 shadow-2xl z-[130] flex flex-col gap-1 font-sans text-zinc-300 animate-fadeIn`}
+            >
+              {/* Profile Header */}
+              <div className="flex items-center gap-3 px-2.5 py-2.5 border-b border-zinc-800/80 mb-0.5">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-800 text-zinc-200 text-[14px] font-semibold border border-zinc-700/50 flex-shrink-0 select-none">
+                  {userName ? userName.charAt(0).toUpperCase() : "A"}
+                </div>
+                <div className="flex flex-col truncate">
+                  <span className="text-[14px] font-medium text-white truncate">
+                    {userName || "Ayush Dwivedi"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Menu Items */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onOpenSettings();
+                }}
+                className="flex items-center gap-3 px-2.5 py-2 rounded-xl text-[13.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+              >
+                <User className="w-4 h-4 text-zinc-400" />
+                <span>Profile</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  onOpenSettings();
+                }}
+                className="flex items-center gap-3 px-2.5 py-2 rounded-xl text-[13.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+              >
+                <Settings className="w-4 h-4 text-zinc-400" />
+                <span>Settings</span>
+              </button>
+
+              {/* Appearance Submenu Trigger */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowAppearanceMenu(!showAppearanceMenu)}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-[13.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <Moon className="w-4 h-4 text-zinc-400" />
+                    <span>Appearance</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-zinc-500" />
+                </button>
+
+                {showAppearanceMenu && (
+                  <div className="absolute left-full bottom-0 ml-1.5 w-[140px] bg-[#141418] border border-zinc-800 rounded-xl p-1 shadow-2xl z-[110] flex flex-col gap-0.5 animate-fadeIn">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setThemeMode("light");
+                        setShowAppearanceMenu(false);
+                      }}
+                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Sun className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Light</span>
+                      </div>
+                      {themeMode === "light" && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setThemeMode("dark");
+                        setShowAppearanceMenu(false);
+                      }}
+                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Moon className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>Dark</span>
+                      </div>
+                      {themeMode === "dark" && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setThemeMode("system");
+                        setShowAppearanceMenu(false);
+                      }}
+                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-3.5 h-3.5 text-zinc-400" />
+                        <span>System</span>
+                      </div>
+                      {themeMode === "system" && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-zinc-800/80 my-0.5" />
+
+              {/* Sign out section with Inline Are You Sure popup */}
+              {showSignOutConfirm ? (
+                <div className="p-2 bg-red-950/20 border border-red-500/30 rounded-xl flex flex-col gap-2 my-0.5 animate-fadeIn">
+                  <span className="text-[12px] text-zinc-200 text-center font-medium">
+                    Are you sure?
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowSignOutConfirm(false)}
+                      className="flex-1 py-1 rounded-lg border border-zinc-700 text-[11.5px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowSignOutConfirm(false);
+                        setShowUserMenu(false);
+                        onLogout();
+                      }}
+                      className="flex-1 py-1 rounded-lg bg-red-600 hover:bg-red-500 text-white text-[11.5px] font-medium transition-colors cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowSignOutConfirm(true)}
+                  className="flex items-center gap-3 px-2.5 py-2 rounded-xl text-[13.5px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4 text-red-400" />
+                  <span>Sign out</span>
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
         {!isExpanded ? (
-          <SidebarTooltip text="Settings" show={true}>
+          <SidebarTooltip text={userName || "Account"} show={true}>
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenSettings();
+                setShowUserMenu(!showUserMenu);
               }}
-              className={`w-[36px] h-[36px] rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-white/10 transition-all duration-200 cursor-pointer ${glassBtnStyle}`}
-              aria-label="Settings"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] aspect-square rounded-full bg-zinc-800 text-zinc-200 text-[13.5px] font-semibold border border-zinc-700/50 hover:border-zinc-500 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer select-none"
+              aria-label="User profile"
             >
-              <Settings className="w-[16px] h-[16px]" />
+              {userName ? userName.charAt(0).toUpperCase() : "A"}
             </button>
           </SidebarTooltip>
         ) : (
-          <div className="relative flex items-center w-full pl-[9px]">
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowUserMenu(!showUserMenu);
+            }}
+            className="relative flex items-center w-full pl-[7px] py-1 rounded-xl hover:bg-white/5 cursor-pointer transition-colors"
+          >
             {/* Avatar */}
             <div className="flex items-center justify-center w-7 h-7 rounded-full bg-zinc-800 text-zinc-300 text-[13px] font-semibold border border-zinc-700/40 flex-shrink-0 select-none">
-              A
+              {userName ? userName.charAt(0).toUpperCase() : "A"}
             </div>
 
-            {/* User info */}
+            {/* User info without Free plan text */}
             <div
-              className={`flex flex-col text-left ml-3.5 transition-all duration-300 ${
+              className={`flex flex-col text-left ml-3 transition-all duration-300 ${
                 isExpanded ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-2 pointer-events-none absolute"
               }`}
             >
-              <span className="text-[13.5px] font-medium text-zinc-200">Ayush</span>
-              <span className="text-[11px] text-zinc-500 font-normal">Free plan</span>
+              <span className="text-[13.5px] font-medium text-zinc-200 truncate max-w-[130px]">
+                {userName || "Ayush"}
+              </span>
             </div>
 
             {/* Actions (Settings only) */}
             <div
-              className={`flex items-center ml-auto pr-2 transition-opacity duration-300 ${
+              className={`flex items-center ml-auto pr-1 transition-opacity duration-300 ${
                 isExpanded ? "opacity-100" : "opacity-0 pointer-events-none absolute"
               }`}
             >
@@ -620,9 +819,9 @@ export default function Sidebar({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onOpenSettings();
+                  setShowUserMenu(!showUserMenu);
                 }}
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/5 hover:filter hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.5)] transition-all duration-200 cursor-pointer"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-500 hover:text-zinc-100 hover:bg-white/10 transition-all duration-200 cursor-pointer"
                 aria-label="Settings"
                 title="Settings"
               >

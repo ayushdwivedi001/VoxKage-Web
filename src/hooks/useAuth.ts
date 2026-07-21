@@ -9,6 +9,7 @@ interface UseAuthProps {
 }
 
 export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthProps) {
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginEmail, setLoginEmail] = useState("ayushdwivedi001@gmail.com");
   const [loginMasterKey, setLoginMasterKey] = useState("");
@@ -22,6 +23,7 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
       setIsLoggedIn(true);
       loadInitialData();
     }
+    setIsAuthChecking(false);
 
     const handleUnauthorized = () => {
       setIsLoggedIn(false);
@@ -56,6 +58,7 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
   };
 
   return {
+    isAuthChecking,
     isLoggedIn,
     setIsLoggedIn,
     loginEmail,

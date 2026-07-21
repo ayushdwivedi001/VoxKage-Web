@@ -187,10 +187,14 @@ export default function Home() {
     setJumpToLine,
   });
 
-  // Load settings on mount
+  // Load settings on mount with secure encryption load
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+      import("@/lib/secureStorage").then(({ secureLoadKey }) => {
+        secureLoadKey("voxkage_opencode_api_key").then((key) => {
+          setOpenCodeApiKey(key);
+        });
+      });
       const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
       if (savedProxy) {
         setCustomProxyUrl(savedProxy);
@@ -295,6 +299,15 @@ export default function Home() {
     setZoomImage(url);
   };
 
+  // Prevent flash of login screen while checking auth
+  if (auth.isAuthChecking) {
+    return (
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a]">
+        <GradientBackground isChatActive={false} />
+      </div>
+    );
+  }
+
   if (!auth.isLoggedIn) {
     return (
       <LoginView
@@ -347,7 +360,11 @@ export default function Home() {
         }}
         onDeleteSession={chatSessions.handleDeleteSession}
         onOpenSettings={() => {
-          setOpenCodeApiKey(localStorage.getItem("voxkage_opencode_api_key") || "");
+          import("@/lib/secureStorage").then(({ secureLoadKey }) => {
+            secureLoadKey("voxkage_opencode_api_key").then((key) => {
+              setOpenCodeApiKey(key);
+            });
+          });
           const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
           if (savedProxy) {
             setCustomProxyUrl(savedProxy);
@@ -363,6 +380,7 @@ export default function Home() {
         }}
         onOpenConnect={() => setShowConnectModal(true)}
         isChatActive={isChatActive}
+        userName={userName}
       />
 
       {/* === BACKGROUND LAYERS === */}
