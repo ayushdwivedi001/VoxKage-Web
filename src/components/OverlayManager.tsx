@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import ProfileModal from "@/components/ProfileModal";
 import MoreModelsModal from "@/components/MoreModelsModal";
 import ZoomImagePreview from "@/components/ZoomImagePreview";
 import ZoomDocumentPreview from "@/components/ZoomDocumentPreview";
@@ -9,8 +10,8 @@ import ConnectingAppModal from "@/components/ConnectingAppModal";
 import RenameSessionModal from "@/components/RenameSessionModal";
 import SettingsModal from "@/components/SettingsModal";
 import SearchModal from "@/components/SearchModal";
-import { Attachment } from "@/components/MessageAttachmentsRow";
 import ScheduleListModal from "@/components/ScheduleListModal";
+import { Attachment } from "@/components/MessageAttachmentsRow";
 import { clearToolsCache } from "@/hooks/useAgentCompletion";
 
 interface OverlayManagerProps {
@@ -27,10 +28,14 @@ interface OverlayManagerProps {
   executeRenameSession: (id: string, name: string) => Promise<void>;
   showSettingsModal: boolean;
   setShowSettingsModal: (show: boolean) => void;
+  showProfileModal: boolean;
+  setShowProfileModal: (show: boolean) => void;
   userName: string;
   setUserName: (val: string) => void;
   openCodeApiKey: string;
   setOpenCodeApiKey: (val: string) => void;
+  kiloApiKey: string;
+  setKiloApiKey: (val: string) => void;
   customProxyUrl: string;
   setCustomProxyUrl: (val: string) => void;
   handleLogout: () => void;
@@ -71,10 +76,14 @@ export default function OverlayManager({
   executeRenameSession,
   showSettingsModal,
   setShowSettingsModal,
+  showProfileModal,
+  setShowProfileModal,
   userName,
   setUserName,
   openCodeApiKey,
   setOpenCodeApiKey,
+  kiloApiKey,
+  setKiloApiKey,
   customProxyUrl,
   setCustomProxyUrl,
   handleLogout,
@@ -100,9 +109,9 @@ export default function OverlayManager({
   setConnectingServer,
   getRelativeTime,
 }: OverlayManagerProps) {
-  const [schedulesModalOpen, setSchedulesModalOpen] = React.useState(false);
+  const [schedulesModalOpen, setSchedulesModalOpen] = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleOpen = () => setSchedulesModalOpen(true);
     window.addEventListener("open-schedules-modal", handleOpen);
     return () => {
@@ -115,6 +124,7 @@ export default function OverlayManager({
         <MoreModelsModal
           selectedModel={selectedModel}
           modelsList={modelsList}
+          hasKiloProvider={!!kiloApiKey}
           onSelectModel={setSelectedModel}
           onToggleFavourite={handleToggleFavourite}
           onClose={() => setMoreModelsModalOpen(false)}
@@ -133,19 +143,36 @@ export default function OverlayManager({
         />
       )}
 
-      {showSettingsModal && (
-        <SettingsModal
+      {showProfileModal && (
+        <ProfileModal
           userName={userName}
           setUserName={setUserName}
+          onClose={() => {
+            setUserName(localStorage.getItem("voxkage_user_name") || "");
+            setShowProfileModal(false);
+          }}
+          onSave={() => {
+            localStorage.setItem("voxkage_user_name", userName.trim());
+            setShowProfileModal(false);
+          }}
+        />
+      )}
+
+      {showSettingsModal && (
+        <SettingsModal
           openCodeApiKey={openCodeApiKey}
           setOpenCodeApiKey={setOpenCodeApiKey}
+          kiloApiKey={kiloApiKey}
+          setKiloApiKey={setKiloApiKey}
           customProxyUrl={customProxyUrl}
           setCustomProxyUrl={setCustomProxyUrl}
           onClose={() => {
-            setUserName(localStorage.getItem("voxkage_user_name") || "");
             import("@/lib/secureStorage").then(({ secureLoadKey }) => {
               secureLoadKey("voxkage_opencode_api_key").then((key) => {
                 setOpenCodeApiKey(key);
+              });
+              secureLoadKey("voxkage_kilo_api_key").then((key) => {
+                setKiloApiKey(key);
               });
             });
             setCustomProxyUrl(localStorage.getItem("voxkage_custom_proxy_url") || "");
@@ -154,9 +181,9 @@ export default function OverlayManager({
           onSave={() => {
             import("@/lib/secureStorage").then(({ secureSaveKey }) => {
               secureSaveKey("voxkage_opencode_api_key", openCodeApiKey.trim());
+              secureSaveKey("voxkage_kilo_api_key", kiloApiKey.trim());
             });
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
-            localStorage.setItem("voxkage_user_name", userName.trim());
             clearToolsCache();
             setShowSettingsModal(false);
           }}

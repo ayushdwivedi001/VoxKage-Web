@@ -149,6 +149,48 @@ export async function fetchModels(): Promise<string[]> {
   }
 }
 
+export async function fetchKiloModels(kiloKey: string): Promise<any[]> {
+  if (!kiloKey) return [];
+  // 1. Try FastAPI backend endpoint first
+  try {
+    const res = await apiRequest(`/models/kilo?kilo_api_key=${encodeURIComponent(kiloKey.trim())}`);
+    if (Array.isArray(res) && res.length > 0) {
+      return res;
+    }
+  } catch (e) {
+    console.warn("Backend /models/kilo unavailable, attempting direct client fetch:", e);
+  }
+
+  // 2. Direct client-side fetch fallback
+  try {
+    const res = await fetch("https://api.kilo.ai/api/gateway/models", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${kiloKey.trim()}`,
+        Accept: "application/json",
+      },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const data = json.data || [];
+      return data.map((m: any) => {
+        const isFree = m.isFree || m.id.endsWith(":free");
+        return {
+          name: m.name || m.id,
+          api_key: m.id,
+          provider: "kilo",
+          desc: m.description || (isFree ? "Free Model" : "Paid Model"),
+          isFree,
+          requiresUpgrade: !isFree,
+        };
+      });
+    }
+  } catch (e) {
+    console.error("Direct fetch to Kilo models also failed:", e);
+  }
+  return [];
+}
+
 export async function uploadSessionFile(sessionId: string, file: File) {
   const token = getToken();
   const headers: HeadersInit = {};

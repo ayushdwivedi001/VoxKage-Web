@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState } from "react";
-import { Star, X, Check, Search } from "lucide-react";
+import { Star, X, Check, Search, Layers, ChevronDown } from "lucide-react";
 
-interface ModelOption {
+export interface ModelOption {
   name: string;
   desc: string;
+  provider?: "opencode" | "kilo" | string;
   unavailable?: boolean;
   requiresUpgrade?: boolean;
   isFavourite?: boolean;
@@ -14,6 +15,7 @@ interface ModelOption {
 interface MoreModelsModalProps {
   selectedModel: string;
   modelsList: ModelOption[];
+  hasKiloProvider?: boolean;
   onSelectModel: (model: string) => void;
   onToggleFavourite: (name: string) => void;
   onClose: () => void;
@@ -22,22 +24,47 @@ interface MoreModelsModalProps {
 export default function MoreModelsModal({
   selectedModel,
   modelsList,
+  hasKiloProvider = false,
   onSelectModel,
   onToggleFavourite,
   onClose,
 }: MoreModelsModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedProviderFilter, setSelectedProviderFilter] = useState<"opencode" | "kilo">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("voxkage_selected_provider_filter");
+      if (saved === "kilo" || saved === "opencode") return saved;
+    }
+    return "opencode";
+  });
+  const [showProviderDropdown, setShowProviderDropdown] = useState(false);
 
-  const filteredModels = modelsList.filter((m) =>
+  const handleSelectProvider = (provider: "opencode" | "kilo") => {
+    setSelectedProviderFilter(provider);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("voxkage_selected_provider_filter", provider);
+    }
+    setShowProviderDropdown(false);
+  };
+
+  // Filter models based on search query
+  const searchFiltered = modelsList.filter((m) =>
     m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.desc.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const favourites = filteredModels.filter((m) => m.isFavourite);
-  const otherModels = filteredModels.filter((m) => !m.isFavourite);
+  // Favourites section shows ALL favorited models matching search, regardless of provider filter
+  const favourites = searchFiltered.filter((m) => m.isFavourite);
+
+  // All Models section strictly filters ONLY by the selected provider (OpenCode vs Kilo)
+  const otherModels = searchFiltered.filter((m) => {
+    if (m.isFavourite) return false;
+    const modelProvider = m.provider || "opencode";
+    return modelProvider === selectedProviderFilter;
+  });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       {/* Backdrop overlay */}
       <div
         onClick={onClose}
@@ -59,8 +86,8 @@ export default function MoreModelsModal({
           </button>
         </div>
 
-        {/* Search Bar */}
-        <div className="px-5 py-3 border-b border-zinc-800/40 bg-zinc-900/20">
+        {/* Search Bar & Provider Dropdown Row */}
+        <div className="px-5 py-3 border-b border-zinc-800/40 bg-zinc-900/20 flex flex-col gap-2.5">
           <div className="relative flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-zinc-500" />
             <input
@@ -70,6 +97,50 @@ export default function MoreModelsModal({
               placeholder="Search models..."
               className="w-full bg-zinc-900/40 border border-zinc-800/80 rounded-xl py-2 pl-9 pr-4 text-[13.5px] text-zinc-200 placeholder-zinc-500 outline-none focus:border-zinc-700/80 transition-colors"
             />
+          </div>
+
+          {/* PROVIDER FILTER DROPDOWN */}
+          <div className="relative flex items-center justify-between px-1">
+            <span className="text-[11.5px] text-zinc-400 font-medium flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-zinc-500" />
+              <span>Provider:</span>
+            </span>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowProviderDropdown(!showProviderDropdown)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-[12px] font-medium text-zinc-200 transition-all cursor-pointer"
+              >
+                <span>
+                  {selectedProviderFilter === "kilo" ? "Kilo Code API" : "OpenCode Zen"}
+                </span>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+              </button>
+
+              {showProviderDropdown && (
+                <div className="absolute right-0 top-full mt-1 w-[160px] bg-[#16161b] border border-zinc-800 rounded-xl p-1 shadow-2xl z-[120] flex flex-col gap-0.5 animate-fadeIn">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider("opencode")}
+                    className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer text-left"
+                  >
+                    <span>OpenCode Zen</span>
+                    {selectedProviderFilter === "opencode" && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                  </button>
+                  {hasKiloProvider && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectProvider("kilo")}
+                      className="flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] text-zinc-300 hover:bg-zinc-800 transition-colors cursor-pointer text-left"
+                    >
+                      <span>Kilo Code API</span>
+                      {selectedProviderFilter === "kilo" && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -86,6 +157,7 @@ export default function MoreModelsModal({
                 {favourites.map((model) => {
                   const isSelected = selectedModel === model.name;
                   const isClickable = !model.unavailable;
+                  const providerLabel = model.provider === "kilo" ? "Kilo" : "OpenCode";
 
                   return (
                     <button
@@ -116,9 +188,15 @@ export default function MoreModelsModal({
                         
                         <div className="flex-grow flex flex-col">
                           <div className="flex items-center justify-between w-full">
-                            <span className="text-[13.5px] font-medium text-zinc-200">
-                              {model.name}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[13.5px] font-medium text-zinc-200">
+                                {model.name}
+                              </span>
+                              {/* Provider Tag on Favourites */}
+                              <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-medium border bg-zinc-800 text-zinc-300 border-zinc-700">
+                                {providerLabel}
+                              </span>
+                            </div>
                             {isSelected ? (
                               <Check className="w-4 h-4 text-blue-500 stroke-[2.5]" />
                             ) : model.requiresUpgrade ? (
@@ -203,7 +281,7 @@ export default function MoreModelsModal({
           )}
 
           {/* Empty search results state */}
-          {filteredModels.length === 0 && (
+          {searchFiltered.length === 0 && (
             <div className="flex flex-col items-center justify-center py-10 text-zinc-500">
               <span className="text-[13.5px] font-normal">No models found for query</span>
             </div>

@@ -38,6 +38,7 @@ interface SidebarProps {
   onRenameSession: (sessionId: string, currentName: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onOpenSettings: () => void;
+  onOpenProfile: () => void;
   connectionStatus: "connected" | "connecting" | "disconnected";
   onOpenSearch: () => void;
   onOpenConnect: () => void;
@@ -69,6 +70,7 @@ export default function Sidebar({
   onRenameSession,
   onDeleteSession,
   onOpenSettings,
+  onOpenProfile,
   connectionStatus,
   onOpenSearch,
   onOpenConnect,
@@ -644,7 +646,7 @@ export default function Sidebar({
                 type="button"
                 onClick={() => {
                   setShowUserMenu(false);
-                  onOpenSettings();
+                  onOpenProfile();
                 }}
                 className="flex items-center gap-3 px-2.5 py-2 rounded-xl text-[13.5px] text-zinc-300 hover:text-white hover:bg-white/5 transition-colors text-left cursor-pointer"
               >

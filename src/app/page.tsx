@@ -60,10 +60,12 @@ export default function Home() {
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [openCodeApiKey, setOpenCodeApiKey] = useState("");
+  const [kiloApiKey, setKiloApiKey] = useState("");
   const [customProxyUrl, setCustomProxyUrl] = useState("");
 
   const [userName, setUserName] = useState("");
@@ -98,7 +100,31 @@ export default function Home() {
       const boot = await fetchBootPayload();
       
       setConnectedServers(boot.mcp_connections || []);
-      setModelsList(mapModelsList(boot.models || [], boot.favorites || []));
+      
+      let initialModels = mapModelsList(boot.models || [], boot.favorites || []);
+      const { secureLoadKey } = await import("@/lib/secureStorage");
+      const kKey = await secureLoadKey("voxkage_kilo_api_key");
+      if (kKey) {
+        const { fetchKiloModels } = await import("@/lib/api");
+        const kiloModels = await fetchKiloModels(kKey);
+        if (kiloModels && kiloModels.length > 0) {
+          const kiloFormatted = kiloModels.map((km: any) => ({
+            name: km.name,
+            desc: km.desc,
+            api_key: km.api_key || km.name,
+            provider: "kilo",
+            isFavourite: (boot.favorites || []).includes(km.name) || (boot.favorites || []).includes(km.api_key),
+            requiresUpgrade: km.requiresUpgrade
+          }));
+          initialModels = [...initialModels, ...kiloFormatted] as any;
+        }
+      }
+      setModelsList(initialModels);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("voxkage_cached_models", JSON.stringify(initialModels));
+        } catch (e) {}
+      }
       
       if (boot.user_name) {
         localStorage.setItem("voxkage_user_name", boot.user_name);
@@ -187,12 +213,25 @@ export default function Home() {
     setJumpToLine,
   });
 
-  // Load settings on mount with secure encryption load
+  // Load settings on mount with secure encryption load & instant models cache hydration
   useEffect(() => {
     if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("voxkage_cached_models");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setModelsList(parsed);
+          }
+        }
+      } catch (e) {}
+
       import("@/lib/secureStorage").then(({ secureLoadKey }) => {
         secureLoadKey("voxkage_opencode_api_key").then((key) => {
           setOpenCodeApiKey(key);
+        });
+        secureLoadKey("voxkage_kilo_api_key").then((key) => {
+          setKiloApiKey(key);
         });
       });
       const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
@@ -206,6 +245,35 @@ export default function Home() {
       if (savedVariant) setSelectedVariant(savedVariant);
     }
   }, []);
+
+  // Dynamically load Kilo Code models when kiloApiKey updates
+  useEffect(() => {
+    if (!kiloApiKey) return;
+    import("@/lib/api").then(({ fetchKiloModels }) => {
+      fetchKiloModels(kiloApiKey).then((kiloModels) => {
+        if (kiloModels && kiloModels.length > 0) {
+          setModelsList((prev) => {
+            const nonKilo = prev.filter((m) => m.provider !== "kilo");
+            const kiloFormatted = kiloModels.map((km: any) => ({
+              name: km.name,
+              desc: km.desc,
+              api_key: km.api_key || km.name,
+              provider: "kilo",
+              isFavourite: false,
+              requiresUpgrade: km.requiresUpgrade,
+            }));
+            const updated = [...nonKilo, ...kiloFormatted];
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem("voxkage_cached_models", JSON.stringify(updated));
+              } catch (e) {}
+            }
+            return updated;
+          });
+        }
+      });
+    });
+  }, [kiloApiKey]);
 
   const handleCreateNewChat = () => {
     if (chatSessions.telemetryWsRef.current) {
@@ -364,13 +432,19 @@ export default function Home() {
             secureLoadKey("voxkage_opencode_api_key").then((key) => {
               setOpenCodeApiKey(key);
             });
+            secureLoadKey("voxkage_kilo_api_key").then((key) => {
+              setKiloApiKey(key);
+            });
           });
           const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
           if (savedProxy) {
             setCustomProxyUrl(savedProxy);
           }
-          setUserName(localStorage.getItem("voxkage_user_name") || "");
           setShowSettingsModal(true);
+        }}
+        onOpenProfile={() => {
+          setUserName(localStorage.getItem("voxkage_user_name") || "");
+          setShowProfileModal(true);
         }}
         connectionStatus={chatSessions.connectionStatus}
         onOpenSearch={() => {
@@ -500,10 +574,14 @@ export default function Home() {
         executeRenameSession={chatSessions.executeRenameSession}
         showSettingsModal={showSettingsModal}
         setShowSettingsModal={setShowSettingsModal}
+        showProfileModal={showProfileModal}
+        setShowProfileModal={setShowProfileModal}
         userName={userName}
         setUserName={setUserName}
         openCodeApiKey={openCodeApiKey}
         setOpenCodeApiKey={setOpenCodeApiKey}
+        kiloApiKey={kiloApiKey}
+        setKiloApiKey={setKiloApiKey}
         customProxyUrl={customProxyUrl}
         setCustomProxyUrl={setCustomProxyUrl}
         handleLogout={auth.handleLogout}

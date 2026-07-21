@@ -750,9 +750,15 @@ def disconnect_mcp_provider(req: DisconnectRequest, user: str = Depends(get_curr
 
 
 @app.get("/models")
-
 def get_models(user: str = Depends(get_current_user)):
     return list_opencode_models()
+
+@app.get("/models/kilo")
+async def get_kilo_models_endpoint(kilo_api_key: str = Query(None), user: str = Depends(get_current_user)):
+    from kilo_client import fetch_kilo_models
+    if not kilo_api_key:
+        return []
+    return await fetch_kilo_models(kilo_api_key)
 
 # --- Client-Side Agent Loop Endpoints ---
 
