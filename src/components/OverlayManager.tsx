@@ -61,6 +61,7 @@ interface OverlayManagerProps {
   connectingServer: { id: string; name: string } | null;
   setConnectingServer: (server: { id: string; name: string } | null) => void;
   getRelativeTime: (date: string) => string;
+  loginEmail: string;
 }
 
 export default function OverlayManager({
@@ -110,6 +111,7 @@ export default function OverlayManager({
   connectingServer,
   setConnectingServer,
   getRelativeTime,
+  loginEmail,
 }: OverlayManagerProps) {
   const [schedulesModalOpen, setSchedulesModalOpen] = useState(false);
 
@@ -170,11 +172,12 @@ export default function OverlayManager({
           customProxyUrl={customProxyUrl}
           setCustomProxyUrl={setCustomProxyUrl}
           onClose={() => {
+            const email = loginEmail.trim().toLowerCase();
             import("@/lib/secureStorage").then(({ secureLoadKey }) => {
-              secureLoadKey("voxkage_opencode_api_key").then((key) => {
+              secureLoadKey(`voxkage_${email}_opencode_api_key`).then((key) => {
                 setOpenCodeApiKey(key);
               });
-              secureLoadKey("voxkage_kilo_api_key").then((key) => {
+              secureLoadKey(`voxkage_${email}_kilo_api_key`).then((key) => {
                 setKiloApiKey(key);
               });
             });
@@ -182,9 +185,10 @@ export default function OverlayManager({
             setShowSettingsModal(false);
           }}
           onSave={() => {
+            const email = loginEmail.trim().toLowerCase();
             import("@/lib/secureStorage").then(({ secureSaveKey }) => {
-              secureSaveKey("voxkage_opencode_api_key", openCodeApiKey.trim());
-              secureSaveKey("voxkage_kilo_api_key", kiloApiKey.trim());
+              secureSaveKey(`voxkage_${email}_opencode_api_key`, openCodeApiKey.trim());
+              secureSaveKey(`voxkage_${email}_kilo_api_key`, kiloApiKey.trim());
             });
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
             clearToolsCache();

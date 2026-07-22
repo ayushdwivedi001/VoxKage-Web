@@ -20,6 +20,10 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
     const token = getToken();
     if (token) {
       setIsLoggedIn(true);
+      if (typeof window !== "undefined") {
+        const savedEmail = localStorage.getItem("voxkage_web_email") || "";
+        setLoginEmail(savedEmail);
+      }
       loadInitialData();
     }
     setIsAuthChecking(false);
@@ -38,6 +42,7 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
   const handleLogout = () => {
     clearToken();
     setIsLoggedIn(false);
+    setLoginEmail("");
     onLogoutSuccess();
   };
 

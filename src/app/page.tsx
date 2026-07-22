@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
+import { Info } from "lucide-react";
 
 // Existing Components
 import GradientBackground from "@/components/GradientBackground";
@@ -8,6 +9,7 @@ import Sidebar from "@/components/Sidebar";
 
 // Extracted Components
 import LoginView from "@/components/LoginView";
+import OnboardingView from "@/components/OnboardingView";
 import RightPanel from "@/components/RightPanel";
 import ChatHeader from "@/components/ChatHeader";
 import ChatWorkspace from "@/components/ChatWorkspace";
@@ -20,6 +22,7 @@ import useAttachments from "@/hooks/useAttachments";
 import useAgentCompletion, { sessionToolsCache } from "@/hooks/useAgentCompletion";
 import usePanelResizer from "@/hooks/usePanelResizer";
 import useAuth from "@/hooks/useAuth";
+import { useParams } from "next/navigation";
 
 // Lib/Helpers
 import { Attachment } from "@/components/MessageAttachmentsRow";
@@ -37,6 +40,10 @@ import {
 } from "@/lib/api";
 
 export default function Home() {
+  const params = useParams();
+  const urlSessionId = params?.sessionId as string | undefined;
+  const [accessDeniedError, setAccessDeniedError] = useState(false);
+
   const [showConnectModal, setShowConnectModal] = useState(false);
   const [connectingServer, setConnectingServer] = useState<{ id: string; name: string } | null>(null);
   const [connectedServers, setConnectedServers] = useState<string[]>([]);
@@ -66,6 +73,7 @@ export default function Home() {
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [openCodeApiKey, setOpenCodeApiKey] = useState("");
   const [kiloApiKey, setKiloApiKey] = useState("");
+  const [hasLoadedKeys, setHasLoadedKeys] = useState(false);
   const [customProxyUrl, setCustomProxyUrl] = useState("");
 
   const [userName, setUserName] = useState("");
@@ -225,6 +233,7 @@ export default function Home() {
     sessionArtifacts: computeSessionFiles(chatSessions.messages),
     setShowArtifactsPanel,
     setJumpToLine,
+    loginEmail: auth.loginEmail,
   });
 
   // Load settings on mount with secure encryption load & instant models cache hydration
@@ -240,14 +249,6 @@ export default function Home() {
         }
       } catch (e) {}
 
-      import("@/lib/secureStorage").then(({ secureLoadKey }) => {
-        secureLoadKey("voxkage_opencode_api_key").then((key) => {
-          setOpenCodeApiKey(key);
-        });
-        secureLoadKey("voxkage_kilo_api_key").then((key) => {
-          setKiloApiKey(key);
-        });
-      });
       const savedProxy = localStorage.getItem("voxkage_custom_proxy_url");
       if (savedProxy) {
         setCustomProxyUrl(savedProxy);
@@ -260,6 +261,44 @@ export default function Home() {
       if (savedVariant) setSelectedVariant(savedVariant);
     }
   }, []);
+
+  // Load settings when logged in and email is available, with migration fallback
+  useEffect(() => {
+    if (auth.isLoggedIn && auth.loginEmail) {
+      const email = auth.loginEmail.trim().toLowerCase();
+      const userOpenCodeKey = `voxkage_${email}_opencode_api_key`;
+      const userKiloKey = `voxkage_${email}_kilo_api_key`;
+
+      import("@/lib/secureStorage").then(async ({ secureLoadKey, secureSaveKey }) => {
+        let openCodeKey = await secureLoadKey(userOpenCodeKey);
+        let kiloKey = await secureLoadKey(userKiloKey);
+
+        // Migration logic for ayushdwivedi2049@gmail.com
+        if (!openCodeKey) {
+          const oldOpenCodeKey = await secureLoadKey("voxkage_opencode_api_key");
+          if (oldOpenCodeKey && email === "ayushdwivedi2049@gmail.com") {
+            openCodeKey = oldOpenCodeKey;
+            await secureSaveKey(userOpenCodeKey, oldOpenCodeKey);
+          }
+        }
+        if (!kiloKey) {
+          const oldKiloKey = await secureLoadKey("voxkage_kilo_api_key");
+          if (oldKiloKey && email === "ayushdwivedi2049@gmail.com") {
+            kiloKey = oldKiloKey;
+            await secureSaveKey(userKiloKey, oldKiloKey);
+          }
+        }
+
+        setOpenCodeApiKey(openCodeKey);
+        setKiloApiKey(kiloKey);
+        setHasLoadedKeys(true);
+      });
+    } else {
+      setOpenCodeApiKey("");
+      setKiloApiKey("");
+      setHasLoadedKeys(false);
+    }
+  }, [auth.isLoggedIn, auth.loginEmail]);
 
   // Dynamically load Kilo Code models when kiloApiKey updates
   useEffect(() => {
@@ -289,6 +328,76 @@ export default function Home() {
       });
     });
   }, [kiloApiKey]);
+
+  // Load session from URL or user-specific last active cache on login
+  useEffect(() => {
+    if (!auth.isLoggedIn) return;
+    const email = auth.loginEmail.trim().toLowerCase();
+    const lastSessionKey = `voxkage_${email}_last_active_session`;
+
+    import("@/lib/api").then(({ fetchSessionMessages }) => {
+      if (urlSessionId) {
+        const loadSessionFromUrl = async () => {
+          try {
+            setAccessDeniedError(false);
+            await fetchSessionMessages(urlSessionId);
+            setIsChatActive(true);
+            chatSessions.loadSessionHistory(urlSessionId, scrollToBottom);
+            localStorage.setItem(lastSessionKey, urlSessionId);
+          } catch (err: any) {
+            console.error("Access denied or session not found:", err);
+            setAccessDeniedError(true);
+          }
+        };
+        loadSessionFromUrl();
+      } else {
+        const cachedSessionId = localStorage.getItem(lastSessionKey);
+        if (cachedSessionId) {
+          window.history.pushState(null, "", `/${cachedSessionId}`);
+        } else {
+          chatSessions.setCurrentSessionId(null);
+          chatSessions.setMessages([]);
+          setIsChatActive(false);
+          chatSessions.setChatTitle("Greeting");
+        }
+      }
+    });
+  }, [auth.isLoggedIn, urlSessionId]);
+
+  // Synchronize dynamic active session ID to the URL pathname
+  useEffect(() => {
+    if (auth.isLoggedIn) {
+      const email = auth.loginEmail.trim().toLowerCase();
+      if (chatSessions.currentSessionId) {
+        window.history.pushState(null, "", `/${chatSessions.currentSessionId}`);
+        localStorage.setItem(`voxkage_${email}_last_active_session`, chatSessions.currentSessionId);
+      } else {
+        window.history.pushState(null, "", "/");
+        localStorage.removeItem(`voxkage_${email}_last_active_session`);
+      }
+    }
+  }, [chatSessions.currentSessionId, auth.isLoggedIn]);
+
+  // Handle browser back/forward buttons (popstate)
+  useEffect(() => {
+    const handlePopState = () => {
+      if (typeof window !== "undefined") {
+        const path = window.location.pathname;
+        const matchedSessionId = path.substring(1); // Strip leading slash
+        if (matchedSessionId) {
+          setIsChatActive(true);
+          chatSessions.loadSessionHistory(matchedSessionId, scrollToBottom);
+        } else {
+          chatSessions.setCurrentSessionId(null);
+          chatSessions.setMessages([]);
+          setIsChatActive(false);
+          chatSessions.setChatTitle("Greeting");
+        }
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   const handleCreateNewChat = () => {
     if (chatSessions.telemetryWsRef.current) {
@@ -399,15 +508,41 @@ export default function Home() {
         loginError={auth.loginError}
         loginLoading={auth.loginLoading}
         onGoogleSuccess={(token: string, email: string, avatarUrl?: string, name?: string) => {
+          auth.setLoginEmail(email);
           auth.setIsLoggedIn(true);
           if (avatarUrl) setUserAvatarUrl(avatarUrl);
           if (name) setUserName(name);
         }}
         onAuthSuccess={(token: string, email: string, avatarUrl?: string, name?: string) => {
+          auth.setLoginEmail(email);
           auth.setIsLoggedIn(true);
           if (avatarUrl) setUserAvatarUrl(avatarUrl);
           if (name) setUserName(name);
         }}
+      />
+    );
+  }
+
+  // Prevent flash of onboarding screen while loading keys
+  if (auth.isLoggedIn && !hasLoadedKeys) {
+    return (
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a]">
+        <GradientBackground isChatActive={false} />
+      </div>
+    );
+  }
+
+  // Check if user is onboarded (has at least one API key configured)
+  const isUserOnboarded = !!openCodeApiKey || !!kiloApiKey;
+  if (!isUserOnboarded) {
+    return (
+      <OnboardingView
+        userEmail={auth.loginEmail}
+        onComplete={(openCodeKey, kiloKey) => {
+          if (openCodeKey) setOpenCodeApiKey(openCodeKey);
+          if (kiloKey) setKiloApiKey(kiloKey);
+        }}
+        onLogout={auth.handleLogout}
       />
     );
   }
@@ -450,11 +585,12 @@ export default function Home() {
         }}
         onDeleteSession={chatSessions.handleDeleteSession}
         onOpenSettings={() => {
+          const email = auth.loginEmail.trim().toLowerCase();
           import("@/lib/secureStorage").then(({ secureLoadKey }) => {
-            secureLoadKey("voxkage_opencode_api_key").then((key) => {
+            secureLoadKey(`voxkage_${email}_opencode_api_key`).then((key) => {
               setOpenCodeApiKey(key);
             });
-            secureLoadKey("voxkage_kilo_api_key").then((key) => {
+            secureLoadKey(`voxkage_${email}_kilo_api_key`).then((key) => {
               setKiloApiKey(key);
             });
           });
@@ -509,50 +645,78 @@ export default function Home() {
         />
 
         <div className="relative flex flex-grow w-full h-full overflow-hidden">
-          <ChatWorkspace
-            sessionId={chatSessions.currentSessionId}
-            isChatActive={isChatActive}
-            chatContainerRef={chatContainerRef}
-            handleScroll={handleScroll}
-            isSessionLoading={chatSessions.isSessionLoading}
-            messages={chatSessions.messages}
-            handlePreviewImage={handlePreviewImage}
-            setZoomDocument={setZoomDocument}
-            handleUserMessageEdit={agentCompletion.handleUserMessageEdit}
-            setActiveFile={setActiveFile}
-            scrollToBottom={scrollToBottom}
-            activeFileVersions={activeFileVersions}
-            setActiveFileVersions={setActiveFileVersions}
-            handleAssistantFeedback={agentCompletion.handleAssistantFeedback}
-            handleAssistantRetry={agentCompletion.handleAssistantRetry}
-            messagesEndRef={messagesEndRef}
-            greeting={greeting}
-            selectedModel={selectedModel}
-            setSelectedModel={setSelectedModel}
-            selectedVariant={selectedVariant}
-            setSelectedVariant={setSelectedVariant}
-            modelsList={modelsList}
-            setMoreModelsModalOpen={setMoreModelsModalOpen}
-            isStreaming={chatSessions.messages.length > 0 &&
-              (chatSessions.messages[chatSessions.messages.length - 1].status === "thinking" ||
-               chatSessions.messages[chatSessions.messages.length - 1].status === "streaming")}
-            handleStopGeneration={agentCompletion.handleStopGeneration}
-            comments={comments}
-            setComments={setComments}
-            contextPercent={chatSessions.contextPercent}
-            sessionArtifacts={sessionArtifacts}
-            attachments={attachmentsManager.attachments}
-            uploadingStates={attachmentsManager.uploadingStates}
-            handleUploadAttachment={attachmentsManager.handleUploadAttachment}
-            handleRemoveAttachment={attachmentsManager.handleRemoveAttachment}
-            editingFile={editingFile}
-            setEditingFile={setEditingFile}
-            showScrollBottom={showScrollBottom}
-            handleSendMessage={agentCompletion.handleSendMessage}
-            setShowArtifactsPanel={setShowArtifactsPanel}
-            setJumpToLine={setJumpToLine}
-            onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
-          />
+          {accessDeniedError ? (
+            <div className="flex flex-col flex-grow items-center justify-center bg-[#05050a] text-center p-8 z-10 select-none w-full h-full animate-fadeIn">
+              <div className="max-w-md w-full bg-[#0d0d12]/95 border border-zinc-800/80 rounded-2xl p-8 shadow-[0_0_50px_rgba(0,0,0,0.8)] backdrop-blur-md flex flex-col gap-5">
+                <div className="w-12 h-12 rounded-full bg-red-950/20 border border-red-900/40 flex items-center justify-center mx-auto text-red-500">
+                  <Info className="w-6 h-6" />
+                </div>
+                <h3 className="text-zinc-100 text-lg font-bold tracking-tight">Access Denied</h3>
+                <p className="text-zinc-400 text-[13px] leading-relaxed">
+                  This conversation session does not exist or you do not have permission to view it.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccessDeniedError(false);
+                    window.history.pushState(null, "", "/");
+                    chatSessions.setCurrentSessionId(null);
+                    chatSessions.setMessages([]);
+                    setIsChatActive(false);
+                    chatSessions.setChatTitle("Greeting");
+                  }}
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white font-medium text-[13px] rounded-xl flex items-center justify-center transition-colors cursor-pointer shadow-[0_0_12px_rgba(37,99,235,0.15)]"
+                >
+                  Return to Home
+                </button>
+              </div>
+            </div>
+          ) : (
+            <ChatWorkspace
+              sessionId={chatSessions.currentSessionId}
+              isChatActive={isChatActive}
+              chatContainerRef={chatContainerRef}
+              handleScroll={handleScroll}
+              isSessionLoading={chatSessions.isSessionLoading}
+              messages={chatSessions.messages}
+              handlePreviewImage={handlePreviewImage}
+              setZoomDocument={setZoomDocument}
+              handleUserMessageEdit={agentCompletion.handleUserMessageEdit}
+              setActiveFile={setActiveFile}
+              scrollToBottom={scrollToBottom}
+              activeFileVersions={activeFileVersions}
+              setActiveFileVersions={setActiveFileVersions}
+              handleAssistantFeedback={agentCompletion.handleAssistantFeedback}
+              handleAssistantRetry={agentCompletion.handleAssistantRetry}
+              messagesEndRef={messagesEndRef}
+              greeting={greeting}
+              selectedModel={selectedModel}
+              setSelectedModel={setSelectedModel}
+              selectedVariant={selectedVariant}
+              setSelectedVariant={setSelectedVariant}
+              modelsList={modelsList}
+              setMoreModelsModalOpen={setMoreModelsModalOpen}
+              isStreaming={chatSessions.messages.length > 0 &&
+                (chatSessions.messages[chatSessions.messages.length - 1].status === "thinking" ||
+                 chatSessions.messages[chatSessions.messages.length - 1].status === "streaming")}
+              handleStopGeneration={agentCompletion.handleStopGeneration}
+              comments={comments}
+              setComments={setComments}
+              contextPercent={chatSessions.contextPercent}
+              sessionArtifacts={sessionArtifacts}
+              attachments={attachmentsManager.attachments}
+              uploadingStates={attachmentsManager.uploadingStates}
+              handleUploadAttachment={attachmentsManager.handleUploadAttachment}
+              handleRemoveAttachment={attachmentsManager.handleRemoveAttachment}
+              editingFile={editingFile}
+              setEditingFile={setEditingFile}
+              showScrollBottom={showScrollBottom}
+              handleSendMessage={agentCompletion.handleSendMessage}
+              setShowArtifactsPanel={setShowArtifactsPanel}
+              setJumpToLine={setJumpToLine}
+              onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
+            />
+          )}
 
           {(activeFile || showArtifactsPanel) && !isExpanded && (
             <div
@@ -609,6 +773,7 @@ export default function Home() {
         customProxyUrl={customProxyUrl}
         setCustomProxyUrl={setCustomProxyUrl}
         handleLogout={auth.handleLogout}
+        loginEmail={auth.loginEmail}
         showSearchModal={showSearchModal}
         setShowSearchModal={setShowSearchModal}
         searchQuery={searchQuery}

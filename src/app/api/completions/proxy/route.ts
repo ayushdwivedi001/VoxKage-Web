@@ -11,7 +11,10 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const openCodeRes = await fetch("https://opencode.ai/zen/v1/chat/completions", {
+    const isKilo = body.model?.includes("/") || body.model?.toLowerCase().includes("kilo") || authorization.startsWith("Bearer eyJ");
+    const targetUrl = isKilo ? "https://api.kilo.ai/api/gateway/chat/completions" : "https://opencode.ai/zen/v1/chat/completions";
+
+    const apiRes = await fetch(targetUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -20,15 +23,15 @@ export async function POST(request: Request) {
       body: JSON.stringify(body)
     });
 
-    if (!openCodeRes.ok) {
-      const errText = await openCodeRes.text();
-      return new Response(`data: Error (HTTP ${openCodeRes.status}): ${errText}\n\n`, {
+    if (!apiRes.ok) {
+      const errText = await apiRes.text();
+      return new Response(`data: Error (HTTP ${apiRes.status}): ${errText}\n\n`, {
         status: 200,
         headers: { "Content-Type": "text/event-stream" }
       });
     }
 
-    return new Response(openCodeRes.body, {
+    return new Response(apiRes.body, {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream",

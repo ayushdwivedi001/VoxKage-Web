@@ -1635,6 +1635,14 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    # Verify session ownership before establishing connection
+    from database import get_session
+    try:
+        get_session(session_id, user)
+    except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect_chat(user, websocket)
     receive_queue = asyncio.Queue()
     reader_task = asyncio.create_task(chat_ws_reader(websocket, receive_queue))

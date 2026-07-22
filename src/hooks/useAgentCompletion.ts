@@ -111,6 +111,7 @@ interface UseAgentCompletionProps {
   sessionArtifacts: any[];
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
+  loginEmail: string;
 }
 
 export default function useAgentCompletion({
@@ -139,6 +140,7 @@ export default function useAgentCompletion({
   sessionArtifacts,
   setShowArtifactsPanel,
   setJumpToLine,
+  loginEmail,
 }: UseAgentCompletionProps) {
   const modelNameToKey = (name: string): string => {
     const lower = name.toLowerCase();
@@ -336,11 +338,15 @@ export default function useAgentCompletion({
         }
 
         const { secureLoadKey } = await import("@/lib/secureStorage");
-        const openCodeKey = await secureLoadKey("voxkage_opencode_api_key");
+        const isKilo = modelId.toLowerCase().includes("/") || modelId.toLowerCase().includes("kilo");
+        const keyName = isKilo
+          ? `voxkage_${loginEmail.trim().toLowerCase()}_kilo_api_key`
+          : `voxkage_${loginEmail.trim().toLowerCase()}_opencode_api_key`;
+        const activeKey = await secureLoadKey(keyName);
         const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
 
-        if (!openCodeKey) {
-          throw new Error("OpenCode API Key is missing. Please set it in Settings.");
+        if (!activeKey) {
+          throw new Error(`${isKilo ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
         }
 
         let targetUrl = "/api/completions/proxy";
@@ -378,7 +384,7 @@ export default function useAgentCompletion({
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
-                  Authorization: `Bearer ${openCodeKey}`,
+                  Authorization: `Bearer ${activeKey}`,
                 },
                 body: JSON.stringify(body),
                 signal: controller.signal,
@@ -730,11 +736,15 @@ export default function useAgentCompletion({
           }
 
           const { secureLoadKey } = await import("@/lib/secureStorage");
-          const openCodeKey = await secureLoadKey("voxkage_opencode_api_key");
+          const isKilo = modelId.toLowerCase().includes("/") || modelId.toLowerCase().includes("kilo");
+          const keyName = isKilo
+            ? `voxkage_${loginEmail.trim().toLowerCase()}_kilo_api_key`
+            : `voxkage_${loginEmail.trim().toLowerCase()}_opencode_api_key`;
+          const activeKey = await secureLoadKey(keyName);
           const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
 
-          if (!openCodeKey) {
-            throw new Error("OpenCode API Key is missing. Please set it in Settings.");
+          if (!activeKey) {
+            throw new Error(`${isKilo ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
           }
 
           let targetUrl = "/api/completions/proxy";
@@ -776,7 +786,7 @@ export default function useAgentCompletion({
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
-                    Authorization: `Bearer ${openCodeKey}`,
+                    Authorization: `Bearer ${activeKey}`,
                   },
                   body: JSON.stringify(body),
                   signal: controller.signal,
