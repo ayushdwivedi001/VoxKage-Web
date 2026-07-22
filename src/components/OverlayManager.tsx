@@ -157,7 +157,13 @@ export default function OverlayManager({
             setShowProfileModal(false);
           }}
           onSave={() => {
-            localStorage.setItem("voxkage_user_name", userName.trim());
+            const name = userName.trim();
+            localStorage.setItem("voxkage_user_name", name);
+            import("@/lib/api").then(({ saveSettingsProfile }) => {
+              saveSettingsProfile({ userName: name, user_name: name }).catch((err) => {
+                console.error("Failed to save display name to database:", err);
+              });
+            });
             setShowProfileModal(false);
           }}
         />

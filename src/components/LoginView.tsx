@@ -16,6 +16,9 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Sun,
+  Moon,
+  Monitor,
 } from "lucide-react";
 
 interface LoginViewProps {
@@ -37,6 +40,37 @@ export default function LoginView({
 }: LoginViewProps) {
   // Mode toggles
   const [isSignUp, setIsSignUp] = useState(false);
+
+  // Theme management state
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
+    if (savedTheme) {
+      setThemeMode(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("voxkage_theme_mode", themeMode);
+    const root = document.documentElement;
+    if (themeMode === "light") {
+      root.classList.add("light");
+      root.classList.remove("dark");
+    } else if (themeMode === "dark") {
+      root.classList.add("dark");
+      root.classList.remove("light");
+    } else {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      if (systemTheme === "light") {
+        root.classList.add("light");
+        root.classList.remove("dark");
+      } else {
+        root.classList.add("dark");
+        root.classList.remove("light");
+      }
+    }
+  }, [themeMode]);
 
   // Form states
   const [passwordInput, setPasswordInput] = useState("");
@@ -354,7 +388,7 @@ export default function LoginView({
   };
 
   return (
-    <div className="relative min-h-screen h-screen w-full flex items-center justify-center bg-[#05050a] p-4 md:p-6 lg:p-8 select-none font-sans overflow-hidden">
+    <div className="relative min-h-screen h-auto md:h-screen w-full flex items-center justify-center bg-[#05050a] p-4 md:p-6 lg:p-8 select-none font-sans overflow-y-auto md:overflow-hidden">
       <DesignDottedCanvas active={true} isChatActive={false} />
 
       {/* Top Left Rounded Icon Box */}
@@ -365,7 +399,7 @@ export default function LoginView({
       </div>
 
       {/* Main Dual-Pane Spacing Container */}
-      <div className="w-full h-full max-w-none flex flex-col md:flex-row items-center justify-start gap-12 lg:gap-16 xl:gap-20 z-10 my-auto pl-4 md:pl-20 lg:pl-32 pr-4 md:pr-8">
+      <div className="w-full h-full max-w-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-12 lg:gap-16 xl:gap-20 z-10 my-auto px-4 md:pl-20 lg:pl-32 md:pr-8">
         
         {/* === LEFT PANE: AUTHENTICATION CONTAINER === */}
         <div className="w-full max-w-sm flex flex-col items-center justify-center flex-shrink-0 z-10 my-auto">
@@ -693,10 +727,52 @@ export default function LoginView({
             )}
 
           </div>
+
+          {/* Theme Switcher Attachment Bar */}
+          <div className="flex items-center justify-center mt-4">
+            <div className="inline-flex rounded-xl bg-zinc-950/80 p-0.5 border border-zinc-800/80 shadow-lg backdrop-blur-xl">
+              <button
+                type="button"
+                onClick={() => setThemeMode("light")}
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  themeMode === "light"
+                    ? "bg-zinc-800/60 text-white"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40"
+                }`}
+                title="Light Mode"
+              >
+                <Sun className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode("dark")}
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  themeMode === "dark"
+                    ? "bg-zinc-800/60 text-white"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40"
+                }`}
+                title="Dark Mode"
+              >
+                <Moon className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setThemeMode("system")}
+                className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                  themeMode === "system"
+                    ? "bg-zinc-800/60 text-white"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900/40"
+                }`}
+                title="System Theme"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* === RIGHT PANE: SHOWCASE CARD === */}
-        <div className="flex-1 w-full h-full max-h-[calc(100vh-64px)] min-h-[580px] bg-[#0c0c10]/95 border border-zinc-800/80 rounded-[32px] p-8 md:p-10 lg:p-12 flex flex-col justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl z-10 my-auto">
+        <div className="hidden md:flex flex-1 w-full h-full max-h-[calc(100vh-64px)] min-h-[580px] bg-[#0c0c10]/95 border border-zinc-800/80 rounded-[32px] p-8 md:p-10 lg:p-12 flex-col justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl z-10 my-auto">
           <div className="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="flex flex-col gap-4 text-left relative z-10">

@@ -91,6 +91,34 @@ export default function Sidebar({
   const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
   const [avatarError, setAvatarError] = useState(false);
 
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
+    if (savedTheme) {
+      setThemeMode(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("voxkage_theme_mode", themeMode);
+    const root = document.documentElement;
+    if (themeMode === "light") {
+      root.classList.add("light");
+      root.classList.remove("dark");
+    } else if (themeMode === "dark") {
+      root.classList.add("dark");
+      root.classList.remove("light");
+    } else {
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      if (systemTheme === "light") {
+        root.classList.add("light");
+        root.classList.remove("dark");
+      } else {
+        root.classList.add("dark");
+        root.classList.remove("light");
+      }
+    }
+  }, [themeMode]);
+
   const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";
 
   // Touch Swipe to close drawer on mobile
