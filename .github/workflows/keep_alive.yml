@@ -10,8 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      contents: read
+      contents: write
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Ping Web Space Endpoint
         run: |
           echo "💓 Sending heartbeat query to VoxKage Web Hugging Face Space..."
@@ -77,8 +82,24 @@ jobs:
             fi
           fi
 
-      - name: Keep GitHub Actions alive (prevent 60-day auto-disable)
-        uses: gautamkrishnar/keepalive-workflow@v2
-        with:
-          use_api: true
-          time_elapsed: 50
+      - name: Keep GitHub Actions alive (automated commit every 30 days)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Check last commit timestamp
+          last_commit_time=$(git log -1 --format=%ct)
+          current_time=$(date +%s)
+          # Calculate difference in days
+          days_diff=$(( (current_time - last_commit_time) / 86400 ))
+          
+          echo "Days since last commit: $days_diff"
+          if [ $days_diff -ge 30 ]; then
+            echo "Last commit was $days_diff days ago. Creating keep-alive commit..."
+            date > last_keepalive.txt
+            git add last_keepalive.txt
+            git commit -m "chore: automated keep-alive ping"
+            git push
+          else
+            echo "No keep-alive commit needed (only $days_diff days since last commit)."
+          fi
