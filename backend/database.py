@@ -290,12 +290,19 @@ def get_user_favorites(user_id: str) -> list:
 
 def save_user_favorites(user_id: str, favorites: list) -> list:
     db = get_db()
-    data = {
-        "user_id": user_id,
-        "favorite_models": favorites,
-        "updated_at": "now()"
-    }
-    res = execute_with_retry(db.table("user_settings").upsert(data))
+    check = execute_with_retry(db.table("user_settings").select("user_id").eq("user_id", user_id))
+    if check.data:
+        res = execute_with_retry(db.table("user_settings").update({
+            "favorite_models": favorites,
+            "updated_at": "now()"
+        }).eq("user_id", user_id))
+    else:
+        data = {
+            "user_id": user_id,
+            "favorite_models": favorites,
+            "updated_at": "now()"
+        }
+        res = execute_with_retry(db.table("user_settings").insert(data))
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to save user favorites.")
     return res.data[0].get("favorite_models", [])
@@ -410,12 +417,19 @@ def get_user_settings_profile(user_id: str) -> dict:
 
 def save_user_settings_profile(user_id: str, profile: dict) -> dict:
     db = get_db()
-    data = {
-        "user_id": user_id,
-        "settings_profile": profile,
-        "updated_at": "now()"
-    }
-    res = execute_with_retry(db.table("user_settings").upsert(data))
+    check = execute_with_retry(db.table("user_settings").select("user_id").eq("user_id", user_id))
+    if check.data:
+        res = execute_with_retry(db.table("user_settings").update({
+            "settings_profile": profile,
+            "updated_at": "now()"
+        }).eq("user_id", user_id))
+    else:
+        data = {
+            "user_id": user_id,
+            "settings_profile": profile,
+            "updated_at": "now()"
+        }
+        res = execute_with_retry(db.table("user_settings").insert(data))
     if not res.data:
         raise HTTPException(status_code=500, detail="Failed to save user settings profile.")
     return res.data[0].get("settings_profile") or {}

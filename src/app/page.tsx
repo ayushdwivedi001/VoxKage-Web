@@ -461,6 +461,11 @@ export default function Home() {
       model.name === modelName ? { ...model, isFavourite: !model.isFavourite } : model
     );
     setModelsList(updated);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("voxkage_cached_models", JSON.stringify(updated));
+      } catch (e) {}
+    }
 
     const favs = updated.filter((m) => m.isFavourite).map((m) => m.api_key);
     try {

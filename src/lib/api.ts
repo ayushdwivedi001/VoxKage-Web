@@ -57,6 +57,8 @@ export function clearToken() {
     localStorage.removeItem("voxkage_web_email");
     localStorage.removeItem("voxkage_web_avatar_url");
     localStorage.removeItem("voxkage_user_name");
+    localStorage.removeItem("voxkage_cached_models");
+    localStorage.removeItem("voxkage_custom_proxy_url");
   }
 }
 
