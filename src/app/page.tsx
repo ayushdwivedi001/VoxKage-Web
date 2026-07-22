@@ -74,6 +74,11 @@ export default function Home() {
   const [openCodeApiKey, setOpenCodeApiKey] = useState("");
   const [kiloApiKey, setKiloApiKey] = useState("");
   const [hasLoadedKeys, setHasLoadedKeys] = useState(false);
+  const [favorites, setFavorites] = useState<string[]>([]);
+  const favoritesRef = useRef(favorites);
+  useEffect(() => {
+    favoritesRef.current = favorites;
+  }, [favorites]);
   const [customProxyUrl, setCustomProxyUrl] = useState("");
 
   const [userName, setUserName] = useState("");
@@ -102,7 +107,8 @@ export default function Home() {
   const { rightPanelWidth, handlePointerDown } = usePanelResizer(480);
 
   const loadInitialData = async () => {
-    if (!auth.isLoggedIn) return;
+    const token = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_token") : null;
+    if (!token) return;
     try {
       const sess = await fetchSessions();
       chatSessions.setSessionsList(sess);
@@ -110,6 +116,7 @@ export default function Home() {
       const boot = await fetchBootPayload();
       
       setConnectedServers(boot.mcp_connections || []);
+      setFavorites(boot.favorites || []);
       
       let initialModels = mapModelsList(boot.models || [], boot.favorites || []);
       const { secureLoadKey } = await import("@/lib/secureStorage");
@@ -308,20 +315,24 @@ export default function Home() {
 
   // Dynamically load Kilo Code models when kiloApiKey updates
   useEffect(() => {
-    if (!kiloApiKey || !auth.isLoggedIn) return;
+    const token = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_token") : null;
+    if (!kiloApiKey || !token) return;
     import("@/lib/api").then(({ fetchKiloModels }) => {
       fetchKiloModels(kiloApiKey).then((kiloModels) => {
         if (kiloModels && kiloModels.length > 0) {
           setModelsList((prev) => {
             const nonKilo = prev.filter((m) => m.provider !== "kilo");
-            const kiloFormatted = kiloModels.map((km: any) => ({
-              name: km.name,
-              desc: km.desc,
-              api_key: km.api_key || km.name,
-              provider: "kilo",
-              isFavourite: false,
-              requiresUpgrade: km.requiresUpgrade,
-            }));
+            const kiloFormatted = kiloModels.map((km: any) => {
+              const kmKey = km.api_key || km.name;
+              return {
+                name: km.name,
+                desc: km.desc,
+                api_key: kmKey,
+                provider: "kilo",
+                isFavourite: favoritesRef.current.includes(km.name) || favoritesRef.current.includes(kmKey),
+                requiresUpgrade: km.requiresUpgrade,
+              };
+            });
             const updated = [...nonKilo, ...kiloFormatted];
             if (typeof window !== "undefined") {
               try {
@@ -469,6 +480,7 @@ export default function Home() {
     }
 
     const favs = updated.filter((m) => m.isFavourite).map((m) => m.api_key);
+    setFavorites(favs);
     try {
       await saveFavorites(favs);
     } catch (e) {

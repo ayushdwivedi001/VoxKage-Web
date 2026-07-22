@@ -24,7 +24,6 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
         const savedEmail = localStorage.getItem("voxkage_web_email") || "";
         setLoginEmail(savedEmail);
       }
-      loadInitialData();
     }
     setIsAuthChecking(false);
 
@@ -38,6 +37,12 @@ export default function useAuth({ loadInitialData, onLogoutSuccess }: UseAuthPro
       window.removeEventListener("voxkage_unauthorized", handleUnauthorized);
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      loadInitialData();
+    }
+  }, [isLoggedIn]);
 
   const handleLogout = () => {
     clearToken();
