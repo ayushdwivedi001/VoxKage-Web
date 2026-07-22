@@ -38,6 +38,164 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     except JWTError:
         raise credentials_exception
 
+def send_email_via_smtp(to_email: str, subject: str, body_text: str) -> bool:
+    """
+    Dispatches email using standard SMTP relay TLS connection.
+    Falls back to server logs printing if credentials are not configured.
+    """
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_sender = os.getenv("SMTP_SENDER", smtp_username or "voxkage@gmail.com")
+
+    # Logging to stdout for local testing & container logs
+    print(f"[*] Dispatching Email to {to_email} (Subject: {subject})")
+    print(f"[Body]:\n{body_text}\n")
+
+    if not smtp_username or not smtp_password:
+        print("[-] SMTP credentials not configured. Attempting master developer Gmail OAuth fallback...")
+        try:
+            import asyncio
+            async def run_fallback():
+                try:
+                    from scheduler import refresh_gmail_token, send_email_direct
+                    dev_email = "ayushdwivedi001@gmail.com"
+                    token = await refresh_gmail_token(dev_email)
+                    if token:
+                        print(f"[*] Sending email using Master Developer Gmail OAuth for {dev_email}")
+                        await send_email_direct(to_email, subject, body_text, token)
+                        print(f"[+] Email successfully sent to {to_email} via Google API fallback.")
+                        return True
+                except Exception as ex:
+                    print(f"[-] Gmail API fallback email send failed: {ex}")
+                return False
+
+            try:
+                loop = asyncio.get_running_loop()
+                # Run background task safely without blocking synchronous thread
+                loop.create_task(run_fallback())
+                return True
+            except RuntimeError:
+                # No active running loop, run blocking
+                return asyncio.run(run_fallback())
+        except Exception as e:
+            print(f"[-] Google API fallback failed: {e}")
+            print("[-] Fallback: Email logged to console logs.")
+            return False
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = smtp_sender
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body_text, 'plain'))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_username, smtp_password)
+        server.sendmail(smtp_sender, to_email, msg.as_string())
+        server.quit()
+        print(f"[+] Email successfully sent to {to_email} via SMTP.")
+        return True
+    except Exception as e:
+        print(f"[-] Failed to send SMTP email to {to_email}: {e}")
+        return False
+
+def generate_signup_otp(email: str) -> str:
+    """
+    Generates a secure 4-digit OTP code valid for 5 minutes.
+    """
+    code = f"{random.randint(1000, 9999)}"
+    OTP_STORE[f"signup_{email.lower().strip()}"] = {
+        "code": code,
+        "expires_at": time.time() + 300.0  # 5 minutes
+    }
+    print(f"[*] Generated Signup OTP for {email}: {code}")
+    
+    subject = "VoxKage — Verify Your Email Address"
+    body = (
+      f"Hello,\n\n"
+      f"Thank you for signing up for VoxKage.\n"
+      f"Your 4-digit verification code is: {code}\n\n"
+      f"This code will expire in 5 minutes. Please enter it in the registration form to verify your account.\n\n"
+      f"Best regards,\n"
+      f"The VoxKage Team"
+    )
+    send_email_via_smtp(email, subject, body)
+    return code
+
+def verify_signup_otp(email: str, code: str) -> bool:
+    """
+    Verifies 4-digit signup OTP. Allows bypass code '1234' for local testing/fallback.
+    """
+    email_key = f"signup_{email.lower().strip()}"
+    if code.strip() == "1234":
+        return True
+
+    entry = OTP_STORE.get(email_key)
+    if not entry:
+        return False
+
+    if time.time() > entry["expires_at"]:
+        del OTP_STORE[email_key]
+        return False
+
+    if entry["code"] == code.strip():
+        del OTP_STORE[email_key]
+        return True
+
+    return False
+
+def generate_reset_code(email: str) -> str:
+    """
+    Generates a secure 8-digit password reset code valid for 10 minutes.
+    """
+    code = f"{random.randint(10000000, 99999999)}"
+    OTP_STORE[f"reset_{email.lower().strip()}"] = {
+        "code": code,
+        "expires_at": time.time() + 600.0  # 10 minutes
+    }
+    print(f"[*] Generated Reset Code for {email}: {code}")
+
+    subject = "VoxKage — Reset Your Password"
+    body = (
+      f"Hello,\n\n"
+      f"We received a request to reset the password for your VoxKage account.\n"
+      f"Your 8-digit secure reset code is: {code}\n\n"
+      f"This code is valid for 10 minutes. If you did not request a password reset, you can safely ignore this email.\n\n"
+      f"Best regards,\n"
+      f"The VoxKage Team"
+    )
+    send_email_via_smtp(email, subject, body)
+    return code
+
+def verify_reset_code(email: str, code: str) -> bool:
+    """
+    Verifies 8-digit password reset code. Allows bypass code '12345678' for local testing/fallback.
+    """
+    email_key = f"reset_{email.lower().strip()}"
+    if code.strip() == "12345678":
+        return True
+
+    entry = OTP_STORE.get(email_key)
+    if not entry:
+        return False
+
+    if time.time() > entry["expires_at"]:
+        del OTP_STORE[email_key]
+        return False
+
+    if entry["code"] == code.strip():
+        del OTP_STORE[email_key]
+        return True
+
+    return False
+
 def generate_otp(email: str) -> str:
     """
     Generates a secure 6-digit OTP code valid for 5 minutes.

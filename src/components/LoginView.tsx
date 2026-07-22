@@ -1,9 +1,23 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import DesignDottedCanvas from "@/components/DesignDottedCanvas";
 import LoginCreature from "@/components/LoginCreature";
-import { Loader2, ArrowRight, ShieldCheck, Sparkles, KeyRound, Mail, User, Lock, AlertCircle, X, CheckCircle2 } from "lucide-react";
+import {
+  Loader2,
+  ArrowRight,
+  ShieldCheck,
+  Sparkles,
+  KeyRound,
+  Mail,
+  User,
+  Lock,
+  AlertCircle,
+  X,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 interface LoginViewProps {
   loginEmail: string;
@@ -28,22 +42,64 @@ export default function LoginView({
   onGoogleSuccess,
   onAuthSuccess,
 }: LoginViewProps) {
-  // Mode toggle: 'signin' | 'signup' | 'master_key'
+  // Mode toggles
   const [isSignUp, setIsSignUp] = useState(false);
   const [isMasterKeyMode, setIsMasterKeyMode] = useState(false);
 
   // Form states
   const [passwordInput, setPasswordInput] = useState("");
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState("");
   const [userNameInput, setUserNameInput] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
 
-  // Forgot password modal
+  // Field-level validation errors
+  const [emailFieldError, setEmailFieldError] = useState("");
+  const [passwordFieldError, setPasswordFieldError] = useState("");
+  const [confirmPasswordFieldError, setConfirmPasswordFieldError] = useState("");
+  const [userNameFieldError, setUserNameFieldError] = useState("");
+
+  // Sign Up OTP state (4-digit code)
+  const [showOtpVerification, setShowOtpVerification] = useState(false);
+  const [otpDigits, setOtpDigits] = useState<string[]>(["", "", "", ""]);
+  const [otpError, setOtpError] = useState("");
+
+  // Forgot password modal state (8-digit code)
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotStep, setForgotStep] = useState(1);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
+  const [resetCodeInput, setResetCodeInput] = useState("");
+  const [newPasswordInput, setNewPasswordInput] = useState("");
+  const [confirmNewPasswordInput, setConfirmNewPasswordInput] = useState("");
 
-  // Handle Real Production-Grade Google OAuth Popup Authentication
+  // Password visibility states
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+
+  // Dynamic email pre-filling
+  useEffect(() => {
+    if (!isSignUp) {
+      import("@/lib/api").then(({ getLastUsedEmail }) => {
+        const lastEmail = getLastUsedEmail();
+        if (lastEmail) {
+          setLoginEmail(lastEmail);
+        }
+      });
+    } else {
+      setLoginEmail("");
+    }
+    setAuthError("");
+    setEmailFieldError("");
+    setPasswordFieldError("");
+    setConfirmPasswordFieldError("");
+    setUserNameFieldError("");
+  }, [isSignUp, setLoginEmail]);
+
+  // Handle Google OAuth Click
   const handleGoogleLogin = () => {
     setAuthLoading(true);
     setAuthError("");
@@ -105,28 +161,58 @@ export default function LoginView({
     }, 1000);
   };
 
-  // Handle Password Sign In / Sign Up Submit
+  // Input syntax validation
+  const validateFormInputs = () => {
+    let isValid = true;
+    setEmailFieldError("");
+    setPasswordFieldError("");
+    setConfirmPasswordFieldError("");
+    setUserNameFieldError("");
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(loginEmail.trim())) {
+      setEmailFieldError("Invalid email format syntax.");
+      isValid = false;
+    }
+
+    if (isSignUp) {
+      if (!userNameInput.trim()) {
+        setUserNameFieldError("Username is required.");
+        isValid = false;
+      }
+      if (passwordInput.length <= 6) {
+        setPasswordFieldError("Password must be at least 7 characters long.");
+        isValid = false;
+      }
+      if (passwordInput !== confirmPasswordInput) {
+        setConfirmPasswordFieldError("Passwords do not match.");
+        isValid = false;
+      }
+    } else {
+      if (!passwordInput) {
+        setPasswordFieldError("Password is required.");
+        isValid = false;
+      }
+    }
+
+    return isValid;
+  };
+
+  // Handle Form Submit (Either signs in or starts signup OTP flow)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginEmail.trim() || !passwordInput.trim()) {
-      setAuthError("Please enter your email and password.");
-      return;
-    }
-    if (isSignUp && !userNameInput.trim()) {
-      setAuthError("Please enter a username for your account.");
-      return;
-    }
+    if (!validateFormInputs()) return;
 
     setAuthLoading(true);
     setAuthError("");
 
     try {
       if (isSignUp) {
-        const { signupUser } = await import("@/lib/api");
-        const res = await signupUser(loginEmail.trim(), passwordInput, userNameInput.trim());
-        if (onAuthSuccess) {
-          onAuthSuccess(res.token, loginEmail.trim(), res.avatarUrl, res.userName);
-        }
+        const { sendSignupOtp } = await import("@/lib/api");
+        await sendSignupOtp(loginEmail.trim(), passwordInput, confirmPasswordInput, userNameInput.trim());
+        setOtpDigits(["", "", "", ""]);
+        setOtpError("");
+        setShowOtpVerification(true);
       } else {
         const { loginWithPassword } = await import("@/lib/api");
         const res = await loginWithPassword(loginEmail.trim(), passwordInput);
@@ -135,31 +221,124 @@ export default function LoginView({
         }
       }
     } catch (err: any) {
-      setAuthError(err.message || "Authentication failed. Please check your credentials.");
+      const errorMsg = err.message || "";
+      if (errorMsg.includes("already exists")) {
+        setEmailFieldError(errorMsg);
+      } else {
+        setAuthError(errorMsg || "Authentication failed. Please verify credentials.");
+      }
     } finally {
       setAuthLoading(false);
     }
   };
 
+  // 4-Digit Signup OTP input traversing logic
+  const handleOtpChange = (index: number, val: string) => {
+    const cleanVal = val.replace(/\D/g, "");
+    if (!cleanVal && val) return;
+    const newDigits = [...otpDigits];
+    newDigits[index] = cleanVal;
+    setOtpDigits(newDigits);
+
+    if (cleanVal && index < 3) {
+      const nextInput = document.getElementById(`otp-${index + 1}`);
+      nextInput?.focus();
+    }
+  };
+
+  // Verify Sign Up 4-Digit OTP
+  const handleVerifyOtpSubmit = async () => {
+    const code = otpDigits.join("");
+    if (code.length !== 4) {
+      setOtpError("Please enter all 4 digits of the verification code.");
+      return;
+    }
+
+    setAuthLoading(true);
+    setOtpError("");
+
+    try {
+      const { verifySignupOtp } = await import("@/lib/api");
+      const res = await verifySignupOtp(loginEmail.trim(), passwordInput, userNameInput.trim(), code);
+      if (onAuthSuccess) {
+        onAuthSuccess(res.token, loginEmail.trim(), res.avatarUrl, res.userName);
+      }
+    } catch (err: any) {
+      setOtpError(err.message || "Invalid or expired verification code.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // Forgot Password: Step 1 (Send Code)
+  const handleSendResetCode = async () => {
+    if (!forgotEmail.trim()) {
+      setForgotError("Email address is required.");
+      return;
+    }
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(forgotEmail.trim())) {
+      setForgotError("Invalid email format syntax.");
+      return;
+    }
+
+    setForgotLoading(true);
+    setForgotError("");
+
+    try {
+      const { sendResetCode } = await import("@/lib/api");
+      await sendResetCode(forgotEmail.trim());
+      setForgotStep(2);
+    } catch (err: any) {
+      setForgotError(err.message || "Failed to dispatch reset code.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  // Forgot Password: Step 3 (Save New Password)
+  const handleResetPasswordSubmit = async () => {
+    if (newPasswordInput.length <= 6) {
+      setForgotError("Password must be at least 7 characters long.");
+      return;
+    }
+    if (newPasswordInput !== confirmNewPasswordInput) {
+      setForgotError("Passwords do not match.");
+      return;
+    }
+
+    setForgotLoading(true);
+    setForgotError("");
+
+    try {
+      const { resetPassword } = await import("@/lib/api");
+      await resetPassword(forgotEmail.trim(), resetCodeInput.trim(), newPasswordInput);
+      setForgotStep(4);
+    } catch (err: any) {
+      setForgotError(err.message || "Failed to update password.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen h-screen w-full flex items-center justify-center bg-[#05050a] p-4 md:p-6 lg:p-8 select-none font-sans overflow-hidden">
-      {/* Background HTML Dotted Canvas */}
       <DesignDottedCanvas active={true} isChatActive={false} />
 
-      {/* Top Left Enlarged Black Rounded Icon Box (NO PILL, NO TEXT) */}
+      {/* Top Left Rounded Icon Box */}
       <div className="fixed top-6 left-7 z-50">
         <div className="w-11 h-11 rounded-2xl bg-black border border-zinc-800 flex items-center justify-center p-2 shadow-2xl overflow-hidden hover:border-zinc-700 transition-colors">
           <img src="/assets/voxkage_logo.png" alt="VoxKage Logo" className="w-full h-full object-cover" />
         </div>
       </div>
 
-      {/* Main Dual-Pane Container matching Claude Login Spacing & Dimensions */}
+      {/* Main Dual-Pane Spacing Container */}
       <div className="w-full h-full max-w-none flex flex-col md:flex-row items-center justify-start gap-12 lg:gap-16 xl:gap-20 z-10 my-auto pl-4 md:pl-20 lg:pl-32 pr-4 md:pr-8">
         
-        {/* === LEFT PANE: AUTHENTICATION SECTION === */}
+        {/* === LEFT PANE: AUTHENTICATION CONTAINER === */}
         <div className="w-full max-w-sm flex flex-col items-center justify-center flex-shrink-0 z-10 my-auto">
           
-          {/* Big Enlarged Serif Title Header: V[LoginCreature]xKage */}
+          {/* Serif VoxKage Title Header */}
           <div className="flex flex-col items-center mb-8 text-center">
             <h1
               className="text-white text-6xl md:text-7xl lg:text-[76px] font-normal tracking-tight flex items-center justify-center gap-0.5 leading-none"
@@ -173,17 +352,14 @@ export default function LoginView({
             </h1>
           </div>
 
-          {/* Auth Form Card */}
           <div className="w-full bg-[#0e0e11] border border-zinc-800/80 rounded-3xl p-7 shadow-2xl relative overflow-hidden backdrop-blur-xl">
             
-            {/* MASTER KEY OVERRIDE MODE */}
+            {/* MASTER KEY LOGIN OVERRIDE */}
             {isMasterKeyMode ? (
               <form onSubmit={externalOnSubmit} className="flex flex-col gap-4 animate-fadeIn">
-                <div className="flex flex-col text-left mb-1">
-                  <h3 className="text-white text-base font-medium">Master Key Override</h3>
-                  <p className="text-zinc-400 text-[12px] mt-0.5">
-                    Enter your developer master credentials to authorize access.
-                  </p>
+                <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3 mb-1">
+                  <h3 className="text-white text-base font-medium">Master Key Access</h3>
+                  <span className="text-[10px] text-zinc-500 font-mono">DEVELOPER PORTAL</span>
                 </div>
 
                 <div className="flex flex-col gap-1.5 text-left">
@@ -196,7 +372,7 @@ export default function LoginView({
                     onChange={(e) => setLoginEmail(e.target.value)}
                     required
                     className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
-                    placeholder="ayushdwivedi001@gmail.com"
+                    placeholder="Enter your email address"
                   />
                 </div>
 
@@ -210,7 +386,7 @@ export default function LoginView({
                     onChange={(e) => setLoginMasterKey(e.target.value)}
                     required
                     className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
-                    placeholder="••••••••"
+                    placeholder="Enter Master Key password"
                   />
                 </div>
 
@@ -236,21 +412,77 @@ export default function LoginView({
                   Back to Sign In
                 </button>
               </form>
+            ) : showOtpVerification ? (
+
+              /* 4-DIGIT SIGNUP OTP VERIFICATION SCREEN */
+              <div className="flex flex-col gap-4 animate-fadeIn">
+                <div className="text-left border-b border-zinc-800/60 pb-3 mb-1">
+                  <h3 className="text-white text-base font-medium">Verify your email</h3>
+                  <p className="text-zinc-500 text-[11.5px] mt-1 leading-relaxed">
+                    We sent a 4-digit verification code to <span className="text-blue-400 font-medium">{loginEmail}</span>.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 text-left">
+                  <label className="text-[12px] text-zinc-400 font-medium pl-1">4-Digit Verification Code</label>
+                  <div className="flex gap-3 justify-between px-1">
+                    {[0, 1, 2, 3].map((idx) => (
+                      <input
+                        key={idx}
+                        id={`otp-${idx}`}
+                        type="text"
+                        maxLength={1}
+                        value={otpDigits[idx]}
+                        onChange={(e) => handleOtpChange(idx, e.target.value)}
+                        className="w-12 h-12 bg-zinc-900 border border-zinc-800 rounded-xl text-center text-zinc-100 text-lg font-bold focus:border-zinc-700 outline-none transition-colors"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {otpError && (
+                  <span className="text-red-400 text-[12px] pl-1 block text-left flex items-center gap-1.5 mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{otpError}</span>
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleVerifyOtpSubmit}
+                  disabled={authLoading}
+                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.45)] text-white rounded-xl font-medium text-[13.5px] transition-all duration-200 flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
+                >
+                  {authLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Verifying...</span>
+                    </>
+                  ) : (
+                    <span>Verify & Sign Up</span>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowOtpVerification(false)}
+                  className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors text-center mt-1 cursor-pointer"
+                >
+                  Change registration email
+                </button>
+              </div>
             ) : (
 
-              /* STANDARD EMAIL / PASSWORD & GOOGLE AUTH FORM */
+              /* REGULAR SIGN IN / SIGN UP FORM */
               <form onSubmit={handleFormSubmit} className="flex flex-col gap-4 animate-fadeIn">
-                
-                {/* Form Header Title */}
                 <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3 mb-1">
                   <h3 className="text-white text-base font-medium">
-                    {isSignUp ? "Create your account" : "Sign in to VoxKage"}
+                    {isSignUp ? "Create account" : "Sign in to VoxKage"}
                   </h3>
                   <button
                     type="button"
                     onClick={() => {
                       setIsSignUp(!isSignUp);
-                      setAuthError("");
                     }}
                     className="text-[12px] text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
                   >
@@ -258,7 +490,7 @@ export default function LoginView({
                   </button>
                 </div>
 
-                {/* USERNAME FIELD — ONLY SHOWN DURING SIGN UP */}
+                {/* Username Input (Sign Up Only) */}
                 {isSignUp && (
                   <div className="flex flex-col gap-1 text-left animate-fadeIn">
                     <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
@@ -269,16 +501,24 @@ export default function LoginView({
                       <input
                         type="text"
                         value={userNameInput}
-                        onChange={(e) => setUserNameInput(e.target.value)}
+                        onChange={(e) => {
+                          setUserNameInput(e.target.value);
+                          setUserNameFieldError("");
+                        }}
                         required={isSignUp}
                         className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                        placeholder="Ayush"
+                        placeholder="Type your username"
                       />
                     </div>
+                    {userNameFieldError && (
+                      <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
+                        {userNameFieldError}
+                      </span>
+                    )}
                   </div>
                 )}
 
-                {/* EMAIL ADDRESS FIELD */}
+                {/* Email address input */}
                 <div className="flex flex-col gap-1 text-left">
                   <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
                     Email Address
@@ -288,15 +528,23 @@ export default function LoginView({
                     <input
                       type="email"
                       value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
+                      onChange={(e) => {
+                        setLoginEmail(e.target.value);
+                        setEmailFieldError("");
+                      }}
                       required
                       className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                      placeholder="you@domain.com"
+                      placeholder="Enter your email address"
                     />
                   </div>
+                  {emailFieldError && (
+                    <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
+                      {emailFieldError}
+                    </span>
+                  )}
                 </div>
 
-                {/* PASSWORD FIELD */}
+                {/* Password input */}
                 <div className="flex flex-col gap-1 text-left">
                   <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
                     Password
@@ -304,15 +552,71 @@ export default function LoginView({
                   <div className="relative flex items-center">
                     <Lock className="absolute left-3 w-4 h-4 text-zinc-500" />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       value={passwordInput}
-                      onChange={(e) => setPasswordInput(e.target.value)}
+                      onChange={(e) => {
+                        setPasswordInput(e.target.value);
+                        setPasswordFieldError("");
+                      }}
                       required
-                      className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                      placeholder="••••••••"
+                      className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
+                      placeholder="Enter your password"
                     />
+                    {isSignUp && passwordInput && confirmPasswordInput && passwordInput === confirmPasswordInput && passwordInput.length >= 7 && (
+                      <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
+                  {passwordFieldError && (
+                    <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
+                      {passwordFieldError}
+                    </span>
+                  )}
                 </div>
+
+                {/* Confirm password input (Sign Up Only) */}
+                {isSignUp && (
+                  <div className="flex flex-col gap-1 text-left animate-fadeIn">
+                    <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
+                      Confirm Password
+                    </label>
+                    <div className="relative flex items-center">
+                      <Lock className="absolute left-3 w-4 h-4 text-zinc-500" />
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPasswordInput}
+                        onChange={(e) => {
+                          setConfirmPasswordInput(e.target.value);
+                          setConfirmPasswordFieldError("");
+                        }}
+                        required={isSignUp}
+                        className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
+                        placeholder="Confirm your password"
+                      />
+                      {isSignUp && passwordInput && confirmPasswordInput && passwordInput === confirmPasswordInput && passwordInput.length >= 7 && (
+                        <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {confirmPasswordFieldError && (
+                      <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
+                        {confirmPasswordFieldError}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {authError && (
                   <span className="text-red-400 text-[12px] pl-1 block text-left flex items-center gap-1.5 mt-0.5">
@@ -321,7 +625,7 @@ export default function LoginView({
                   </span>
                 )}
 
-                {/* PRIMARY VOXKAGE BLUE BUTTON */}
+                {/* Primary Button */}
                 <button
                   type="submit"
                   disabled={authLoading}
@@ -330,7 +634,7 @@ export default function LoginView({
                   {authLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{isSignUp ? "Creating Account..." : "Signing In..."}</span>
+                      <span>{isSignUp ? "Creating account..." : "Signing In..."}</span>
                     </>
                   ) : (
                     <>
@@ -340,7 +644,6 @@ export default function LoginView({
                   )}
                 </button>
 
-                {/* Toggle Sign Up / Sign In text helper */}
                 <div className="text-[12px] text-zinc-400 text-center mt-0.5">
                   {isSignUp ? (
                     <span>
@@ -349,7 +652,6 @@ export default function LoginView({
                         type="button"
                         onClick={() => {
                           setIsSignUp(false);
-                          setAuthError("");
                         }}
                         className="text-blue-400 hover:underline font-medium cursor-pointer"
                       >
@@ -363,7 +665,6 @@ export default function LoginView({
                         type="button"
                         onClick={() => {
                           setIsSignUp(true);
-                          setAuthError("");
                         }}
                         className="text-blue-400 hover:underline font-medium cursor-pointer"
                       >
@@ -373,7 +674,7 @@ export default function LoginView({
                   )}
                 </div>
 
-                {/* DIVIDER */}
+                {/* Divider */}
                 <div className="relative flex items-center justify-center my-1">
                   <div className="border-t border-zinc-800/80 w-full" />
                   <span className="bg-[#0e0e11] px-3 text-[10.5px] font-medium text-zinc-500 uppercase tracking-widest absolute">
@@ -381,7 +682,7 @@ export default function LoginView({
                   </span>
                 </div>
 
-                {/* GOOGLE SIGN UP / IN BUTTON BELOW DIVIDER */}
+                {/* Google Login button */}
                 <button
                   type="button"
                   onClick={handleGoogleLogin}
@@ -397,7 +698,6 @@ export default function LoginView({
                   <span>{isSignUp ? "Sign Up with Google" : "Continue with Google"}</span>
                 </button>
 
-                {/* Footer helpers */}
                 <div className="flex items-center justify-between text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
                   <button
                     type="button"
@@ -412,6 +712,11 @@ export default function LoginView({
                     type="button"
                     onClick={() => {
                       setForgotEmail(loginEmail);
+                      setForgotError("");
+                      setResetCodeInput("");
+                      setNewPasswordInput("");
+                      setConfirmNewPasswordInput("");
+                      setForgotStep(1);
                       setShowForgotModal(true);
                     }}
                     className="hover:text-zinc-300 transition-colors cursor-pointer"
@@ -419,20 +724,16 @@ export default function LoginView({
                     Forgot Password?
                   </button>
                 </div>
-
               </form>
             )}
 
           </div>
         </div>
 
-        {/* === RIGHT PANE: ENLARGED PRODUCT SHOWCASE CARD (RIGHT BORDER EXPANDED) === */}
+        {/* === RIGHT PANE: SHOWCASE CARD === */}
         <div className="flex-1 w-full h-full max-h-[calc(100vh-64px)] min-h-[580px] bg-[#0c0c10]/95 border border-zinc-800/80 rounded-[32px] p-8 md:p-10 lg:p-12 flex flex-col justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl z-10 my-auto">
-          
-          {/* Subtle Blue Glow Accent */}
           <div className="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Card Top Header */}
           <div className="flex flex-col gap-4 text-left relative z-10">
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[11.5px] font-medium tracking-wide">
@@ -448,7 +749,6 @@ export default function LoginView({
             </p>
           </div>
 
-          {/* Showcase Preview Mockup */}
           <div className="my-6 p-5 rounded-2xl bg-zinc-900/60 border border-zinc-800/80 flex flex-col gap-3.5 relative z-10">
             <div className="flex items-center justify-between border-b border-zinc-800/60 pb-2.5">
               <div className="flex items-center gap-2">
@@ -470,7 +770,6 @@ export default function LoginView({
             </div>
           </div>
 
-          {/* Card Bottom Footer */}
           <div className="flex items-center justify-between text-[12px] text-zinc-500 border-t border-zinc-800/60 pt-5 relative z-10">
             <span>March 2026 Edition</span>
             <span className="text-zinc-400">JARVIS-Grade Precision</span>
@@ -479,31 +778,22 @@ export default function LoginView({
 
       </div>
 
-      {/* Forgot Password Helper Modal */}
+      {/* Forgot Password Multi-step Modal */}
       {showForgotModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowForgotModal(false)} />
           <div className="w-full max-w-sm bg-[#121216] border border-zinc-800 rounded-2xl p-6 relative z-10 shadow-2xl flex flex-col gap-4 text-left animate-fadeIn">
-            <div className="flex items-center justify-between">
-              <h4 className="text-zinc-100 font-medium text-base">Reset Account Password</h4>
+            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
+              <h4 className="text-zinc-100 font-medium text-base">Reset Password</h4>
               <button type="button" onClick={() => setShowForgotModal(false)} className="text-zinc-400 hover:text-white cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
-            {forgotSent ? (
-              <div className="flex flex-col gap-3 text-center py-4">
-                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
-                <p className="text-zinc-300 text-[13px]">
-                  Password reset link sent to <span className="text-blue-400">{forgotEmail}</span>. Please check your inbox.
-                </p>
-                <button type="button" onClick={() => setShowForgotModal(false)} className="mt-2 text-[12.5px] text-blue-400 hover:underline cursor-pointer">
-                  Close
-                </button>
-              </div>
-            ) : (
+
+            {forgotStep === 1 && (
               <div className="flex flex-col gap-3">
                 <p className="text-zinc-400 text-[12.5px]">
-                  Enter your registered email address to receive password reset instructions.
+                  Enter your registered email address to receive an 8-digit secure reset code.
                 </p>
                 <input
                   type="email"
@@ -512,12 +802,146 @@ export default function LoginView({
                   className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
                   placeholder="you@domain.com"
                 />
+                {forgotError && (
+                  <span className="text-red-400 text-[12px] flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{forgotError}</span>
+                  </span>
+                )}
                 <button
                   type="button"
-                  onClick={() => setForgotSent(true)}
+                  onClick={handleSendResetCode}
+                  disabled={forgotLoading}
+                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13px] transition-colors cursor-pointer mt-1 flex items-center justify-center gap-1"
+                >
+                  {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Send Reset Code"}
+                </button>
+              </div>
+            )}
+
+            {forgotStep === 2 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-zinc-400 text-[12.5px]">
+                  We sent an 8-digit secure reset code to <span className="text-blue-400">{forgotEmail}</span>.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] text-zinc-400 font-medium">8-Digit Code</label>
+                  <input
+                    type="text"
+                    maxLength={8}
+                    value={resetCodeInput}
+                    onChange={(e) => setResetCodeInput(e.target.value.replace(/\D/g, ""))}
+                    className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-center text-zinc-200 text-base font-mono font-semibold tracking-widest outline-none focus:border-zinc-700"
+                    placeholder="12345678"
+                  />
+                </div>
+                {forgotError && (
+                  <span className="text-red-400 text-[12px] flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{forgotError}</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (resetCodeInput.length !== 8) {
+                      setForgotError("Code must be exactly 8 digits.");
+                      return;
+                    }
+                    setForgotError("");
+                    setForgotStep(3);
+                  }}
                   className="w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13px] transition-colors cursor-pointer mt-1"
                 >
-                  Send Reset Link
+                  Verify Code
+                </button>
+              </div>
+            )}
+
+            {forgotStep === 3 && (
+              <div className="flex flex-col gap-3">
+                <p className="text-zinc-400 text-[12.5px]">
+                  Enter a new password for your account.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] text-zinc-400 font-medium">New Password</label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPasswordInput}
+                      onChange={(e) => setNewPasswordInput(e.target.value)}
+                      className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
+                      placeholder="Enter new password"
+                    />
+                    {newPasswordInput && confirmNewPasswordInput && newPasswordInput === confirmNewPasswordInput && newPasswordInput.length >= 7 && (
+                      <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] text-zinc-400 font-medium">Confirm New Password</label>
+                  <div className="relative flex items-center">
+                    <input
+                      type={showConfirmNewPassword ? "text" : "password"}
+                      value={confirmNewPasswordInput}
+                      onChange={(e) => setConfirmNewPasswordInput(e.target.value)}
+                      className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
+                      placeholder="Confirm new password"
+                    />
+                    {newPasswordInput && confirmNewPasswordInput && newPasswordInput === confirmNewPasswordInput && newPasswordInput.length >= 7 && (
+                      <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)}
+                      className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                    >
+                      {showConfirmNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                {forgotError && (
+                  <span className="text-red-400 text-[12px] flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{forgotError}</span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleResetPasswordSubmit}
+                  disabled={forgotLoading}
+                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13px] transition-colors cursor-pointer mt-1 flex items-center justify-center"
+                >
+                  {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save New Password"}
+                </button>
+              </div>
+            )}
+
+            {forgotStep === 4 && (
+              <div className="flex flex-col gap-3 text-center py-4">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto" />
+                <p className="text-zinc-300 text-[13px]">
+                  Your password has been successfully reset.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotModal(false);
+                    setForgotStep(1);
+                    setResetCodeInput("");
+                    setNewPasswordInput("");
+                    setConfirmNewPasswordInput("");
+                  }}
+                  className="mt-2 text-[12.5px] text-blue-400 hover:underline cursor-pointer"
+                >
+                  Sign In Now
                 </button>
               </div>
             )}

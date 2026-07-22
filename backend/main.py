@@ -189,6 +189,26 @@ class LoginPasswordRequest(BaseModel):
     email: EmailStr
     password: str
 
+class SendSignupOtpRequest(BaseModel):
+    email: EmailStr
+    password: str
+    confirm_password: str
+    user_name: str
+
+class SignUpOtpVerifyRequest(BaseModel):
+    email: EmailStr
+    password: str
+    user_name: str
+    otp: str
+
+class SendResetCodeRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    reset_code: str
+    new_password: str
+
 class SaveFavoritesRequest(BaseModel):
     favorites: List[str]
 
@@ -464,35 +484,160 @@ async def oauth_callback_endpoint(req: OAuthCallbackRequest):
             "avatar_url": avatar_url,
         }
 
-@app.post("/auth/signup")
-def signup_endpoint(req: SignUpRequest):
-    from auth import hash_password, create_access_token
+@app.post("/auth/send-signup-otp")
+def send_signup_otp_endpoint(req: SendSignupOtpRequest):
+    import re
+    from auth import generate_signup_otp
+    from database import get_db
+    
+    email = req.email.lower().strip()
+    
+    # Email syntax check
+    if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
+        raise HTTPException(status_code=400, detail="Invalid email format syntax.")
+        
+    # Password length check
+    if len(req.password) <= 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+        
+    # Confirm password check
+    if req.password != req.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+        
+    # Check if email already exists
+    db = get_db()
+    res = db.table("user_settings").select("settings_profile").eq("user_id", email).execute()
+    if res.data:
+        profile = res.data[0].get("settings_profile") or {}
+        if "password_hash" in profile or "user_name" in profile:
+            raise HTTPException(status_code=400, detail="An account with this email address already exists. Please Sign In.")
+            
+    # Generate and send 4-digit code
+    generate_signup_otp(email)
+    return {"status": "success", "message": "Verification code sent to your email address."}
+
+@app.post("/auth/signup-verify")
+def signup_verify_endpoint(req: SignUpOtpVerifyRequest):
+    from auth import verify_signup_otp, hash_password, create_access_token
     from database import get_user_settings_profile, save_user_settings_profile
     
     email = req.email.lower().strip()
-    profile = get_user_settings_profile(email)
     
-    # Store hashed password in settings profile
+    # 4-digit code verification
+    if not verify_signup_otp(email, req.otp):
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code.")
+        
+    profile = get_user_settings_profile(email)
     profile["password_hash"] = hash_password(req.password)
     profile["userName"] = req.user_name.strip()
     profile["user_name"] = req.user_name.strip()
+    profile["avatar_url"] = ""  # No avatar initially
     save_user_settings_profile(email, profile)
-
+    
     token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
         "token_type": "bearer",
         "email": email,
         "user_name": req.user_name.strip(),
-        "avatar_url": profile.get("avatar_url", "")
+        "avatar_url": ""
+    }
+
+@app.post("/auth/send-reset-code")
+def send_reset_code_endpoint(req: SendResetCodeRequest):
+    from auth import generate_reset_code
+    from database import get_db
+    
+    email = req.email.lower().strip()
+    
+    # Check if user exists
+    db = get_db()
+    res = db.table("user_settings").select("settings_profile").eq("user_id", email).execute()
+    user_exists = False
+    if res.data:
+        profile = res.data[0].get("settings_profile") or {}
+        if "password_hash" in profile or "user_name" in profile:
+            user_exists = True
+            
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="No account found with this email address.")
+        
+    generate_reset_code(email)
+    return {"status": "success", "message": "Password reset code sent to your email address."}
+
+@app.post("/auth/reset-password")
+def reset_password_endpoint(req: ResetPasswordRequest):
+    from auth import verify_reset_code, hash_password
+    from database import get_user_settings_profile, save_user_settings_profile
+    
+    email = req.email.lower().strip()
+    
+    # Password length check
+    if len(req.new_password) <= 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+        
+    if not verify_reset_code(email, req.reset_code):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
+        
+    profile = get_user_settings_profile(email)
+    profile["password_hash"] = hash_password(req.new_password)
+    save_user_settings_profile(email, profile)
+    
+    return {"status": "success", "message": "Password has been reset successfully."}
+
+@app.post("/auth/signup")
+def signup_endpoint(req: SignUpRequest):
+    from auth import hash_password, create_access_token
+    from database import get_db, get_user_settings_profile, save_user_settings_profile
+    
+    email = req.email.lower().strip()
+    
+    # Check if email already exists
+    db = get_db()
+    res = db.table("user_settings").select("settings_profile").eq("user_id", email).execute()
+    if res.data:
+        profile = res.data[0].get("settings_profile") or {}
+        if "password_hash" in profile or "user_name" in profile:
+            raise HTTPException(status_code=400, detail="An account with this email address already exists. Please Sign In.")
+
+    if len(req.password) <= 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+        
+    profile = get_user_settings_profile(email)
+    profile["password_hash"] = hash_password(req.password)
+    profile["userName"] = req.user_name.strip()
+    profile["user_name"] = req.user_name.strip()
+    profile["avatar_url"] = ""
+    save_user_settings_profile(email, profile)
+ 
+    token = create_access_token(data={"sub": email})
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "email": email,
+        "user_name": req.user_name.strip(),
+        "avatar_url": ""
     }
 
 @app.post("/auth/login-password")
 def login_password_endpoint(req: LoginPasswordRequest):
     from auth import verify_password, create_access_token
-    from database import get_user_settings_profile
+    from database import get_db, get_user_settings_profile
     
     email = req.email.lower().strip()
+    
+    # Verify email exists in database
+    db = get_db()
+    res = db.table("user_settings").select("settings_profile").eq("user_id", email).execute()
+    user_exists = False
+    if res.data:
+        profile = res.data[0].get("settings_profile") or {}
+        if "password_hash" in profile or "user_name" in profile:
+            user_exists = True
+            
+    if not user_exists:
+        raise HTTPException(status_code=404, detail="This email address is not registered. Please Sign Up.")
+        
     profile = get_user_settings_profile(email)
     stored_hash = profile.get("password_hash")
     

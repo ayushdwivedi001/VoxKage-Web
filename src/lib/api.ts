@@ -12,6 +12,7 @@ export function saveToken(token: string, email: string, avatarUrl?: string, user
   if (typeof window !== "undefined") {
     localStorage.setItem("voxkage_web_token", token);
     localStorage.setItem("voxkage_web_email", email);
+    localStorage.setItem("voxkage_last_used_email", email);
     if (avatarUrl && avatarUrl.trim()) {
       localStorage.setItem("voxkage_web_avatar_url", avatarUrl.trim());
     } else {
@@ -23,6 +24,13 @@ export function saveToken(token: string, email: string, avatarUrl?: string, user
       localStorage.removeItem("voxkage_user_name");
     }
   }
+}
+
+export function getLastUsedEmail(): string {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("voxkage_last_used_email") || "";
+  }
+  return "";
 }
 
 export function getAvatarUrl(): string {
@@ -422,5 +430,59 @@ export async function fetchBootPayload() {
 
 export async function compactSession(sessionId: string, model: string) {
   return apiRequest(`/sessions/${sessionId}/compact`, "POST", { model });
+}
+
+export async function sendSignupOtp(email: string, password: string = "", confirmPassword: string = "", userName: string = ""): Promise<any> {
+  const res = await fetch(`${BACKEND_URL}/auth/send-signup-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, confirm_password: confirmPassword, user_name: userName }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to send signup verification code.");
+  }
+  return res.json();
+}
+
+export async function verifySignupOtp(email: string, password: string = "", userName: string = "", otp: string): Promise<{ token: string; avatarUrl?: string; userName?: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/signup-verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, user_name: userName, otp }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Invalid or expired verification code.");
+  }
+  const data = await res.json();
+  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name);
+  return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
+}
+
+export async function sendResetCode(email: string): Promise<any> {
+  const res = await fetch(`${BACKEND_URL}/auth/send-reset-code`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to send reset code.");
+  }
+  return res.json();
+}
+
+export async function resetPassword(email: string, resetCode: string, newPassword: string): Promise<any> {
+  const res = await fetch(`${BACKEND_URL}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, reset_code: resetCode, new_password: newPassword }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to reset password.");
+  }
+  return res.json();
 }
 
