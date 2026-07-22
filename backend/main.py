@@ -313,12 +313,23 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
 @app.post("/auth/master-login")
 def master_login(req: MasterLoginRequest):
     """
-    Direct developer login using the Master Key, returning a real JWT token.
+    Direct developer login using the Master Key, returning a real JWT token and account profile.
     """
+    from database import get_user_settings_profile
     expected_master = os.getenv("VOXKAGE_MASTER_KEY", "sir")
     if req.master_key == expected_master:
-        token = create_access_token(data={"sub": req.email})
-        return {"access_token": token, "token_type": "bearer", "user_name": req.email.split("@")[0]}
+        email = req.email.lower().strip()
+        profile = get_user_settings_profile(email)
+        user_name = profile.get("userName") or profile.get("user_name") or email.split("@")[0]
+        avatar_url = profile.get("avatar_url", "")
+        token = create_access_token(data={"sub": email})
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "email": email,
+            "user_name": user_name,
+            "avatar_url": avatar_url
+        }
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Unauthorized: Master Key verification failed."

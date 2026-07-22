@@ -131,10 +131,16 @@ export default function Home() {
       if (boot.user_name) {
         localStorage.setItem("voxkage_user_name", boot.user_name);
         setUserName(boot.user_name);
+      } else {
+        localStorage.removeItem("voxkage_user_name");
+        setUserName("");
       }
-      if (boot.avatar_url) {
-        localStorage.setItem("voxkage_web_avatar_url", boot.avatar_url);
-        setUserAvatarUrl(boot.avatar_url);
+      if (boot.avatar_url && boot.avatar_url.trim()) {
+        localStorage.setItem("voxkage_web_avatar_url", boot.avatar_url.trim());
+        setUserAvatarUrl(boot.avatar_url.trim());
+      } else {
+        localStorage.removeItem("voxkage_web_avatar_url");
+        setUserAvatarUrl("");
       }
 
       if (boot.selected_model && !localStorage.getItem("voxkage_selected_model")) {
@@ -167,6 +173,8 @@ export default function Home() {
       chatSessions.setCurrentSessionId(null);
       setIsChatActive(false);
       chatSessions.setChatTitle("Greeting");
+      setUserName("");
+      setUserAvatarUrl("");
     },
   });
 

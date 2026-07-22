@@ -12,11 +12,15 @@ export function saveToken(token: string, email: string, avatarUrl?: string, user
   if (typeof window !== "undefined") {
     localStorage.setItem("voxkage_web_token", token);
     localStorage.setItem("voxkage_web_email", email);
-    if (avatarUrl) {
-      localStorage.setItem("voxkage_web_avatar_url", avatarUrl);
+    if (avatarUrl && avatarUrl.trim()) {
+      localStorage.setItem("voxkage_web_avatar_url", avatarUrl.trim());
+    } else {
+      localStorage.removeItem("voxkage_web_avatar_url");
     }
-    if (userName) {
-      localStorage.setItem("voxkage_user_name", userName);
+    if (userName && userName.trim()) {
+      localStorage.setItem("voxkage_user_name", userName.trim());
+    } else {
+      localStorage.removeItem("voxkage_user_name");
     }
   }
 }
@@ -33,6 +37,7 @@ export function clearToken() {
     localStorage.removeItem("voxkage_web_token");
     localStorage.removeItem("voxkage_web_email");
     localStorage.removeItem("voxkage_web_avatar_url");
+    localStorage.removeItem("voxkage_user_name");
   }
 }
 
