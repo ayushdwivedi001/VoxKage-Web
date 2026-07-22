@@ -290,10 +290,6 @@ class UpdateScheduleRequest(BaseModel):
 def get_root():
     return {"message": "VoxKage Web API operational.", "timestamp": datetime.utcnow().isoformat()}
 
-@app.get("/health")
-def health():
-    return {"status": "alive", "engine": "VoxKage Web Backend", "timestamp": "2026-06-30"}
-
 @app.get("/user/boot-payload")
 async def get_boot_payload(user: str = Depends(get_current_user)):
     from memory_engine import recall_user
@@ -1844,7 +1840,15 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str, token: 
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    from database import get_db
+    try:
+        get_db().table("user_settings").select("user_id").limit(1).execute()
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {e}"
+    return {"status": "alive", "database": db_status, "engine": "VoxKage Web Backend"}
+
+# NOTE: There is also a /health endpoint at line 293 that is superseded by this one.
 
 # --- WebSocket Laptop Daemon Bridge ---
 @app.websocket("/ws/laptop")
