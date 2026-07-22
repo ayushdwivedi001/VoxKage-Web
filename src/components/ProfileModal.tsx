@@ -1,11 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { User, X, Check } from "lucide-react";
 
 interface ProfileModalProps {
   userName: string;
   setUserName: (name: string) => void;
+  userAvatarUrl?: string;
   onClose: () => void;
   onSave: () => void;
 }
@@ -13,9 +14,12 @@ interface ProfileModalProps {
 export default function ProfileModal({
   userName,
   setUserName,
+  userAvatarUrl,
   onClose,
   onSave,
 }: ProfileModalProps) {
+  const [avatarError, setAvatarError] = useState(false);
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -28,8 +32,19 @@ export default function ProfileModal({
       <div className="relative w-full max-w-sm bg-[#121216] border border-zinc-800 rounded-2xl p-6 shadow-2xl z-10 flex flex-col gap-5 font-sans text-zinc-300 animate-fadeIn">
         <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-600/20 border border-blue-500/30 text-blue-400">
-              <User className="w-4 h-4" />
+            <div className="flex items-center justify-center w-9 h-9 rounded-full bg-zinc-800 border border-zinc-700/50 flex-shrink-0 select-none overflow-hidden">
+              {userAvatarUrl && !avatarError ? (
+                <img
+                  src={userAvatarUrl}
+                  alt={userName || "User"}
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <User className="w-4.5 h-4.5 text-blue-400" />
+              )}
             </div>
             <h3 className="text-zinc-100 text-base font-semibold">User Profile</h3>
           </div>

@@ -245,6 +245,7 @@ export default function Home() {
         setCustomProxyUrl(savedProxy);
       }
       setUserName(localStorage.getItem("voxkage_user_name") || "");
+      setUserAvatarUrl(localStorage.getItem("voxkage_web_avatar_url") || "");
       const savedModel = localStorage.getItem("voxkage_selected_model");
       if (savedModel) setSelectedModel(savedModel);
       const savedVariant = localStorage.getItem("voxkage_selected_variant");
@@ -595,6 +596,7 @@ export default function Home() {
         setShowProfileModal={setShowProfileModal}
         userName={userName}
         setUserName={setUserName}
+        userAvatarUrl={userAvatarUrl}
         openCodeApiKey={openCodeApiKey}
         setOpenCodeApiKey={setOpenCodeApiKey}
         kiloApiKey={kiloApiKey}

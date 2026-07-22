@@ -43,24 +43,66 @@ export default function LoginView({
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSent, setForgotSent] = useState(false);
 
-  // Handle Google OAuth Click
-  const handleGoogleLogin = async () => {
+  // Handle Real Production-Grade Google OAuth Popup Authentication
+  const handleGoogleLogin = () => {
     setAuthLoading(true);
     setAuthError("");
-    try {
-      const { loginWithGoogle } = await import("@/lib/api");
-      const mockCredential = "google_auth_token_" + Date.now();
-      const res = await loginWithGoogle(mockCredential);
-      if (onGoogleSuccess) {
-        onGoogleSuccess(res.token, res.userName || "user@gmail.com", res.avatarUrl, res.userName);
-      } else if (onAuthSuccess) {
-        onAuthSuccess(res.token, res.userName || "user@gmail.com", res.avatarUrl, res.userName);
-      }
-    } catch (err: any) {
-      setAuthError(err.message || "Google authentication failed.");
-    } finally {
+
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "948142993949-7emi9ertjv9amcdkr7eql250dmm0pdu0.apps.googleusercontent.com";
+    const redirectUri = `${window.location.origin}/oauth/callback`;
+    const googleOAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+      redirectUri
+    )}&response_type=code&scope=openid%20email%20profile&prompt=select_account&state=google_login`;
+
+    const width = 540;
+    const height = 640;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      googleOAuthUrl,
+      "GoogleAuthPopup",
+      `width=${width},height=${height},left=${left},top=${top},status=no,menubar=no,toolbar=no`
+    );
+
+    if (!popup) {
       setAuthLoading(false);
+      setAuthError("Popup blocked by browser. Please allow popups for this site.");
+      return;
     }
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "OAUTH_SUCCESS") {
+        window.removeEventListener("message", handleMessage);
+        setAuthLoading(false);
+        const { token, email, userName, avatarUrl } = event.data;
+        if (token && email) {
+          import("@/lib/api").then(({ saveToken }) => {
+            saveToken(token, email, avatarUrl, userName);
+          });
+          if (onGoogleSuccess) {
+            onGoogleSuccess(token, email, avatarUrl, userName);
+          } else if (onAuthSuccess) {
+            onAuthSuccess(token, email, avatarUrl, userName);
+          }
+        }
+      } else if (event.data?.type === "OAUTH_FAILURE") {
+        window.removeEventListener("message", handleMessage);
+        setAuthLoading(false);
+        setAuthError(event.data?.error || "Google authentication failed.");
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed);
+        window.removeEventListener("message", handleMessage);
+        setAuthLoading(false);
+      }
+    }, 1000);
   };
 
   // Handle Password Sign In / Sign Up Submit

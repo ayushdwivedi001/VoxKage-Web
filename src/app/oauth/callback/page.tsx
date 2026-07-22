@@ -49,7 +49,14 @@ function OAuthCallbackContent() {
         // Send success message to parent window (validating origin securely)
         if (window.opener) {
           window.opener.postMessage(
-            { type: "OAUTH_SUCCESS", provider: data.provider },
+            {
+              type: "OAUTH_SUCCESS",
+              provider: data.provider || "google",
+              token: data.access_token,
+              email: data.email,
+              userName: data.user_name,
+              avatarUrl: data.avatar_url,
+            },
             window.location.origin
           );
         }

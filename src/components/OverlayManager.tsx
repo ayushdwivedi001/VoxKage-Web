@@ -32,6 +32,7 @@ interface OverlayManagerProps {
   setShowProfileModal: (show: boolean) => void;
   userName: string;
   setUserName: (val: string) => void;
+  userAvatarUrl?: string;
   openCodeApiKey: string;
   setOpenCodeApiKey: (val: string) => void;
   kiloApiKey: string;
@@ -80,6 +81,7 @@ export default function OverlayManager({
   setShowProfileModal,
   userName,
   setUserName,
+  userAvatarUrl,
   openCodeApiKey,
   setOpenCodeApiKey,
   kiloApiKey,
@@ -147,6 +149,7 @@ export default function OverlayManager({
         <ProfileModal
           userName={userName}
           setUserName={setUserName}
+          userAvatarUrl={userAvatarUrl}
           onClose={() => {
             setUserName(localStorage.getItem("voxkage_user_name") || "");
             setShowProfileModal(false);

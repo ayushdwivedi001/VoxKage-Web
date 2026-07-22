@@ -89,6 +89,7 @@ export default function Sidebar({
   const [showAppearanceMenu, setShowAppearanceMenu] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
+  const [avatarError, setAvatarError] = useState(false);
 
   const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";
 
@@ -633,8 +634,19 @@ export default function Sidebar({
             >
               {/* Profile Header */}
               <div className="flex items-center gap-3 px-2.5 py-2.5 border-b border-zinc-800/80 mb-0.5">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-800 text-zinc-200 text-[14px] font-semibold border border-zinc-700/50 flex-shrink-0 select-none">
-                  {userName ? userName.charAt(0).toUpperCase() : "A"}
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-zinc-800 text-zinc-200 text-[14px] font-semibold border border-zinc-700/50 flex-shrink-0 select-none overflow-hidden">
+                  {userAvatarUrl && !avatarError ? (
+                    <img
+                      src={userAvatarUrl}
+                      alt={userName || "User"}
+                      referrerPolicy="no-referrer"
+                      crossOrigin="anonymous"
+                      onError={() => setAvatarError(true)}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span>{userName ? userName.charAt(0).toUpperCase() : "A"}</span>
+                  )}
                 </div>
                 <div className="flex flex-col truncate">
                   <span className="text-[14px] font-medium text-white truncate">
@@ -783,10 +795,21 @@ export default function Sidebar({
                 e.stopPropagation();
                 setShowUserMenu(!showUserMenu);
               }}
-              className="w-9 h-9 min-w-[36px] min-h-[36px] aspect-square rounded-full bg-zinc-800 text-zinc-200 text-[13.5px] font-semibold border border-zinc-700/50 hover:border-zinc-500 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer select-none"
+              className="w-9 h-9 min-w-[36px] min-h-[36px] aspect-square rounded-full bg-zinc-800 text-zinc-200 text-[13.5px] font-semibold border border-zinc-700/50 hover:border-zinc-500 flex items-center justify-center flex-shrink-0 transition-all duration-200 cursor-pointer select-none overflow-hidden"
               aria-label="User profile"
             >
-              {userName ? userName.charAt(0).toUpperCase() : "A"}
+              {userAvatarUrl && !avatarError ? (
+                <img
+                  src={userAvatarUrl}
+                  alt={userName || "User"}
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>{userName ? userName.charAt(0).toUpperCase() : "A"}</span>
+              )}
             </button>
           </SidebarTooltip>
         ) : (
@@ -799,8 +822,15 @@ export default function Sidebar({
           >
             {/* Avatar */}
             <div className="w-9 h-9 min-w-[36px] min-h-[36px] aspect-square flex-shrink-0 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-200 text-sm font-medium shadow-sm transition-transform duration-200 group-hover:scale-105 overflow-hidden">
-              {userAvatarUrl ? (
-                <img src={userAvatarUrl} alt={userName || "User"} className="w-full h-full object-cover" />
+              {userAvatarUrl && !avatarError ? (
+                <img
+                  src={userAvatarUrl}
+                  alt={userName || "User"}
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                  onError={() => setAvatarError(true)}
+                  className="w-full h-full object-cover"
+                />
               ) : (
                 <span>{userName ? userName.charAt(0).toUpperCase() : "A"}</span>
               )}

@@ -175,6 +175,11 @@ class VerifyOtpRequest(BaseModel):
 class GoogleAuthRequest(BaseModel):
     credential: str
 
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    state: Optional[str] = None
+    redirect_uri: str
+
 class SignUpRequest(BaseModel):
     email: EmailStr
     password: str
@@ -371,6 +376,7 @@ async def google_auth_endpoint(req: GoogleAuthRequest):
     profile["avatar_url"] = avatar_url
     save_user_settings_profile(email, profile)
 
+    token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -378,6 +384,74 @@ async def google_auth_endpoint(req: GoogleAuthRequest):
         "user_name": user_name,
         "avatar_url": avatar_url
     }
+
+@app.post("/auth/oauth/callback")
+async def oauth_callback_endpoint(req: OAuthCallbackRequest):
+    import os, httpx
+    from auth import create_access_token
+    from database import get_user_settings_profile, save_user_settings_profile
+
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=500, detail="Google OAuth client credentials not configured on backend.")
+
+    # Exchange authorization code for Google access token
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        token_res = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": req.code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": req.redirect_uri,
+                "grant_type": "authorization_code",
+            },
+        )
+        
+        if token_res.status_code != 200:
+            err_text = token_res.text
+            print(f"[-] Google token exchange failed ({token_res.status_code}): {err_text}")
+            raise HTTPException(status_code=400, detail=f"Google token exchange failed: {err_text}")
+
+        token_data = token_res.json()
+        access_token = token_data.get("access_token")
+
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Google did not return access token.")
+
+        # Fetch Google user profile
+        user_res = await client.get(
+            "https://www.googleapis.com/oauth2/v3/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+        if user_res.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to fetch Google user profile.")
+
+        user_info = user_res.json()
+        email = user_info.get("email", "").lower().strip()
+        user_name = user_info.get("name") or user_info.get("given_name") or email.split("@")[0]
+        avatar_url = user_info.get("picture", "")
+
+        if not email:
+            raise HTTPException(status_code=400, detail="Google profile missing email.")
+
+        profile = get_user_settings_profile(email)
+        profile["userName"] = user_name
+        profile["user_name"] = user_name
+        profile["avatar_url"] = avatar_url
+        save_user_settings_profile(email, profile)
+
+        jwt_token = create_access_token(data={"sub": email})
+        return {
+            "access_token": jwt_token,
+            "provider": "google",
+            "email": email,
+            "user_name": user_name,
+            "avatar_url": avatar_url,
+        }
 
 @app.post("/auth/signup")
 def signup_endpoint(req: SignUpRequest):
