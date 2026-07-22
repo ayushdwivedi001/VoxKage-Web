@@ -8,11 +8,21 @@ export function getToken(): string | null {
   return null;
 }
 
-export function saveToken(token: string, email: string, avatarUrl?: string, userName?: string) {
+export function getRefreshToken(): string | null {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("voxkage_web_refresh_token");
+  }
+  return null;
+}
+
+export function saveToken(token: string, email: string, avatarUrl?: string, userName?: string, refreshToken?: string) {
   if (typeof window !== "undefined") {
     localStorage.setItem("voxkage_web_token", token);
     localStorage.setItem("voxkage_web_email", email);
     localStorage.setItem("voxkage_last_used_email", email);
+    if (refreshToken) {
+      localStorage.setItem("voxkage_web_refresh_token", refreshToken);
+    }
     if (avatarUrl && avatarUrl.trim()) {
       localStorage.setItem("voxkage_web_avatar_url", avatarUrl.trim());
     } else {
@@ -43,14 +53,27 @@ export function getAvatarUrl(): string {
 export function clearToken() {
   if (typeof window !== "undefined") {
     localStorage.removeItem("voxkage_web_token");
+    localStorage.removeItem("voxkage_web_refresh_token");
     localStorage.removeItem("voxkage_web_email");
     localStorage.removeItem("voxkage_web_avatar_url");
     localStorage.removeItem("voxkage_user_name");
   }
 }
 
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
 async function apiRequest(endpoint: string, method: string = "GET", body: any = null) {
-  const token = getToken();
+  let token = getToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
@@ -58,18 +81,71 @@ async function apiRequest(endpoint: string, method: string = "GET", body: any = 
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${BACKEND_URL}${endpoint}`, {
+  let response = await fetch(`${BACKEND_URL}${endpoint}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
   if (response.status === 401) {
-    clearToken();
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("voxkage_unauthorized"));
+    const refreshToken = getRefreshToken();
+    const email = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_email") : null;
+
+    if (refreshToken && email) {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        try {
+          const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, refresh_token: refreshToken }),
+          });
+          if (refreshRes.ok) {
+            const data = await refreshRes.json();
+            saveToken(
+              data.access_token,
+              email,
+              localStorage.getItem("voxkage_web_avatar_url") || "",
+              localStorage.getItem("voxkage_user_name") || "",
+              data.refresh_token
+            );
+            isRefreshing = false;
+            onRefreshed(data.access_token);
+          } else {
+            isRefreshing = false;
+            clearToken();
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new Event("voxkage_unauthorized"));
+            }
+            throw new Error("Session expired. Please sign in again.");
+          }
+        } catch (err) {
+          isRefreshing = false;
+          clearToken();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("voxkage_unauthorized"));
+          }
+          throw err;
+        }
+      }
+
+      const retryToken = await new Promise<string>((resolve) => {
+        subscribeTokenRefresh((token) => resolve(token));
+      });
+
+      headers["Authorization"] = `Bearer ${retryToken}`;
+      response = await fetch(`${BACKEND_URL}${endpoint}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+    } else {
+      clearToken();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("voxkage_unauthorized"));
+      }
+      throw new Error("Unauthorized");
     }
-    throw new Error("Unauthorized");
   }
 
   if (!response.ok) {
@@ -92,32 +168,6 @@ async function apiRequest(endpoint: string, method: string = "GET", body: any = 
   return response.json();
 }
 
-export async function login(email: string, masterKey: string): Promise<string> {
-  const res = await fetch(`${BACKEND_URL}/auth/master-login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, master_key: masterKey }),
-  });
-  if (!res.ok) {
-    throw new Error("Invalid Master Key");
-  }
-
-  const contentType = res.headers.get("Content-Type") || "";
-  if (!contentType.includes("application/json")) {
-    const text = await res.text();
-    if (text.includes("<!DOCTYPE html>") || text.includes("<html")) {
-      throw new Error("FastAPI backend is starting up or temporarily offline. Please wait a few seconds and try again.");
-    }
-    throw new Error("Server returned non-JSON response.");
-  }
-
-  const data = await res.json();
-  const token = data.access_token;
-  saveToken(token, email, "", data.user_name);
-  return token;
-}
 
 export async function sendOtp(email: string): Promise<any> {
   const res = await fetch(`${BACKEND_URL}/auth/send-otp`, {
@@ -143,7 +193,7 @@ export async function verifyOtp(email: string, otp: string, userName?: string): 
     throw new Error(errData.detail || "Invalid or expired OTP code.");
   }
   const data = await res.json();
-  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name);
+  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name, data.refresh_token);
   return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 
@@ -158,7 +208,7 @@ export async function loginWithGoogle(credential: string): Promise<{ token: stri
     throw new Error(errData.detail || "Google authentication failed.");
   }
   const data = await res.json();
-  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name, data.refresh_token);
   return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 
@@ -173,7 +223,7 @@ export async function signupUser(email: string, password: string, userName: stri
     throw new Error(errData.detail || "Failed to create account.");
   }
   const data = await res.json();
-  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name, data.refresh_token);
   return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 
@@ -188,7 +238,7 @@ export async function loginWithPassword(email: string, password: string): Promis
     throw new Error(errData.detail || "Invalid email or password.");
   }
   const data = await res.json();
-  saveToken(data.access_token, data.email, data.avatar_url, data.user_name);
+  saveToken(data.access_token, data.email, data.avatar_url, data.user_name, data.refresh_token);
   return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 
@@ -456,7 +506,7 @@ export async function verifySignupOtp(email: string, password: string = "", user
     throw new Error(errData.detail || "Invalid or expired verification code.");
   }
   const data = await res.json();
-  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name);
+  saveToken(data.access_token, data.email || email, data.avatar_url, data.user_name, data.refresh_token);
   return { token: data.access_token, avatarUrl: data.avatar_url, userName: data.user_name };
 }
 

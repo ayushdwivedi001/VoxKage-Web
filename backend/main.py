@@ -37,13 +37,43 @@ app = FastAPI(title="VoxKage Web API", version="2026.06.30")
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://voxkage.vercel.app,http://localhost:3000,http://localhost:5173,http://localhost:8081").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from fastapi import Request
+
+@app.middleware("http")
+async def csrf_origin_validation_middleware(request: Request, call_next):
+    if request.method in ["POST", "PUT", "DELETE", "PATCH"]:
+        path = request.url.path
+        if path.startswith("/auth/"):
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            
+            is_allowed = False
+            if origin:
+                if origin in ALLOWED_ORIGINS:
+                    is_allowed = True
+            elif referer:
+                from urllib.parse import urlparse
+                parsed = urlparse(referer)
+                referer_origin = f"{parsed.scheme}://{parsed.netloc}"
+                if referer_origin in ALLOWED_ORIGINS:
+                    is_allowed = True
+            else:
+                is_allowed = True
+                
+            if (origin or referer) and not is_allowed:
+                raise HTTPException(status_code=403, detail="Forbidden: CSRF Origin/Referer check failed.")
+                
+    return await call_next(request)
 
 def estimate_tokens(messages: list) -> int:
     total_chars = 25000  # baseline for system prompt + tools schemas
@@ -160,10 +190,6 @@ async def startup_event():
 
 
 # --- Auth Helper Models ---
-class MasterLoginRequest(BaseModel):
-    email: EmailStr
-    master_key: str
-
 class SendOtpRequest(BaseModel):
     email: EmailStr
 
@@ -188,6 +214,10 @@ class SignUpRequest(BaseModel):
 class LoginPasswordRequest(BaseModel):
     email: EmailStr
     password: str
+
+class RefreshRequest(BaseModel):
+    email: EmailStr
+    refresh_token: str
 
 class SendSignupOtpRequest(BaseModel):
     email: EmailStr
@@ -330,31 +360,6 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
         "models": models
     }
 
-@app.post("/auth/master-login")
-def master_login(req: MasterLoginRequest):
-    """
-    Direct developer login using the Master Key, returning a real JWT token and account profile.
-    """
-    from database import get_user_settings_profile
-    expected_master = os.getenv("VOXKAGE_MASTER_KEY", "sir")
-    if req.master_key == expected_master:
-        email = req.email.lower().strip()
-        profile = get_user_settings_profile(email)
-        user_name = profile.get("userName") or profile.get("user_name") or email.split("@")[0]
-        avatar_url = profile.get("avatar_url", "")
-        token = create_access_token(data={"sub": email})
-        return {
-            "access_token": token,
-            "token_type": "bearer",
-            "email": email,
-            "user_name": user_name,
-            "avatar_url": avatar_url
-        }
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Unauthorized: Master Key verification failed."
-    )
-
 @app.post("/auth/send-otp")
 def send_otp_endpoint(req: SendOtpRequest):
     from auth import generate_otp
@@ -394,22 +399,29 @@ async def google_auth_endpoint(req: GoogleAuthRequest):
     from database import get_user_settings_profile, save_user_settings_profile
     
     user_data = await verify_google_token(req.credential)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Google authentication token verification failed.")
     email = user_data.get("email")
     if not email:
-        raise HTTPException(status_code=400, detail="Google authentication failed.")
+        raise HTTPException(status_code=400, detail="Google profile missing email.")
 
     profile = get_user_settings_profile(email)
     user_name = user_data.get("user_name") or profile.get("userName") or email.split("@")[0]
     avatar_url = user_data.get("avatar_url") or profile.get("avatar_url", "")
 
+    from auth import create_refresh_token, hash_refresh_token
+    refresh_token = create_refresh_token()
+    
     profile["userName"] = user_name
     profile["user_name"] = user_name
     profile["avatar_url"] = avatar_url
+    profile["_refresh_token_hash"] = hash_refresh_token(refresh_token)
     save_user_settings_profile(email, profile)
 
     token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": email,
         "user_name": user_name,
@@ -473,16 +485,38 @@ async def oauth_callback_endpoint(req: OAuthCallbackRequest):
         profile["userName"] = user_name
         profile["user_name"] = user_name
         profile["avatar_url"] = avatar_url
+        
+        from auth import create_refresh_token, hash_refresh_token
+        refresh_token = create_refresh_token()
+        profile["_refresh_token_hash"] = hash_refresh_token(refresh_token)
         save_user_settings_profile(email, profile)
 
         jwt_token = create_access_token(data={"sub": email})
         return {
             "access_token": jwt_token,
+            "refresh_token": refresh_token,
             "provider": "google",
             "email": email,
             "user_name": user_name,
             "avatar_url": avatar_url,
         }
+
+# --- Lightweight Rate Limiting Store ---
+import time
+RATE_LIMIT_STORE = {}
+
+def check_rate_limit(key: str, max_attempts: int, window_seconds: int):
+    now = time.time()
+    attempts = RATE_LIMIT_STORE.get(key, [])
+    # Clean up expired timestamps
+    attempts = [t for t in attempts if now - t < window_seconds]
+    if len(attempts) >= max_attempts:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts. Please try again later."
+        )
+    attempts.append(now)
+    RATE_LIMIT_STORE[key] = attempts
 
 @app.post("/auth/send-signup-otp")
 def send_signup_otp_endpoint(req: SendSignupOtpRequest):
@@ -492,13 +526,25 @@ def send_signup_otp_endpoint(req: SendSignupOtpRequest):
     
     email = req.email.lower().strip()
     
+    # Rate limit check: max 3 attempts per 10 minutes per email
+    check_rate_limit(f"signup_otp_{email}", 3, 600)
+    
     # Email syntax check
     if not re.match(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", email):
         raise HTTPException(status_code=400, detail="Invalid email format syntax.")
         
-    # Password length check
-    if len(req.password) <= 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+    # Password complexity checks
+    password = req.password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+    if not re.search(r"[^a-zA-Z0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
         
     # Confirm password check
     if req.password != req.confirm_password:
@@ -532,11 +578,17 @@ def signup_verify_endpoint(req: SignUpOtpVerifyRequest):
     profile["userName"] = req.user_name.strip()
     profile["user_name"] = req.user_name.strip()
     profile["avatar_url"] = ""  # No avatar initially
+    
+    from auth import create_refresh_token, hash_refresh_token
+    refresh_token = create_refresh_token()
+    profile["_refresh_token_hash"] = hash_refresh_token(refresh_token)
+    
     save_user_settings_profile(email, profile)
     
     token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": email,
         "user_name": req.user_name.strip(),
@@ -549,6 +601,9 @@ def send_reset_code_endpoint(req: SendResetCodeRequest):
     from database import get_db
     
     email = req.email.lower().strip()
+    
+    # Rate limit check: max 3 attempts per 10 minutes per email
+    check_rate_limit(f"reset_code_{email}", 3, 600)
     
     # Check if user exists
     db = get_db()
@@ -572,9 +627,19 @@ def reset_password_endpoint(req: ResetPasswordRequest):
     
     email = req.email.lower().strip()
     
-    # Password length check
-    if len(req.new_password) <= 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+    # Password complexity checks
+    import re
+    password = req.new_password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+    if not re.search(r"[^a-zA-Z0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
         
     if not verify_reset_code(email, req.reset_code):
         raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
@@ -600,19 +665,36 @@ def signup_endpoint(req: SignUpRequest):
         if "password_hash" in profile or "user_name" in profile:
             raise HTTPException(status_code=400, detail="An account with this email address already exists. Please Sign In.")
 
-    if len(req.password) <= 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 7 characters long.")
+    # Password complexity checks
+    import re
+    password = req.password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+    if not re.search(r"[a-z]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+    if not re.search(r"[^a-zA-Z0-9]", password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one special character.")
         
     profile = get_user_settings_profile(email)
     profile["password_hash"] = hash_password(req.password)
     profile["userName"] = req.user_name.strip()
     profile["user_name"] = req.user_name.strip()
     profile["avatar_url"] = ""
+    
+    from auth import create_refresh_token, hash_refresh_token
+    refresh_token = create_refresh_token()
+    profile["_refresh_token_hash"] = hash_refresh_token(refresh_token)
+    
     save_user_settings_profile(email, profile)
  
     token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": email,
         "user_name": req.user_name.strip(),
@@ -625,6 +707,9 @@ def login_password_endpoint(req: LoginPasswordRequest):
     from database import get_db, get_user_settings_profile
     
     email = req.email.lower().strip()
+    
+    # Rate limit check: max 5 login attempts per 5 minutes per email
+    check_rate_limit(f"login_ip_{email}", 5, 300)
     
     # Verify email exists in database
     db = get_db()
@@ -641,24 +726,68 @@ def login_password_endpoint(req: LoginPasswordRequest):
     profile = get_user_settings_profile(email)
     stored_hash = profile.get("password_hash")
     
-    # Verify password if user has signed up, or check master key
-    if stored_hash:
-        if not verify_password(req.password, stored_hash):
-            raise HTTPException(status_code=401, detail="Invalid password.")
-    else:
-        # Fallback master key check if password not set yet
-        expected_master = os.getenv("VOXKAGE_MASTER_KEY", "sir")
-        if req.password != expected_master:
-            raise HTTPException(status_code=401, detail="Invalid password or Master Key.")
+    if not stored_hash:
+        raise HTTPException(status_code=401, detail="Invalid password.")
+        
+    from auth import verify_password, hash_password
+    if not verify_password(req.password, stored_hash):
+        raise HTTPException(status_code=401, detail="Invalid password.")
+        
+    # Transparently upgrade legacy SHA-256 hash to bcrypt in database
+    if len(stored_hash) == 64 and not stored_hash.startswith("$"):
+        profile["password_hash"] = hash_password(req.password)
+        print(f"[+] Transparently upgraded legacy password hash to bcrypt for {email}")
+
+    # Generate and store refresh token
+    from auth import create_refresh_token, hash_refresh_token
+    refresh_token = create_refresh_token()
+    profile["_refresh_token_hash"] = hash_refresh_token(refresh_token)
+    
+    save_user_settings_profile(email, profile)
 
     user_name = profile.get("userName") or profile.get("user_name") or email.split("@")[0]
     token = create_access_token(data={"sub": email})
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": email,
         "user_name": user_name,
         "avatar_url": profile.get("avatar_url", "")
+    }
+
+@app.post("/auth/refresh")
+def refresh_token_endpoint(req: RefreshRequest):
+    from auth import create_access_token, create_refresh_token, hash_refresh_token
+    from database import get_user_settings_profile, save_user_settings_profile
+
+    email = req.email.lower().strip()
+    profile = get_user_settings_profile(email)
+    stored_hash = profile.get("_refresh_token_hash")
+    
+    if not stored_hash:
+        raise HTTPException(status_code=401, detail="Invalid refresh token.")
+
+    input_hash = hash_refresh_token(req.refresh_token)
+    if input_hash != stored_hash:
+        # Token reuse detected! Family invalidation.
+        profile.pop("_refresh_token_hash", None)
+        save_user_settings_profile(email, profile)
+        raise HTTPException(
+            status_code=401,
+            detail="Token reuse detected. All active sessions invalidated."
+        )
+
+    # Issue new pair
+    new_access_token = create_access_token(data={"sub": email})
+    new_refresh_token = create_refresh_token()
+    profile["_refresh_token_hash"] = hash_refresh_token(new_refresh_token)
+    save_user_settings_profile(email, profile)
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer"
     }
 
 # --- Sessions REST Endpoints ---

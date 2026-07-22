@@ -8,7 +8,6 @@ import {
   ArrowRight,
   ShieldCheck,
   Sparkles,
-  KeyRound,
   Mail,
   User,
   Lock,
@@ -22,11 +21,8 @@ import {
 interface LoginViewProps {
   loginEmail: string;
   setLoginEmail: (email: string) => void;
-  loginMasterKey: string;
-  setLoginMasterKey: (key: string) => void;
   loginError: string;
   loginLoading: boolean;
-  onSubmit: (e: React.FormEvent) => void;
   onGoogleSuccess?: (token: string, email: string, avatarUrl?: string, userName?: string) => void;
   onAuthSuccess?: (token: string, email: string, avatarUrl?: string, userName?: string) => void;
 }
@@ -34,17 +30,13 @@ interface LoginViewProps {
 export default function LoginView({
   loginEmail,
   setLoginEmail,
-  loginMasterKey,
-  setLoginMasterKey,
   loginError: externalLoginError,
   loginLoading: externalLoginLoading,
-  onSubmit: externalOnSubmit,
   onGoogleSuccess,
   onAuthSuccess,
 }: LoginViewProps) {
   // Mode toggles
   const [isSignUp, setIsSignUp] = useState(false);
-  const [isMasterKeyMode, setIsMasterKeyMode] = useState(false);
 
   // Form states
   const [passwordInput, setPasswordInput] = useState("");
@@ -161,6 +153,17 @@ export default function LoginView({
     }, 1000);
   };
 
+  // Helper to validate password complexity rules (8+ chars, uppercase, lowercase, digit, non-alphanumeric special)
+  const isPasswordComplex = (pwd: string) => {
+    return (
+      pwd.length >= 8 &&
+      /[A-Z]/.test(pwd) &&
+      /[a-z]/.test(pwd) &&
+      /[0-9]/.test(pwd) &&
+      /[^a-zA-Z0-9]/.test(pwd)
+    );
+  };
+
   // Input syntax validation
   const validateFormInputs = () => {
     let isValid = true;
@@ -180,10 +183,23 @@ export default function LoginView({
         setUserNameFieldError("Username is required.");
         isValid = false;
       }
-      if (passwordInput.length <= 6) {
-        setPasswordFieldError("Password must be at least 7 characters long.");
+      if (passwordInput.length < 8) {
+        setPasswordFieldError("Password must be at least 8 characters long.");
+        isValid = false;
+      } else if (!/[A-Z]/.test(passwordInput)) {
+        setPasswordFieldError("Password must contain at least one uppercase letter.");
+        isValid = false;
+      } else if (!/[a-z]/.test(passwordInput)) {
+        setPasswordFieldError("Password must contain at least one lowercase letter.");
+        isValid = false;
+      } else if (!/[0-9]/.test(passwordInput)) {
+        setPasswordFieldError("Password must contain at least one number.");
+        isValid = false;
+      } else if (!/[^a-zA-Z0-9]/.test(passwordInput)) {
+        setPasswordFieldError("Password must contain at least one special character.");
         isValid = false;
       }
+
       if (passwordInput !== confirmPasswordInput) {
         setConfirmPasswordFieldError("Passwords do not match.");
         isValid = false;
@@ -222,7 +238,7 @@ export default function LoginView({
       }
     } catch (err: any) {
       const errorMsg = err.message || "";
-      if (errorMsg.includes("already exists")) {
+      if (errorMsg.includes("already exists") || errorMsg.includes("not registered")) {
         setEmailFieldError(errorMsg);
       } else {
         setAuthError(errorMsg || "Authentication failed. Please verify credentials.");
@@ -296,10 +312,26 @@ export default function LoginView({
     }
   };
 
-  // Forgot Password: Step 3 (Save New Password)
+  // Forgot Password: Step 3 (Save New Password with full complexity verification)
   const handleResetPasswordSubmit = async () => {
-    if (newPasswordInput.length <= 6) {
-      setForgotError("Password must be at least 7 characters long.");
+    if (newPasswordInput.length < 8) {
+      setForgotError("Password must be at least 8 characters long.");
+      return;
+    }
+    if (!/[A-Z]/.test(newPasswordInput)) {
+      setForgotError("Password must contain at least one uppercase letter.");
+      return;
+    }
+    if (!/[a-z]/.test(newPasswordInput)) {
+      setForgotError("Password must contain at least one lowercase letter.");
+      return;
+    }
+    if (!/[0-9]/.test(newPasswordInput)) {
+      setForgotError("Password must contain at least one number.");
+      return;
+    }
+    if (!/[^a-zA-Z0-9]/.test(newPasswordInput)) {
+      setForgotError("Password must contain at least one special character.");
       return;
     }
     if (newPasswordInput !== confirmNewPasswordInput) {
@@ -354,65 +386,7 @@ export default function LoginView({
 
           <div className="w-full bg-[#0e0e11] border border-zinc-800/80 rounded-3xl p-7 shadow-2xl relative overflow-hidden backdrop-blur-xl">
             
-            {/* MASTER KEY LOGIN OVERRIDE */}
-            {isMasterKeyMode ? (
-              <form onSubmit={externalOnSubmit} className="flex flex-col gap-4 animate-fadeIn">
-                <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3 mb-1">
-                  <h3 className="text-white text-base font-medium">Master Key Access</h3>
-                  <span className="text-[10px] text-zinc-500 font-mono">DEVELOPER PORTAL</span>
-                </div>
-
-                <div className="flex flex-col gap-1.5 text-left">
-                  <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                    Developer Email
-                  </label>
-                  <input
-                    type="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    required
-                    className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
-                    placeholder="Enter your email address"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5 text-left">
-                  <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                    Master Key
-                  </label>
-                  <input
-                    type="password"
-                    value={loginMasterKey}
-                    onChange={(e) => setLoginMasterKey(e.target.value)}
-                    required
-                    className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
-                    placeholder="Enter Master Key password"
-                  />
-                </div>
-
-                {externalLoginError && (
-                  <span className="text-red-400 text-[12px] pl-1 block text-left">
-                    {externalLoginError}
-                  </span>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={externalLoginLoading}
-                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13px] transition-colors cursor-pointer mt-2 flex items-center justify-center disabled:opacity-50"
-                >
-                  {externalLoginLoading ? "Authorizing..." : "Authorize Access"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsMasterKeyMode(false)}
-                  className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer mt-1 text-center"
-                >
-                  Back to Sign In
-                </button>
-              </form>
-            ) : showOtpVerification ? (
+            {showOtpVerification ? (
 
               /* 4-DIGIT SIGNUP OTP VERIFICATION SCREEN */
               <div className="flex flex-col gap-4 animate-fadeIn">
@@ -562,7 +536,7 @@ export default function LoginView({
                       className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
                       placeholder="Enter your password"
                     />
-                    {isSignUp && passwordInput && confirmPasswordInput && passwordInput === confirmPasswordInput && passwordInput.length >= 7 && (
+                    {isSignUp && passwordInput && confirmPasswordInput && isPasswordComplex(passwordInput) && passwordInput === confirmPasswordInput && (
                       <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
                     )}
                     <button
@@ -599,7 +573,7 @@ export default function LoginView({
                         className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
                         placeholder="Confirm your password"
                       />
-                      {isSignUp && passwordInput && confirmPasswordInput && passwordInput === confirmPasswordInput && passwordInput.length >= 7 && (
+                      {isSignUp && passwordInput && confirmPasswordInput && isPasswordComplex(passwordInput) && passwordInput === confirmPasswordInput && (
                         <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
                       )}
                       <button
@@ -698,16 +672,7 @@ export default function LoginView({
                   <span>{isSignUp ? "Sign Up with Google" : "Continue with Google"}</span>
                 </button>
 
-                <div className="flex items-center justify-between text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsMasterKeyMode(true)}
-                    className="hover:text-zinc-300 transition-colors cursor-pointer flex items-center gap-1"
-                  >
-                    <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Master Key</span>
-                  </button>
-
+                <div className="flex items-center justify-center text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -873,7 +838,7 @@ export default function LoginView({
                       className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
                       placeholder="Enter new password"
                     />
-                    {newPasswordInput && confirmNewPasswordInput && newPasswordInput === confirmNewPasswordInput && newPasswordInput.length >= 7 && (
+                    {newPasswordInput && confirmNewPasswordInput && isPasswordComplex(newPasswordInput) && newPasswordInput === confirmNewPasswordInput && (
                       <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
                     )}
                     <button
@@ -895,7 +860,7 @@ export default function LoginView({
                       className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl pl-3 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700"
                       placeholder="Confirm new password"
                     />
-                    {newPasswordInput && confirmNewPasswordInput && newPasswordInput === confirmNewPasswordInput && newPasswordInput.length >= 7 && (
+                    {newPasswordInput && confirmNewPasswordInput && isPasswordComplex(newPasswordInput) && newPasswordInput === confirmNewPasswordInput && (
                       <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
                     )}
                     <button

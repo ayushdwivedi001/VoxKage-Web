@@ -7,20 +7,29 @@ from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "voxkage-web-super-secret-key-2026")
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("FATAL: JWT_SECRET_KEY environment variable is not set. Server cannot start.")
+
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # Tokens valid for 30 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Short-lived access token: 1 hour
 
 security_scheme = HTTPBearer()
-
-# In-memory storage for OTP codes: { email: {"code": str, "expires_at": float} }
-OTP_STORE = {}
 
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def create_refresh_token() -> str:
+    import secrets
+    return secrets.token_urlsafe(48)
+
+def hash_refresh_token(token: str) -> str:
+    import hashlib
+    return hashlib.sha256(token.encode('utf-8')).hexdigest()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)) -> str:
     token = credentials.credentials
@@ -111,11 +120,14 @@ def generate_signup_otp(email: str) -> str:
     Generates a secure 4-digit OTP code valid for 5 minutes.
     """
     code = f"{random.randint(1000, 9999)}"
-    OTP_STORE[f"signup_{email.lower().strip()}"] = {
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    profile["_otp_signup"] = {
         "code": code,
         "expires_at": time.time() + 300.0  # 5 minutes
     }
-    print(f"[*] Generated Signup OTP for {email}: {code}")
+    save_user_settings_profile(email, profile)
+    print(f"[*] OTP generated and stored for {email} (signup)")
     
     subject = "VoxKage — Verify Your Email Address"
     body = (
@@ -131,22 +143,26 @@ def generate_signup_otp(email: str) -> str:
 
 def verify_signup_otp(email: str, code: str) -> bool:
     """
-    Verifies 4-digit signup OTP. Allows bypass code '1234' for local testing/fallback.
+    Verifies 4-digit signup OTP. Allows bypass code '1234' for local testing/fallback under DEBUG=true.
     """
-    email_key = f"signup_{email.lower().strip()}"
-    if code.strip() == "1234":
+    if DEBUG and code.strip() == "1234":
+        print(f"[*] Bypass signup OTP code used for {email}")
         return True
 
-    entry = OTP_STORE.get(email_key)
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    entry = profile.get("_otp_signup")
     if not entry:
         return False
 
     if time.time() > entry["expires_at"]:
-        del OTP_STORE[email_key]
+        profile.pop("_otp_signup", None)
+        save_user_settings_profile(email, profile)
         return False
 
     if entry["code"] == code.strip():
-        del OTP_STORE[email_key]
+        profile.pop("_otp_signup", None)
+        save_user_settings_profile(email, profile)
         return True
 
     return False
@@ -156,11 +172,14 @@ def generate_reset_code(email: str) -> str:
     Generates a secure 8-digit password reset code valid for 10 minutes.
     """
     code = f"{random.randint(10000000, 99999999)}"
-    OTP_STORE[f"reset_{email.lower().strip()}"] = {
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    profile["_otp_reset"] = {
         "code": code,
         "expires_at": time.time() + 600.0  # 10 minutes
     }
-    print(f"[*] Generated Reset Code for {email}: {code}")
+    save_user_settings_profile(email, profile)
+    print(f"[*] OTP generated and stored for {email} (reset)")
 
     subject = "VoxKage — Reset Your Password"
     body = (
@@ -176,22 +195,26 @@ def generate_reset_code(email: str) -> str:
 
 def verify_reset_code(email: str, code: str) -> bool:
     """
-    Verifies 8-digit password reset code. Allows bypass code '12345678' for local testing/fallback.
+    Verifies 8-digit password reset code. Allows bypass code '12345678' for local testing/fallback under DEBUG=true.
     """
-    email_key = f"reset_{email.lower().strip()}"
-    if code.strip() == "12345678":
+    if DEBUG and code.strip() == "12345678":
+        print(f"[*] Bypass reset code used for {email}")
         return True
 
-    entry = OTP_STORE.get(email_key)
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    entry = profile.get("_otp_reset")
     if not entry:
         return False
 
     if time.time() > entry["expires_at"]:
-        del OTP_STORE[email_key]
+        profile.pop("_otp_reset", None)
+        save_user_settings_profile(email, profile)
         return False
 
     if entry["code"] == code.strip():
-        del OTP_STORE[email_key]
+        profile.pop("_otp_reset", None)
+        save_user_settings_profile(email, profile)
         return True
 
     return False
@@ -201,32 +224,39 @@ def generate_otp(email: str) -> str:
     Generates a secure 6-digit OTP code valid for 5 minutes.
     """
     code = f"{random.randint(100000, 999999)}"
-    OTP_STORE[email.lower()] = {
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    profile["_otp_login"] = {
         "code": code,
         "expires_at": time.time() + 300.0  # 5 minutes
     }
-    print(f"[*] Generated OTP for {email}: {code}")
+    save_user_settings_profile(email, profile)
+    print(f"[*] OTP generated and stored for {email} (login)")
     return code
 
 def verify_otp(email: str, code: str) -> bool:
     """
     Verifies 6-digit OTP code for target email.
-    Also accepts developer bypass code '123456' for immediate testing.
+    Also accepts developer bypass code '123456' for immediate testing under DEBUG=true.
     """
-    email_key = email.lower().strip()
-    if code.strip() == "123456":
+    if DEBUG and code.strip() == "123456":
+        print(f"[*] Bypass login OTP code used for {email}")
         return True
 
-    entry = OTP_STORE.get(email_key)
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    entry = profile.get("_otp_login")
     if not entry:
         return False
 
     if time.time() > entry["expires_at"]:
-        del OTP_STORE[email_key]
+        profile.pop("_otp_login", None)
+        save_user_settings_profile(email, profile)
         return False
 
     if entry["code"] == code.strip():
-        del OTP_STORE[email_key]
+        profile.pop("_otp_login", None)
+        save_user_settings_profile(email, profile)
         return True
 
     return False
@@ -254,17 +284,22 @@ async def verify_google_token(credential: str) -> dict:
     except Exception as e:
         print(f"[-] Google token verification exception: {e}")
 
-    # Fallback response for custom developer Google auth payloads
-    return {
-        "email": "user@gmail.com",
-        "user_name": "Google User",
-        "avatar_url": "https://lh3.googleusercontent.com/a/default-user"
-    }
+    return None
+
+import bcrypt
 
 def hash_password(password: str) -> str:
-    import hashlib
-    salt = "voxkage_salt_2026_"
-    return hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return hash_password(plain_password) == hashed_password
+    # Check if the hash is Legacy SHA-256 (exactly 64 hex characters, no leading $)
+    if len(hashed_password) == 64 and not hashed_password.startswith("$"):
+        import hashlib
+        salt = "voxkage_salt_2026_"
+        legacy_hash = hashlib.sha256((salt + plain_password).encode('utf-8')).hexdigest()
+        if legacy_hash == hashed_password:
+            return True
+    try:
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    except Exception:
+        return False

@@ -396,11 +396,8 @@ export default function Home() {
       <LoginView
         loginEmail={auth.loginEmail}
         setLoginEmail={auth.setLoginEmail}
-        loginMasterKey={auth.loginMasterKey}
-        setLoginMasterKey={auth.setLoginMasterKey}
         loginError={auth.loginError}
         loginLoading={auth.loginLoading}
-        onSubmit={auth.handleLogin}
         onGoogleSuccess={(token: string, email: string, avatarUrl?: string, name?: string) => {
           auth.setIsLoggedIn(true);
           if (avatarUrl) setUserAvatarUrl(avatarUrl);
