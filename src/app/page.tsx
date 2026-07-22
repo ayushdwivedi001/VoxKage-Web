@@ -113,7 +113,8 @@ export default function Home() {
       
       let initialModels = mapModelsList(boot.models || [], boot.favorites || []);
       const { secureLoadKey } = await import("@/lib/secureStorage");
-      const kKey = await secureLoadKey("voxkage_kilo_api_key");
+      const email = auth.loginEmail?.trim().toLowerCase() || (typeof window !== "undefined" ? localStorage.getItem("voxkage_web_email")?.trim().toLowerCase() : null);
+      const kKey = email ? await secureLoadKey(`voxkage_${email}_kilo_api_key`) : null;
       if (kKey) {
         const { fetchKiloModels } = await import("@/lib/api");
         const kiloModels = await fetchKiloModels(kKey);
