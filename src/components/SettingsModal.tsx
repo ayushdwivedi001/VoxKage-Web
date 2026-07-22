@@ -10,6 +10,7 @@ interface SettingsModalProps {
   setKiloApiKey: (key: string) => void;
   customProxyUrl: string;
   setCustomProxyUrl: (url: string) => void;
+  loginEmail: string;
   onClose: () => void;
   onSave: () => void;
   onLogout: () => void;
@@ -22,6 +23,7 @@ export default function SettingsModal({
   setKiloApiKey,
   customProxyUrl,
   setCustomProxyUrl,
+  loginEmail,
   onClose,
   onSave,
   onLogout,
@@ -31,6 +33,13 @@ export default function SettingsModal({
   const [showAddProviderModal, setShowAddProviderModal] = useState(false);
   const [selectedProviderToAdd, setSelectedProviderToAdd] = useState<"kilo" | null>(null);
   const [tempKiloKeyInput, setTempKiloKeyInput] = useState("");
+
+  const defaultProxy = (() => {
+    if (!loginEmail) return "https://voxkage-proxy.user.workers.dev";
+    const prefix = loginEmail.split("@")[0].toLowerCase();
+    const subdomain = prefix.replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+    return `https://voxkage-proxy.${subdomain || "user"}.workers.dev`;
+  })();
 
   const handleConfirmAddKiloKey = () => {
     if (tempKiloKeyInput.trim()) {
@@ -199,7 +208,7 @@ export default function SettingsModal({
           <input
             type="text"
             readOnly
-            value={customProxyUrl || "https://voxkage-proxy.ayushdwivedi001.workers.dev"}
+            value={customProxyUrl || defaultProxy}
             className="w-full h-10 bg-zinc-950/50 border border-zinc-800/60 rounded-xl px-3.5 text-zinc-400 text-[13.5px] cursor-not-allowed select-all font-mono"
           />
           <span className="text-[11px] text-zinc-500">

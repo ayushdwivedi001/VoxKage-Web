@@ -151,6 +151,11 @@ export default function Home() {
         setUserAvatarUrl("");
       }
 
+      if (boot.custom_proxy_url) {
+        localStorage.setItem("voxkage_custom_proxy_url", boot.custom_proxy_url);
+        setCustomProxyUrl(boot.custom_proxy_url);
+      }
+
       if (boot.selected_model && !localStorage.getItem("voxkage_selected_model")) {
         localStorage.setItem("voxkage_selected_model", boot.selected_model);
         setSelectedModel(boot.selected_model);

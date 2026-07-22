@@ -304,16 +304,35 @@ def save_user_favorites(user_id: str, favorites: list) -> list:
 def get_user_settings_profile(user_id: str) -> dict:
     db = get_db()
     res = execute_with_retry(db.table("user_settings").select("settings_profile").eq("user_id", user_id))
+    import re
     if not res.data:
+        prefix = user_id.split("@")[0].lower()
+        subdomain = re.sub(r'[^a-z0-9]', '-', prefix)
+        subdomain = re.sub(r'-+', '-', subdomain).strip('-')
+        subdomain = subdomain[:30].rstrip('-')
+        if not subdomain:
+            subdomain = "user"
+        default_proxy = f"https://voxkage-proxy.{subdomain}.workers.dev"
         return {
             "selected_model": "deepseek-flash",
-            "selected_variant": "Max"
+            "selected_variant": "Max",
+            "custom_proxy_url": default_proxy
         }
     profile = res.data[0].get("settings_profile") or {}
     if not profile.get("selected_model") and not profile.get("selectedModel"):
         profile["selected_model"] = "deepseek-flash"
     if not profile.get("selected_variant") and not profile.get("selectedVariant"):
         profile["selected_variant"] = "Max"
+    
+    # Ensure custom_proxy_url is populated dynamically if missing
+    if not profile.get("custom_proxy_url") and not profile.get("customProxyUrl"):
+        prefix = user_id.split("@")[0].lower()
+        subdomain = re.sub(r'[^a-z0-9]', '-', prefix)
+        subdomain = re.sub(r'-+', '-', subdomain).strip('-')
+        subdomain = subdomain[:30].rstrip('-')
+        if not subdomain:
+            subdomain = "user"
+        profile["custom_proxy_url"] = f"https://voxkage-proxy.{subdomain}.workers.dev"
     
     # Auto-migration of Google Drive server_url from remote to local
     mcp_connections = profile.get("mcp_connections", {})

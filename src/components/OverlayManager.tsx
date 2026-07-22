@@ -171,6 +171,7 @@ export default function OverlayManager({
           setKiloApiKey={setKiloApiKey}
           customProxyUrl={customProxyUrl}
           setCustomProxyUrl={setCustomProxyUrl}
+          loginEmail={loginEmail}
           onClose={() => {
             const email = loginEmail.trim().toLowerCase();
             import("@/lib/secureStorage").then(({ secureLoadKey }) => {
@@ -191,6 +192,11 @@ export default function OverlayManager({
               secureSaveKey(`voxkage_${email}_kilo_api_key`, kiloApiKey.trim());
             });
             localStorage.setItem("voxkage_custom_proxy_url", customProxyUrl.trim());
+            import("@/lib/api").then(({ saveSettingsProfile }) => {
+              saveSettingsProfile({ custom_proxy_url: customProxyUrl.trim() }).catch((err) => {
+                console.error("Failed to save proxy URL to database:", err);
+              });
+            });
             clearToolsCache();
             setShowSettingsModal(false);
           }}
