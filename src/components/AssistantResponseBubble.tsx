@@ -901,7 +901,7 @@ export default function AssistantResponseBubble({
 
       {/* --- Dynamic DuckDuckGo Live Image Search Grid Widget --- */}
       {imageGalleryQuery && (
-        <ExpandableWrapper label="Image Search Gallery" className="w-full max-w-[90%] select-none flex justify-center">
+        <ExpandableWrapper label="Image Search Gallery" className="w-full max-w-full sm:max-w-[90%] select-none flex justify-center">
           <DuckDuckGoImageWidget query={imageGalleryQuery} />
         </ExpandableWrapper>
       )}
