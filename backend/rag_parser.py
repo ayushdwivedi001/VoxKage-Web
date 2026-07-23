@@ -116,27 +116,43 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> list:
     return chunks
 
 async def extract_text_from_image(file_path: str, model: str = None) -> str:
-    api_key = os.getenv("OPENCODE_API_KEY")
+    target_model = model or "mimo-v2.5-free"
+    
+    # Determine if model is Kilo Code gateway or OpenCode
+    is_kilo = "/" in target_model or "kilo" in target_model.lower() or "stepfun" in target_model.lower() or "openrouter" in target_model.lower()
+    
+    if is_kilo:
+        api_key = os.getenv("KILO_API_KEY") or os.getenv("OPENCODE_API_KEY")
+        url = "https://api.kilo.ai/api/gateway/chat/completions"
+        model_id = target_model
+    else:
+        api_key = os.getenv("OPENCODE_API_KEY") or os.getenv("KILO_API_KEY")
+        url = "https://opencode.ai/zen/v1/chat/completions"
+        from opencode_client import get_opencode_model
+        model_id = get_opencode_model(target_model)
+
     if not api_key:
-        raise HTTPException(status_code=500, detail="OPENCODE_API_KEY not configured on backend.")
-        
-    _, ext = os.path.splitext(file_path.lower())
-    mime_type = "image/png"
-    if ext in (".jpg", ".jpeg"):
-        mime_type = "image/jpeg"
-    elif ext == ".webp":
-        mime_type = "image/webp"
+        raise HTTPException(status_code=500, detail="Vision API key not configured on backend.")
         
     try:
-        with open(file_path, "rb") as f:
-            img_bytes = f.read()
+        from io import BytesIO
+        from PIL import Image
+        with Image.open(file_path) as img:
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            width, height = img.size
+            max_size = 1560
+            if max(width, height) > max_size:
+                ratio = max_size / float(max(width, height))
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=85, optimize=True)
+            img_bytes = buf.getvalue()
         img_base64 = base64.b64encode(img_bytes).decode("utf-8")
-        image_url = f"data:{mime_type};base64,{img_base64}"
+        image_url = f"data:image/jpeg;base64,{img_base64}"
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read image file: {str(e)}")
-        
-    from opencode_client import get_opencode_model
-    model_id = get_opencode_model(model or "mimo-v2.5-free")
+        raise HTTPException(status_code=500, detail=f"Failed to process image file with PIL: {str(e)}")
 
     payload = {
         "model": model_id,
@@ -146,7 +162,7 @@ async def extract_text_from_image(file_path: str, model: str = None) -> str:
                 "content": [
                     {
                         "type": "text", 
-                        "text": "Extract all text, transcribing every detail, table, chart, and providing a thorough description of this image for vector search RAG database indexing."
+                        "text": "Analyze this image thoroughly. Transcribe all text, identify all objects, buildings, natural elements, colors, artistic style, atmosphere, and visual details so an AI assistant can fully understand and answer questions about it."
                     },
                     {
                         "type": "image_url",
@@ -157,10 +173,9 @@ async def extract_text_from_image(file_path: str, model: str = None) -> str:
                 ]
             }
         ],
-        "temperature": 0.3
+        "temperature": 0.2
     }
     
-    url = "https://opencode.ai/zen/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
@@ -172,24 +187,28 @@ async def extract_text_from_image(file_path: str, model: str = None) -> str:
             if response.status_code == 200:
                 res_data = response.json()
                 description = res_data["choices"][0]["message"]["content"]
-                return f"[Image OCR & Description: {os.path.basename(file_path)}]\n{description}"
+                return f"[Visual Image Content & Analysis: {os.path.basename(file_path)}]\n{description}"
             else:
+                # If selected model failed or doesn't support vision, fallback to stepfun/step-3.7-flash:free on Kilo or mimo-v2.5-free on OpenCode
+                fallback_kilo_key = os.getenv("KILO_API_KEY")
+                if fallback_kilo_key and url != "https://api.kilo.ai/api/gateway/chat/completions":
+                    fb_payload = {**payload, "model": "stepfun/step-3.7-flash:free"}
+                    fb_headers = {"Authorization": f"Bearer {fallback_kilo_key}", "Content-Type": "application/json"}
+                    fb_resp = await client.post("https://api.kilo.ai/api/gateway/chat/completions", headers=fb_headers, json=fb_payload)
+                    if fb_resp.status_code == 200:
+                        fb_data = fb_resp.json()
+                        description = fb_data["choices"][0]["message"]["content"]
+                        return f"[Visual Image Content & Analysis: {os.path.basename(file_path)}]\n{description}"
+
                 try:
                     err_json = response.json()
                     err_msg = err_json.get("message") or err_json.get("detail") or response.text
                 except Exception:
                     err_msg = response.text
 
-                if "is not supported" in err_msg or "ModelError" in err_msg or "not support" in err_msg:
-                    friendly_model = model or "mimo-v2.5-free"
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"⚠️ The current model '{friendly_model}' does not support image/multimodal understanding. Please select a vision-capable model (like Mimo Free) from the variant dropdown."
-                    )
-                
                 raise HTTPException(
                     status_code=response.status_code,
-                    detail=f"OpenCode vision API returned an error: {err_msg}"
+                    detail=f"Vision API error ({response.status_code}): {err_msg}"
                 )
     except Exception as e:
         if isinstance(e, HTTPException):
