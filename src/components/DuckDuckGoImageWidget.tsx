@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { BACKEND_URL } from "@/lib/api";
 
 export interface DuckDuckGoImageItem {
@@ -16,10 +16,12 @@ export interface DuckDuckGoImageItem {
 
 interface DuckDuckGoImageWidgetProps {
   query: string;
+  entities?: string;
   isExpanded?: boolean;
+  onAskVoxKage?: (item: DuckDuckGoImageItem) => void;
 }
 
-export default function DuckDuckGoImageWidget({ query, isExpanded = false }: DuckDuckGoImageWidgetProps) {
+export default function DuckDuckGoImageWidget({ query, entities, isExpanded = false, onAskVoxKage }: DuckDuckGoImageWidgetProps) {
   const [activeQuery, setActiveQuery] = useState(query);
   const [loading, setLoading] = useState(true);
   const [images, setImages] = useState<DuckDuckGoImageItem[]>([]);
@@ -31,7 +33,11 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
   const fetchImages = async (searchQuery: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND_URL}/api/search/images?query=${encodeURIComponent(searchQuery)}&limit=24`);
+      let url = `${BACKEND_URL}/api/search/images?query=${encodeURIComponent(searchQuery)}&limit=24`;
+      if (entities) {
+        url += `&entities=${encodeURIComponent(entities)}`;
+      }
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         setImages(data.images || []);
@@ -54,7 +60,7 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
       setActiveQuery(query);
       fetchImages(query);
     }
-  }, [query]);
+  }, [query, entities]);
 
   const handlePillClick = (pill: string) => {
     if (activePill === pill) {
@@ -269,6 +275,19 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
               </div>
 
               <div className="flex items-center gap-2">
+                {onAskVoxKage && (
+                  <button
+                    onClick={() => {
+                      onAskVoxKage(selectedImage);
+                      setSelectedImage(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 text-zinc-100 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-zinc-300" />
+                    <span>Ask VoxKage</span>
+                  </button>
+                )}
+
                 <a
                   href={selectedImage.source_url}
                   target="_blank"

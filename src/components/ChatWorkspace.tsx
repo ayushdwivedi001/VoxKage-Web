@@ -150,6 +150,7 @@ export default function ChatWorkspace({
                     setActiveFileVersions={setActiveFileVersions}
                     onFeedback={handleAssistantFeedback}
                     onRetry={handleAssistantRetry}
+                    onSendMessage={handleSendMessage}
                   />
                 )}
               </div>

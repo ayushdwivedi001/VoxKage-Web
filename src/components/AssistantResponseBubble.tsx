@@ -346,6 +346,7 @@ interface AssistantResponseBubbleProps {
   setActiveFileVersions: React.Dispatch<React.SetStateAction<{ [name: string]: number }>>;
   onFeedback?: (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => Promise<void>;
   onRetry?: (messageId: string) => void;
+  onSendMessage?: (text: string) => void;
 }
 
 export default function AssistantResponseBubble({
@@ -358,6 +359,7 @@ export default function AssistantResponseBubble({
   setActiveFileVersions,
   onFeedback,
   onRetry,
+  onSendMessage,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const [scheduleState, setScheduleState] = useState<"pending" | "success" | "cancelled" | null>(null);
@@ -502,7 +504,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, imageGalleryEntities, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -902,7 +904,15 @@ export default function AssistantResponseBubble({
       {/* --- Dynamic DuckDuckGo Live Image Search Grid Widget --- */}
       {imageGalleryQuery && (
         <ExpandableWrapper label="Image Search Gallery" className="w-full max-w-full sm:max-w-[90%] select-none flex justify-center">
-          <DuckDuckGoImageWidget query={imageGalleryQuery} />
+          <DuckDuckGoImageWidget
+            query={imageGalleryQuery}
+            entities={imageGalleryEntities || undefined}
+            onAskVoxKage={(item) => {
+              if (onSendMessage) {
+                onSendMessage(`Analyze this image and inspect its source webpage context: ${item.source_url} (Image Title: "${item.title}", Direct Image URL: ${item.image_url})`);
+              }
+            }}
+          />
         </ExpandableWrapper>
       )}
 

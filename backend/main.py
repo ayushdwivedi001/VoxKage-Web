@@ -882,9 +882,9 @@ def login_password_endpoint(req: LoginPasswordRequest):
     }
 
 @app.get("/api/search/images")
-async def search_images_endpoint(query: str, limit: int = 24):
+async def search_images_endpoint(query: str, entities: str = "", limit: int = 24):
     from image_search_engine import search_duckduckgo_images
-    return await search_duckduckgo_images(query=query, limit=limit)
+    return await search_duckduckgo_images(query=query, entities_param=entities, limit=limit)
 
 @app.get("/api/image-proxy")
 async def image_proxy_endpoint(url: str):
