@@ -76,11 +76,11 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
   };
 
   return (
-    <div className="w-full my-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/70 p-4 shadow-2xl backdrop-blur-md overflow-hidden select-none">
+    <div className="w-full my-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-4 shadow-2xl backdrop-blur-md overflow-hidden select-none">
       {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-zinc-800/50 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-zinc-800/60 pb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+          <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300">
             <ImageIcon className="w-4 h-4" />
           </div>
           <div>
@@ -98,7 +98,7 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
 
         {/* Suggestion Pills Bar */}
         {pills.length > 0 && (
-          <div className="relative flex items-center max-w-full sm:max-w-[60%]">
+          <div className="relative flex items-center max-w-full sm:max-w-[65%]">
             <button
               onClick={() => scrollPills("left")}
               className="hidden sm:flex shrink-0 p-1 text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -116,14 +116,14 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
                   <button
                     key={idx}
                     onClick={() => handlePillClick(pill)}
-                    className={`shrink-0 px-2.5 py-1 text-xs font-medium rounded-full transition-all duration-200 cursor-pointer border ${
+                    className={`shrink-0 px-3 py-1 text-xs font-medium rounded-full transition-all duration-200 cursor-pointer border ${
                       isActive
-                        ? "bg-cyan-500/20 border-cyan-500/40 text-cyan-300 shadow-sm"
-                        : "bg-zinc-900/80 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                        ? "bg-zinc-800 border-zinc-700 text-zinc-100 font-semibold shadow-sm"
+                        : "bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
                     }`}
                   >
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-cyan-400/70" />
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 text-zinc-400" />
                       {pill}
                     </span>
                   </button>
@@ -157,12 +157,12 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
           ))}
         </div>
       ) : images.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 max-h-[520px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 max-h-[560px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
           {images.map((img, idx) => (
             <div
               key={idx}
               onClick={() => setSelectedImage(img)}
-              className="group relative aspect-[16/11] rounded-xl border border-zinc-800/80 bg-zinc-900/40 overflow-hidden cursor-pointer transition-all duration-300 hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/5 flex flex-col justify-end"
+              className="group relative aspect-[16/11] rounded-xl border border-zinc-800/80 bg-zinc-900/40 overflow-hidden cursor-pointer transition-all duration-300 hover:border-zinc-700 hover:shadow-xl flex flex-col justify-end"
             >
               {/* Thumbnail Image */}
               <img
@@ -176,22 +176,22 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
               />
 
               {/* Gradient Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent opacity-80 group-hover:opacity-90 transition-opacity" />
+              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/25 to-transparent opacity-85 group-hover:opacity-95 transition-opacity" />
 
               {/* Dimension Tag */}
               {img.width > 0 && img.height > 0 && (
-                <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded bg-zinc-950/80 border border-zinc-800 text-[10px] font-mono text-zinc-400">
+                <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-[10px] font-mono text-zinc-400">
                   {img.width} × {img.height}
                 </div>
               )}
 
               {/* Title & Domain Footer */}
               <div className="relative z-10 p-2.5 space-y-0.5">
-                <p className="text-xs font-medium text-zinc-100 line-clamp-1 group-hover:text-cyan-300 transition-colors">
+                <p className="text-xs font-medium text-zinc-100 line-clamp-1 group-hover:text-white transition-colors">
                   {img.title}
                 </p>
                 <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-                  <span className="truncate max-w-[120px] font-mono text-[10px] text-zinc-400">
+                  <span className="truncate max-w-[130px] font-mono text-[10px] text-zinc-400">
                     {img.domain}
                   </span>
                   <ExternalLink className="w-3 h-3 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
@@ -211,7 +211,7 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
       {/* Lightbox Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-in fade-in duration-200"
           onClick={() => setSelectedImage(null)}
         >
           <div
@@ -221,7 +221,7 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-zinc-800/80 bg-zinc-900/50">
               <div className="flex items-center gap-2 truncate pr-4">
-                <ImageIcon className="w-4 h-4 text-cyan-400 shrink-0" />
+                <ImageIcon className="w-4 h-4 text-zinc-300 shrink-0" />
                 <h4 className="text-sm font-semibold text-zinc-100 truncate">
                   {selectedImage.title}
                 </h4>
@@ -235,7 +235,7 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
             </div>
 
             {/* Modal Image Display */}
-            <div className="relative flex-1 bg-black/60 min-h-[300px] flex items-center justify-center p-4 overflow-hidden">
+            <div className="relative flex-1 bg-black/70 min-h-[300px] flex items-center justify-center p-4 overflow-hidden">
               <img
                 src={selectedImage.image_url}
                 alt={selectedImage.title}
@@ -264,10 +264,10 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
                   href={selectedImage.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3.5 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-md"
                 >
                   <span>Visit Source Webpage</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
+                  <ExternalLink className="w-3.5 h-3.5 text-zinc-300" />
                 </a>
               </div>
             </div>
@@ -277,3 +277,4 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
     </div>
   );
 }
+
