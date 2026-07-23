@@ -13,7 +13,7 @@ if not SECRET_KEY:
 
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60  # Short-lived access token: 1 hour
+ACCESS_TOKEN_EXPIRE_MINUTES = 10080  # Access token duration: 7 days for seamless web sessions
 
 security_scheme = HTTPBearer()
 

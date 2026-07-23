@@ -883,29 +883,42 @@ def login_password_endpoint(req: LoginPasswordRequest):
 
 @app.post("/auth/refresh")
 def refresh_token_endpoint(req: RefreshRequest):
+    import time
     from auth import create_access_token, create_refresh_token, hash_refresh_token
     from database import get_user_settings_profile, save_user_settings_profile
 
     email = req.email.lower().strip()
     profile = get_user_settings_profile(email)
     stored_hash = profile.get("_refresh_token_hash")
+    prev_hash = profile.get("_prev_refresh_token_hash")
+    prev_time = profile.get("_prev_refresh_token_time", 0)
     
-    if not stored_hash:
-        raise HTTPException(status_code=401, detail="Invalid refresh token.")
-
     input_hash = hash_refresh_token(req.refresh_token)
-    if input_hash != stored_hash:
-        # Token reuse detected! Family invalidation.
+
+    # Allow 60-second grace period for concurrent requests / multi-tab refresh calls
+    if prev_hash and input_hash == prev_hash and (time.time() - prev_time) < 60.0:
+        new_access_token = create_access_token(data={"sub": email})
+        return {
+            "access_token": new_access_token,
+            "refresh_token": req.refresh_token,
+            "token_type": "bearer"
+        }
+
+    if not stored_hash or input_hash != stored_hash:
+        # Token reuse detected outside 60s grace window! Invalidate session.
         profile.pop("_refresh_token_hash", None)
+        profile.pop("_prev_refresh_token_hash", None)
         save_user_settings_profile(email, profile)
         raise HTTPException(
             status_code=401,
-            detail="Token reuse detected. All active sessions invalidated."
+            detail="Invalid refresh token or token reuse detected."
         )
 
     # Issue new pair
     new_access_token = create_access_token(data={"sub": email})
     new_refresh_token = create_refresh_token()
+    profile["_prev_refresh_token_hash"] = stored_hash
+    profile["_prev_refresh_token_time"] = time.time()
     profile["_refresh_token_hash"] = hash_refresh_token(new_refresh_token)
     save_user_settings_profile(email, profile)
 

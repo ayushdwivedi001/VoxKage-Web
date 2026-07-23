@@ -62,16 +62,61 @@ export function clearToken() {
   }
 }
 
-let isRefreshing = false;
-let refreshSubscribers: ((token: string) => void)[] = [];
+let activeRefreshPromise: Promise<string> | null = null;
 
-function subscribeTokenRefresh(cb: (token: string) => void) {
-  refreshSubscribers.push(cb);
-}
+async function refreshAccessToken(): Promise<string> {
+  const refreshToken = getRefreshToken();
+  const email = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_email") : null;
 
-function onRefreshed(token: string) {
-  refreshSubscribers.forEach((cb) => cb(token));
-  refreshSubscribers = [];
+  if (!refreshToken || !email) {
+    clearToken();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("voxkage_unauthorized"));
+    }
+    throw new Error("Unauthorized");
+  }
+
+  if (!activeRefreshPromise) {
+    activeRefreshPromise = (async () => {
+      try {
+        const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, refresh_token: refreshToken }),
+        });
+
+        if (refreshRes.ok) {
+          const data = await refreshRes.json();
+          saveToken(
+            data.access_token,
+            email,
+            localStorage.getItem("voxkage_web_avatar_url") || "",
+            localStorage.getItem("voxkage_user_name") || "",
+            data.refresh_token
+          );
+          return data.access_token as string;
+        } else if (refreshRes.status === 401) {
+          clearToken();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new Event("voxkage_unauthorized"));
+          }
+          throw new Error("Session expired. Please sign in again.");
+        } else {
+          const text = await refreshRes.text();
+          throw new Error("Backend service unavailable (" + refreshRes.status + "). Please try again.");
+        }
+      } catch (err: any) {
+        if (err.message === "Session expired. Please sign in again." || err.message === "Unauthorized") {
+          throw err;
+        }
+        throw new Error("Network error during token refresh: " + err.message);
+      }
+    })().finally(() => {
+      activeRefreshPromise = null;
+    });
+  }
+
+  return activeRefreshPromise;
 }
 
 async function apiRequest(endpoint: string, method: string = "GET", body: any = null) {
@@ -90,63 +135,19 @@ async function apiRequest(endpoint: string, method: string = "GET", body: any = 
   });
 
   if (response.status === 401) {
-    const refreshToken = getRefreshToken();
-    const email = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_email") : null;
-
-    if (refreshToken && email) {
-      if (!isRefreshing) {
-        isRefreshing = true;
-        try {
-          const refreshRes = await fetch(`${BACKEND_URL}/auth/refresh`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, refresh_token: refreshToken }),
-          });
-          if (refreshRes.ok) {
-            const data = await refreshRes.json();
-            saveToken(
-              data.access_token,
-              email,
-              localStorage.getItem("voxkage_web_avatar_url") || "",
-              localStorage.getItem("voxkage_user_name") || "",
-              data.refresh_token
-            );
-            isRefreshing = false;
-            onRefreshed(data.access_token);
-          } else {
-            isRefreshing = false;
-            clearToken();
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(new Event("voxkage_unauthorized"));
-            }
-            throw new Error("Session expired. Please sign in again.");
-          }
-        } catch (err) {
-          isRefreshing = false;
-          clearToken();
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new Event("voxkage_unauthorized"));
-          }
-          throw err;
-        }
-      }
-
-      const retryToken = await new Promise<string>((resolve) => {
-        subscribeTokenRefresh((token) => resolve(token));
-      });
-
-      headers["Authorization"] = `Bearer ${retryToken}`;
+    try {
+      const newAccessToken = await refreshAccessToken();
+      headers["Authorization"] = `Bearer ${newAccessToken}`;
       response = await fetch(`${BACKEND_URL}${endpoint}`, {
         method,
         headers,
         body: body ? JSON.stringify(body) : undefined,
       });
-    } else {
-      clearToken();
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("voxkage_unauthorized"));
+    } catch (refreshError: any) {
+      if (refreshError.message === "Session expired. Please sign in again." || refreshError.message === "Unauthorized") {
+        throw refreshError;
       }
-      throw new Error("Unauthorized");
+      throw new Error("FastAPI backend is restarting on Hugging Face. Please retry in 5 seconds.");
     }
   }
 
