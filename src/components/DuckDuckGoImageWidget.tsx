@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Search, ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
+import { ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { BACKEND_URL } from "@/lib/api";
 
 export interface DuckDuckGoImageItem {
@@ -16,9 +16,10 @@ export interface DuckDuckGoImageItem {
 
 interface DuckDuckGoImageWidgetProps {
   query: string;
+  isExpanded?: boolean;
 }
 
-export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetProps) {
+export default function DuckDuckGoImageWidget({ query, isExpanded = false }: DuckDuckGoImageWidgetProps) {
   const [activeQuery, setActiveQuery] = useState(query);
   const [loading, setLoading] = useState(true);
   const [images, setImages] = useState<DuckDuckGoImageItem[]>([]);
@@ -76,38 +77,46 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
   };
 
   return (
-    <div className="w-full my-3 rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-4 shadow-2xl backdrop-blur-md overflow-hidden select-none">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-zinc-800/60 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300">
-            <ImageIcon className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-zinc-100 tracking-tight capitalize">
-                {activeQuery}
-              </h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800">
-                DuckDuckGo Live
-              </span>
+    <div className={`w-full rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-4 sm:p-5 shadow-2xl backdrop-blur-md overflow-hidden select-none ${isExpanded ? "h-[85vh] flex flex-col" : "my-3"}`}>
+      {/* --- Restructured Header Bar --- */}
+      <div className="flex flex-col gap-3 mb-4 border-b border-zinc-800/70 pb-3.5 shrink-0">
+        {/* Top Header Row */}
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="w-8 h-8 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
+              <ImageIcon className="w-4 h-4" />
             </div>
-            <p className="text-xs text-zinc-500">Live web image search & visual index</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                <h3 className="text-sm sm:text-base font-semibold text-zinc-100 tracking-tight capitalize truncate max-w-[280px] sm:max-w-[480px] lg:max-w-[650px]">
+                  {activeQuery}
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-900 text-zinc-400 border border-zinc-800 shrink-0">
+                  DuckDuckGo Live
+                </span>
+                {images.length > 0 && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-900/60 text-zinc-500 border border-zinc-800/60 hidden sm:inline-block shrink-0">
+                    {images.length} images indexed
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-zinc-500 truncate">Live web image search & visual index</p>
+            </div>
           </div>
         </div>
 
-        {/* Suggestion Pills Bar */}
+        {/* --- Full-Width Glassmorphic Suggestion Pills Row --- */}
         {pills.length > 0 && (
-          <div className="relative flex items-center max-w-full sm:max-w-[65%]">
+          <div className="relative flex items-center w-full bg-zinc-900/60 backdrop-blur-md border border-zinc-800/80 px-2.5 py-2 rounded-xl shrink-0">
             <button
               onClick={() => scrollPills("left")}
-              className="hidden sm:flex shrink-0 p-1 text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="flex shrink-0 p-1 text-zinc-400 hover:text-zinc-200 transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <div
               ref={scrollRef}
-              className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-1 px-1"
+              className="flex items-center gap-2 overflow-x-auto scrollbar-none px-1.5 py-0.5 w-full"
               style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
             >
               {pills.map((pill, idx) => {
@@ -116,10 +125,10 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
                   <button
                     key={idx}
                     onClick={() => handlePillClick(pill)}
-                    className={`shrink-0 px-3 py-1 text-xs font-medium rounded-full transition-all duration-200 cursor-pointer border ${
+                    className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-200 cursor-pointer border ${
                       isActive
                         ? "bg-zinc-800 border-zinc-700 text-zinc-100 font-semibold shadow-sm"
-                        : "bg-zinc-900/90 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
+                        : "bg-zinc-950/80 border-zinc-800/90 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700"
                     }`}
                   >
                     <span className="flex items-center gap-1.5">
@@ -132,7 +141,7 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
             </div>
             <button
               onClick={() => scrollPills("right")}
-              className="hidden sm:flex shrink-0 p-1 text-zinc-400 hover:text-zinc-200 transition-colors"
+              className="flex shrink-0 p-1 text-zinc-400 hover:text-zinc-200 transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -140,29 +149,29 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
         )}
       </div>
 
-      {/* Grid Content / Skeleton */}
+      {/* --- Image Grid (3 columns desktop inline, 4 columns expanded) --- */}
       {loading ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
-          {Array.from({ length: 8 }).map((_, idx) => (
+        <div className={`grid gap-4 ${isExpanded ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 flex-1 auto-rows-max" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+          {Array.from({ length: isExpanded ? 12 : 6 }).map((_, idx) => (
             <div
               key={idx}
-              className="aspect-[16/11] rounded-xl bg-zinc-900/60 border border-zinc-800/60 animate-pulse flex flex-col justify-between p-3"
+              className="aspect-[16/10] shrink-0 rounded-xl bg-zinc-900/60 border border-zinc-800/60 animate-pulse flex flex-col justify-between p-3.5"
             >
-              <div className="w-12 h-3 rounded bg-zinc-800/80 self-end" />
+              <div className="w-14 h-3 rounded bg-zinc-800/80 self-end" />
               <div className="space-y-1.5">
-                <div className="w-3/4 h-3 rounded bg-zinc-800/80" />
-                <div className="w-1/2 h-2.5 rounded bg-zinc-800/50" />
+                <div className="w-3/4 h-3.5 rounded bg-zinc-800/80" />
+                <div className="w-1/2 h-3 rounded bg-zinc-800/50" />
               </div>
             </div>
           ))}
         </div>
       ) : images.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5 max-h-[560px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800">
+        <div className={`grid gap-4 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-zinc-800 ${isExpanded ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 flex-1 min-h-0 auto-rows-max" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 max-h-[580px]"}`}>
           {images.map((img, idx) => (
             <div
               key={idx}
               onClick={() => setSelectedImage(img)}
-              className="group relative aspect-[16/11] rounded-xl border border-zinc-800/80 bg-zinc-900/40 overflow-hidden cursor-pointer transition-all duration-300 hover:border-zinc-700 hover:shadow-xl flex flex-col justify-end"
+              className="group relative w-full aspect-[16/10] shrink-0 rounded-xl border border-zinc-800/80 bg-zinc-900/40 overflow-hidden cursor-pointer transition-all duration-300 hover:border-zinc-600 hover:shadow-2xl flex flex-col justify-end"
             >
               {/* Thumbnail Image */}
               <img
@@ -180,31 +189,31 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
 
               {/* Dimension Tag */}
               {img.width > 0 && img.height > 0 && (
-                <div className="absolute top-2 right-2 z-10 px-1.5 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-[10px] font-mono text-zinc-400">
+                <div className="absolute top-2.5 right-2.5 z-10 px-2 py-0.5 rounded bg-zinc-950/85 border border-zinc-800 text-[10.5px] font-mono text-zinc-400">
                   {img.width} × {img.height}
                 </div>
               )}
 
               {/* Title & Domain Footer */}
-              <div className="relative z-10 p-2.5 space-y-0.5">
-                <p className="text-xs font-medium text-zinc-100 line-clamp-1 group-hover:text-white transition-colors">
+              <div className="relative z-10 p-3 space-y-1">
+                <p className="text-xs sm:text-sm font-medium text-zinc-100 line-clamp-1 group-hover:text-white transition-colors">
                   {img.title}
                 </p>
-                <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-                  <span className="truncate max-w-[130px] font-mono text-[10px] text-zinc-400">
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <span className="truncate font-mono text-[11px] text-zinc-400">
                     {img.domain}
                   </span>
-                  <ExternalLink className="w-3 h-3 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  <ExternalLink className="w-3.5 h-3.5 text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 </div>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="py-12 flex flex-col items-center justify-center text-center">
+        <div className="py-14 flex flex-col items-center justify-center text-center">
           <ImageIcon className="w-10 h-10 text-zinc-700 mb-2" />
           <p className="text-sm font-medium text-zinc-400">No images found for "{activeQuery}"</p>
-          <p className="text-xs text-zinc-600 mt-1">Try selecting a different topic pill above</p>
+          <p className="text-xs text-zinc-600 mt-1">Try selecting a different suggestion pill above</p>
         </div>
       )}
 
@@ -277,4 +286,3 @@ export default function DuckDuckGoImageWidget({ query }: DuckDuckGoImageWidgetPr
     </div>
   );
 }
-

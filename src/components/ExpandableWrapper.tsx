@@ -60,7 +60,7 @@ export default function ExpandableWrapper({ children, label, className = "" }: E
       {/* Expanded content panel */}
       <div
         ref={contentRef}
-        className="relative z-10 w-full max-w-[95vw] md:max-w-[1100px] max-h-[85vh] overflow-y-auto custom-scrollbar flex items-center justify-center"
+        className="relative z-10 w-full max-w-[95vw] lg:max-w-[1700px] max-h-[92vh] overflow-y-auto custom-scrollbar flex flex-col items-center justify-start"
         style={{ animation: "vk-scale-in 0.2s ease" }}
         onClick={(e) => e.stopPropagation()}
       >
