@@ -881,6 +881,32 @@ def login_password_endpoint(req: LoginPasswordRequest):
         "avatar_url": profile.get("avatar_url", "")
     }
 
+@app.get("/api/search/images")
+async def search_images_endpoint(query: str, limit: int = 24):
+    from image_search_engine import search_duckduckgo_images
+    return await search_duckduckgo_images(query=query, limit=limit)
+
+@app.get("/api/image-proxy")
+async def image_proxy_endpoint(url: str):
+    import httpx
+    from fastapi.responses import Response
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": url,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers)
+            if resp.status_code == 200:
+                content_type = resp.headers.get("content-type", "image/jpeg")
+                return Response(content=resp.content, media_type=content_type, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=86400"})
+    except Exception as e:
+        print(f"Image proxy error for {url}: {e}")
+        
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=url)
+
 @app.post("/auth/refresh")
 def refresh_token_endpoint(req: RefreshRequest):
     import time

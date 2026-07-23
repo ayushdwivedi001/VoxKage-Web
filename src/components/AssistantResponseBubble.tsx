@@ -27,6 +27,7 @@ import {
 } from "@/lib/chatHelpers";
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
+import DuckDuckGoImageWidget from "./DuckDuckGoImageWidget";
 import ExpandableWrapper from "./ExpandableWrapper";
 import ScheduleSetupWidget from "./ScheduleSetupWidget";
 import { CanvaPreviewWidget, GmailInboxWidget, GoogleCalendarWidget } from "./McpWidgets";
@@ -501,7 +502,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -895,6 +896,13 @@ export default function AssistantResponseBubble({
       {msg.status !== "thinking" && finalContent && (
         <div className="text-[16px] text-zinc-200 leading-relaxed font-sans font-light tracking-wide max-w-[90%] select-text whitespace-pre-wrap animate-fadeIn">
           {renderFormattedContent(removeFileCodeBlocks(finalContent, extracted), allSources)}
+        </div>
+      )}
+
+      {/* --- Dynamic DuckDuckGo Live Image Search Grid Widget --- */}
+      {imageGalleryQuery && (
+        <div className="w-full max-w-[90%] select-none">
+          <DuckDuckGoImageWidget query={imageGalleryQuery} />
         </div>
       )}
 

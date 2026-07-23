@@ -383,6 +383,24 @@ export interface ImageItem {
   url: string;
 }
 
+export interface ImageGalleryInfo {
+  query: string;
+}
+
+export const parseImageGallery = (content: string) => {
+  if (!content) return { cleanContent: "", imageGalleryQuery: null };
+  const galleryRegex = /<ImageGallery\s+query="([^"]*)"\s*\/>/gi;
+  let match;
+  let query: string | null = null;
+  
+  while ((match = galleryRegex.exec(content)) !== null) {
+    query = match[1];
+  }
+
+  const cleanContent = content.replace(/<ImageGallery\s+query="[^"]*"\s*\/>/gi, '').trim();
+  return { cleanContent, imageGalleryQuery: query };
+};
+
 export const parseImages = (content: string) => {
   if (!content) return { cleanContent: "", images: [] };
   const imagesRegex = /<Images\s+query="([^"]*)"\s+data="([^"]+)"\s*\/>/gi;
@@ -912,7 +930,8 @@ export const parseScheduleSetup = (content: string) => {
 
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
-  const { cleanContent: noImagesContent, images } = parseImages(noSourcesContent);
+  const { cleanContent: noGalleryContent, imageGalleryQuery } = parseImageGallery(noSourcesContent);
+  const { cleanContent: noImagesContent, images } = parseImages(noGalleryContent);
   const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
   const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
   const { cleanContent: noMapContent, map, weather } = parseMapAndWeather(noScienceContent);
@@ -925,7 +944,6 @@ export const parseMessageContent = (content: string) => {
   const thinkStartIndex = finalCleanContent.indexOf("<think>");
   const thinkEndIndex = finalCleanContent.indexOf("</think>");
 
-
   if (thinkStartIndex !== -1) {
     if (thinkEndIndex !== -1) {
       thinkingContent = cleanTextContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
@@ -936,7 +954,6 @@ export const parseMessageContent = (content: string) => {
     }
   }
 
-  // Sanitize standalone layout dividers, compact spacing, and normalize double-dashes
   if (finalContent) {
     finalContent = finalContent
       .replace(/^\s*---\s*$/gm, "")
@@ -953,7 +970,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
+  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {
