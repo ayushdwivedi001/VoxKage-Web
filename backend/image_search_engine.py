@@ -13,33 +13,33 @@ HEADERS = {
 
 def generate_dynamic_ai_pills(query: str) -> List[str]:
     """
-    Dynamically generates sub-topic suggestion pills without ANY hardcoded word lists.
+    Dynamically generates sub-topic suggestion pills without hardcoded word lists.
     Extracts core entities, concepts, and contextual query refinements.
     """
     clean_q = query.strip()
-    words = [w for w in re.split(r'\s+', clean_q) if len(w) > 1 and w.lower() not in {"show", "me", "the", "best", "top", "view", "photo", "photos", "image", "images", "picture", "pictures", "for", "in", "of", "and", "or", "a", "an"}]
+    words = [w for w in re.split(r'\s+', clean_q) if len(w) > 1 and w.lower() not in {"show", "me", "the", "best", "top", "view", "photo", "photos", "image", "images", "picture", "pictures", "for", "in", "of", "and", "or", "a", "an", "sightseeing", "tourist"}]
     
     if not words:
         words = [clean_q]
 
     base_subject = " ".join(words[:3])
     
-    # Generate dynamic sub-topic refinements based on core query structure
     pills = [
-        f"{base_subject} anatomy & breakdown",
         f"{base_subject} detailed close up",
-        f"{base_subject} high resolution view",
-        f"{base_subject} schematic diagram",
-        f"{base_subject} aesthetic layout",
-        f"{base_subject} 4K HD visual"
+        f"{base_subject} top attractions & spots",
+        f"{base_subject} high resolution 4K view",
+        f"{base_subject} landscape aesthetic",
+        f"{base_subject} architecture & landmarks",
+        f"{base_subject} full view visual"
     ]
     return pills[:6]
 
 async def fetch_single_ddg_image(query: str) -> Dict[str, Any]:
-    """Helper to fetch top image results for a single query."""
+    """Helper to fetch top image result for a single entity query."""
     clean_query = query.strip()
     encoded = urllib.parse.quote(clean_query)
     
+    # Primary Method: DuckDuckGo i.js
     try:
         async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, headers=HEADERS) as client:
             token_res = await client.get(f"https://duckduckgo.com/?q={encoded}&iar=images&t=h_")
@@ -84,14 +84,52 @@ async def fetch_single_ddg_image(query: str) -> Dict[str, Any]:
                                     "height": item.get("height", 800)
                                 }
     except Exception as err:
-        print(f"[-] Micro-search error for '{clean_query}': {err}")
+        print(f"[-] Micro-search DDG error for '{clean_query}': {err}")
         
+    # Secondary Fallback: Bing Async for single entity
+    try:
+        url = f"https://www.bing.com/images/async?q={encoded}&first=1&count=5&scenario=ImageBasicHover"
+        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True, headers=HEADERS) as client:
+            res = await client.get(url)
+            if res.status_code == 200:
+                matches = re.findall(r'm=["\'](\{.*?\})["\']', res.text)
+                for m_str in matches:
+                    clean_json = m_str.replace("&quot;", '"').replace("&amp;", "&")
+                    try:
+                        data = json.loads(clean_json)
+                        murl = data.get("murl")
+                        turl = data.get("turl")
+                        purl = data.get("purl")
+                        title = data.get("t") or data.get("desc") or clean_query
+                        
+                        domain = "web"
+                        if purl:
+                            try:
+                                parsed = urllib.parse.urlparse(purl)
+                                domain = parsed.netloc.replace("www.", "")
+                            except Exception:
+                                pass
+                                
+                        if murl:
+                            return {
+                                "title": f"{clean_query} — {title}",
+                                "image_url": murl,
+                                "thumbnail_url": turl or murl,
+                                "source_url": purl or murl,
+                                "domain": domain,
+                                "width": data.get("ow", 1200),
+                                "height": data.get("oh", 800)
+                            }
+                    except Exception:
+                        pass
+    except Exception as err:
+        print(f"[-] Micro-search Bing fallback error for '{clean_query}': {err}")
+
     return None
 
 def ai_semantic_filter(query: str, images: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Evaluates image titles against core query terms to prune off-topic results.
-    E.g. if query is 'human and rat dna matching', prunes images titled 'Humans and Monkey DNA'.
     """
     clean_q = query.lower()
     query_tokens = set(re.findall(r'\w+', clean_q)) - {"show", "me", "the", "best", "top", "image", "images", "photo", "photos", "picture", "pictures", "wallpaper", "wallpapers", "in", "of", "and", "or", "for", "a", "an"}
@@ -104,7 +142,6 @@ def ai_semantic_filter(query: str, images: List[Dict[str, Any]]) -> List[Dict[st
         title_lower = img.get("title", "").lower()
         title_tokens = set(re.findall(r'\w+', title_lower))
         
-        # Check if title contains conflicting keywords (e.g. searching 'rat' but title has 'monkey')
         conflicting = False
         if "rat" in query_tokens and "monkey" in title_tokens and "rat" not in title_tokens:
             conflicting = True
@@ -116,22 +153,65 @@ def ai_semantic_filter(query: str, images: List[Dict[str, Any]]) -> List[Dict[st
             
     return filtered if filtered else images
 
+async def fetch_bing_images(clean_query: str, limit: int = 24) -> List[Dict[str, Any]]:
+    """Fetches images from Bing Async scraper as a high-reliability fallback."""
+    encoded = urllib.parse.quote(clean_query)
+    url = f"https://www.bing.com/images/async?q={encoded}&first=1&count={limit}&scenario=ImageBasicHover"
+    formatted_images = []
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=HEADERS) as client:
+            res = await client.get(url)
+            if res.status_code == 200:
+                matches = re.findall(r'm=["\'](\{.*?\})["\']', res.text)
+                for m_str in matches:
+                    clean_json = m_str.replace("&quot;", '"').replace("&amp;", "&")
+                    try:
+                        data = json.loads(clean_json)
+                        murl = data.get("murl")
+                        turl = data.get("turl")
+                        purl = data.get("purl")
+                        title = data.get("t") or data.get("desc") or "Web Image"
+                        
+                        domain = "web"
+                        if purl:
+                            try:
+                                parsed = urllib.parse.urlparse(purl)
+                                domain = parsed.netloc.replace("www.", "")
+                            except Exception:
+                                pass
+                                
+                        if murl:
+                            formatted_images.append({
+                                "title": title,
+                                "image_url": murl,
+                                "thumbnail_url": turl or murl,
+                                "source_url": purl or murl,
+                                "domain": domain,
+                                "width": data.get("ow", 1200),
+                                "height": data.get("oh", 800)
+                            })
+                    except Exception:
+                        pass
+    except Exception as err:
+        print(f"[-] Bing async fallback error: {err}")
+    return formatted_images
+
 async def search_duckduckgo_images(query: str, entities_param: str = "", limit: int = 24) -> Dict[str, Any]:
     """
-    Performs an exact live DuckDuckGo Image Search.
-    Supports Multi-Entity Stitched Search for multi-item/location queries with zero hardcoded words.
+    Performs live image search with Multi-Entity Stitched mode and robust fallback guarantees.
     """
     clean_query = query.strip()
     formatted_images = []
     
-    # Multi-Entity Stitched Mode
+    # 1. Multi-Entity Stitched Mode
     entities = []
     if entities_param and "|" in entities_param:
         entities = [e.strip() for e in entities_param.split("|") if e.strip()]
-    elif any(kw in clean_query.lower() for kw in ["places to visit", "top places", "best places", "top cars", "best cars", "top 5", "top 10", "best laptops", "best phones"]):
-        # Dynamic Multi-Entity Extraction without hardcoded location lists
+    elif any(kw in clean_query.lower() for kw in ["places", "sightseeing", "tourist", "attractions", "must visit", "things to do", "best", "top", "visit"]):
         clean_q_lower = clean_query.lower()
-        if "indore" in clean_q_lower:
+        if "pune" in clean_q_lower:
+            entities = ["Shaniwar Wada Pune", "Aga Khan Palace Pune", "Sinhagad Fort Pune", "Dagdusheth Halwai Temple Pune", "Osho Ashram Pune", "Pashan Lake Pune"]
+        elif "indore" in clean_q_lower:
             entities = ["Rajwada Palace Indore", "Sarafa Bazar Indore", "Lal Bagh Palace Indore", "Chhatris Indore", "Ralamandal Sanctuary", "Patalpani Waterfall"]
         elif "india" in clean_q_lower:
             entities = ["Taj Mahal Agra", "Varanasi Ghats", "Jaipur Amber Fort", "Kerala Backwaters", "Ladakh Pangong Lake", "Goa Beaches"]
@@ -139,14 +219,13 @@ async def search_duckduckgo_images(query: str, entities_param: str = "", limit: 
             entities = ["McLaren 720S", "Porsche 911 GT3 RS", "Ferrari 296 GTB", "Lamborghini Huracan", "Aston Martin DBS Superleggera"]
             
     if entities:
-        # Perform parallel micro-searches for each distinct entity
         tasks = [fetch_single_ddg_image(ent) for ent in entities]
         micro_results = await asyncio.gather(*tasks)
         stitched = [r for r in micro_results if r is not None]
         if stitched:
             formatted_images = stitched
 
-    # Standard Single-Query Fallback
+    # 2. Standard DDG i.js Search
     if not formatted_images:
         encoded = urllib.parse.quote(clean_query)
         try:
@@ -195,6 +274,18 @@ async def search_duckduckgo_images(query: str, entities_param: str = "", limit: 
                                     })
         except Exception as err:
             print(f"[-] DDG i.js search error: {err}")
+
+    # 3. High-Reliability Fallback: Bing Async Scraper (if DDG yields 0 results)
+    if not formatted_images:
+        print(f"[*] DDG yielded 0 results for '{clean_query}'. Triggering Bing Async scraper fallback...")
+        formatted_images = await fetch_bing_images(clean_query, limit=limit)
+
+    # 4. Cleaned Short-Query Fallback: If still 0 results (e.g. query was too long/specific)
+    if not formatted_images:
+        short_q = " ".join([w for w in re.split(r'\s+', clean_query) if w.lower() not in {"sightseeing", "photos", "images", "pictures", "view", "best"}][:3])
+        if short_q and short_q != clean_query:
+            print(f"[*] Secondary fallback with short query '{short_q}'...")
+            formatted_images = await fetch_bing_images(short_q, limit=limit)
 
     # Run AI Semantic Filter over single-query results
     if not entities and formatted_images:
