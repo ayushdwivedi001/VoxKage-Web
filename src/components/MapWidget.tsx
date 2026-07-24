@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Navigation, Sun, Moon, Star, ChevronRight, X, ExternalLink, MessageSquare, Compass, MapPin, Search, Sparkles } from "lucide-react";
+import { Sun, Moon, Star, ChevronRight, X, ExternalLink, MessageSquare, Compass, MapPin, Search, Sparkles, Layers, List } from "lucide-react";
 import { BACKEND_URL } from "@/lib/api";
 
 export interface MapPlace {
@@ -29,17 +29,61 @@ interface MapWidgetProps {
 
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; hex: string }> = {
   Historic: { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/40", hex: "#cc785c" },
+  Heritage: { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/40", hex: "#cc785c" },
   Nature: { bg: "bg-emerald-500/15", text: "text-emerald-400", border: "border-emerald-500/40", hex: "#10b981" },
   Religious: { bg: "bg-purple-500/15", text: "text-purple-400", border: "border-purple-500/40", hex: "#8b5cf6" },
+  Temple: { bg: "bg-purple-500/15", text: "text-purple-400", border: "border-purple-500/40", hex: "#8b5cf6" },
   Food: { bg: "bg-rose-500/15", text: "text-rose-400", border: "border-rose-500/40", hex: "#f43f5e" },
   Sights: { bg: "bg-cyan-500/15", text: "text-cyan-400", border: "border-cyan-500/40", hex: "#06b6d4" },
+  Museum: { bg: "bg-indigo-500/15", text: "text-indigo-400", border: "border-indigo-500/40", hex: "#6366f1" },
   Default: { bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/40", hex: "#3b82f6" },
+};
+
+// 100% Reliable MapLibre Style Specification Generator (Zero CORS / Blank Canvas issues)
+const createMapStyle = (theme: "dark" | "light"): maplibregl.StyleSpecification => {
+  const isDark = theme === "dark";
+  return {
+    version: 8,
+    name: "VoxKage Vector Map",
+    sources: {
+      "carto-base": {
+        type: "raster",
+        tiles: [
+          isDark
+            ? "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            : "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+        ],
+        tileSize: 256,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+      }
+    },
+    layers: [
+      {
+        id: "background",
+        type: "background",
+        paint: {
+          "background-color": isDark ? "#09090b" : "#f4f4f5"
+        }
+      },
+      {
+        id: "carto-base-layer",
+        type: "raster",
+        source: "carto-base",
+        minzoom: 0,
+        maxzoom: 20,
+        paint: {
+          "raster-opacity": 1.0,
+          "raster-fade-duration": 200
+        }
+      }
+    ]
+  };
 };
 
 export default function MapWidget({ lat, lng, label, places, isExpanded = false, onSendPrompt }: MapWidgetProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const markersRef = useRef<maplibregl.Marker[]>([]);
+  const markersRef = useRef<{ marker: maplibregl.Marker; placeName: string }[]>([]);
 
   const [mapTheme, setMapTheme] = useState<"dark" | "light">("dark");
   const [activePlace, setActivePlace] = useState<MapPlace | null>(null);
@@ -47,7 +91,15 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [placeImages, setPlaceImages] = useState<Record<string, string>>({});
 
+  // Side Panel Open/Closed State (Closed by default in inline chat mode to prevent clutter!)
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(isExpanded);
+
   const hasPlaces = places && places.length > 0;
+
+  // Sync sidebar open state when expanded state changes
+  useEffect(() => {
+    setIsSidebarOpen(isExpanded);
+  }, [isExpanded]);
 
   // Extract unique categories
   const categories = places
@@ -111,22 +163,21 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    const styleUrl = mapTheme === "dark"
-      ? "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
-      : "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json";
+    const styleSpec = createMapStyle(mapTheme);
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: styleUrl,
+      style: styleSpec,
       center: [lng, lat],
-      zoom: hasPlaces ? 12.5 : 14,
-      pitch: 30,
+      zoom: hasPlaces ? 12.5 : 13.5,
+      pitch: 0,
       bearing: 0,
       attributionControl: false,
     });
 
-    // Native Globe Projection when zooming out
-    map.on("style.load", () => {
+    // Configure 3D Globe projection & camera centering
+    map.on("load", () => {
+      map.resize();
       try {
         map.setProjection({ type: "globe" });
       } catch (e) {
@@ -135,7 +186,6 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
     });
 
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "top-right");
-
     mapRef.current = map;
 
     return () => {
@@ -144,29 +194,28 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
     };
   }, [mapTheme]);
 
-  // Render Map Markers dynamically
+  // Render Persistent Map Markers (Fixed glitchy marker jumping on click!)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Clear old markers
-    markersRef.current.forEach(m => m.remove());
+    // Remove previous markers cleanly
+    markersRef.current.forEach(item => item.marker.remove());
     markersRef.current = [];
 
     const targetPlaces = hasPlaces ? filteredPlaces : [{ name: label || "Location", lat, lng }];
 
     targetPlaces.forEach((place) => {
       const catConfig = CATEGORY_COLORS[place.category || "Default"] || CATEGORY_COLORS.Default;
-      const isSelected = activePlace?.name === place.name;
 
-      // Custom SVG Marker Element
+      // Custom HTML Marker Pin
       const el = document.createElement("div");
-      el.className = "custom-maplibre-pin cursor-pointer transition-all duration-300 transform hover:scale-125 z-10";
+      el.className = "custom-maplibre-pin cursor-pointer transition-transform duration-200 hover:scale-125 select-none";
+      el.setAttribute("data-place-name", place.name);
       el.innerHTML = `
-        <div class="relative flex items-center justify-center">
-          ${isSelected ? `<span class="absolute inline-flex h-8 w-8 animate-ping rounded-full opacity-75" style="background-color: ${catConfig.hex}"></span>` : ''}
-          <div class="w-7 h-7 rounded-full border-2 border-zinc-950 flex items-center justify-center shadow-2xl transition-transform" style="background-color: ${catConfig.hex}">
-            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+        <div class="relative flex items-center justify-center p-1">
+          <div class="w-8 h-8 rounded-full border-2 border-zinc-950 flex items-center justify-center shadow-2xl transition-all" style="background-color: ${catConfig.hex}">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
@@ -174,9 +223,18 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
         </div>
       `;
 
-      el.addEventListener("click", () => {
+      // Marker Click Event: Open Sidebar & Fly smoothly to spot
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
         setActivePlace(place);
-        map.flyTo({ center: [place.lng, place.lat], zoom: 15.5, pitch: 45, duration: 1200 });
+        setIsSidebarOpen(true);
+        map.flyTo({
+          center: [place.lng, place.lat],
+          zoom: 15.5,
+          pitch: 35,
+          duration: 1000,
+          essential: true
+        });
       });
 
       // Hover Popup Preview Card
@@ -192,21 +250,28 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
         .setPopup(popup)
         .addTo(map);
 
-      markersRef.current.push(marker);
+      markersRef.current.push({ marker, placeName: place.name });
     });
 
     // Auto fit bounds if multiple places exist
     if (hasPlaces && filteredPlaces.length > 1) {
       const bounds = new maplibregl.LngLatBounds();
       filteredPlaces.forEach(p => bounds.extend([p.lng, p.lat]));
-      map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 1000 });
+      map.fitBounds(bounds, { padding: 50, maxZoom: 15, duration: 800 });
     }
-  }, [filteredPlaces, activePlace, mapTheme]);
+  }, [filteredPlaces, mapTheme]);
 
   const handlePlaceSelect = (place: MapPlace) => {
     setActivePlace(place);
+    setIsSidebarOpen(true);
     if (mapRef.current) {
-      mapRef.current.flyTo({ center: [place.lng, place.lat], zoom: 15.5, pitch: 45, duration: 1200 });
+      mapRef.current.flyTo({
+        center: [place.lng, place.lat],
+        zoom: 15.5,
+        pitch: 35,
+        duration: 1000,
+        essential: true
+      });
     }
   };
 
@@ -215,7 +280,6 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
     if (onSendPrompt) {
       onSendPrompt(promptText);
     } else if (typeof window !== "undefined") {
-      // Fallback custom event trigger for global prompt dispatch
       window.dispatchEvent(new CustomEvent("voxkage_dispatch_prompt", { detail: { prompt: promptText } }));
     }
   };
@@ -227,10 +291,10 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
   return (
     <div
       className={`relative w-full mx-auto rounded-2xl border border-zinc-800/80 bg-zinc-950/95 overflow-hidden flex flex-col select-none shadow-2xl backdrop-blur-md transition-all duration-300 ${
-        isExpanded ? "h-[85vh] my-0" : "h-[540px] my-3"
+        isExpanded ? "h-[85vh] my-0" : "h-[500px] my-3"
       }`}
     >
-      {/* --- Top Control & Info Bar --- */}
+      {/* --- Top Control & Header Bar --- */}
       <div className="p-3.5 border-b border-zinc-800/80 bg-zinc-950/90 flex items-center justify-between gap-3 shrink-0 z-20">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="w-8 h-8 rounded-xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
@@ -244,8 +308,22 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
           </div>
         </div>
 
-        {/* Theme & Coord Switcher */}
+        {/* Right Controls: Sidebar Toggle, Theme Switcher & Coordinates */}
         <div className="flex items-center gap-2 shrink-0">
+          {hasPlaces && (
+            <button
+              onClick={() => setIsSidebarOpen(prev => !prev)}
+              className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                isSidebarOpen
+                  ? "bg-blue-600/20 border-blue-500/50 text-blue-300 font-semibold"
+                  : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700"
+              }`}
+            >
+              <List className="w-3.5 h-3.5 text-blue-400" />
+              <span>{isSidebarOpen ? "Hide Places" : `Places (${filteredPlaces.length})`}</span>
+            </button>
+          )}
+
           <button
             onClick={() => setMapTheme(prev => prev === "dark" ? "light" : "dark")}
             className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 transition-all flex items-center gap-1.5 text-xs font-medium cursor-pointer"
@@ -262,36 +340,48 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
               </>
             )}
           </button>
+          
           <span className="text-[11px] font-mono text-zinc-500 hidden lg:inline-block px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60">
             {lat.toFixed(4)}°, {lng.toFixed(4)}°
           </span>
         </div>
       </div>
 
-      {/* --- Main Content Split View (Left Sidebar 38% / Right Map 62%) --- */}
-      <div className="flex flex-col md:flex-row relative w-full flex-1 min-h-0 overflow-hidden">
+      {/* --- Main Content Layout --- */}
+      <div className="flex relative w-full flex-1 min-h-0 overflow-hidden">
         
-        {/* --- Left-Aligned Google Maps Style Side Panel --- */}
-        {hasPlaces && (
-          <div className="w-full md:w-[380px] lg:w-[420px] h-[240px] md:h-full bg-zinc-950 border-r border-zinc-800/80 flex flex-col z-10 shrink-0 relative overflow-hidden">
+        {/* --- Left-Aligned Google Maps Style Side Panel (Slide-over / Collapsible) --- */}
+        {hasPlaces && isSidebarOpen && (
+          <div className="w-full md:w-[360px] lg:w-[390px] h-full bg-zinc-950 border-r border-zinc-800/80 flex flex-col z-10 shrink-0 relative overflow-hidden animate-in slide-in-from-left duration-250">
             
             {/* Search & Category Filter Header */}
-            <div className="p-3 border-b border-zinc-800/80 space-y-2 bg-zinc-950/80 shrink-0">
-              {/* Search Bar */}
-              <div className="relative flex items-center w-full">
-                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Search locations..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 bg-zinc-900/90 border border-zinc-800/90 rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500/50 transition-all"
-                />
-                {searchQuery && (
-                  <button onClick={() => setSearchQuery("")} className="absolute right-3 text-zinc-500 hover:text-zinc-300">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+            <div className="p-3 border-b border-zinc-800/80 space-y-2 bg-zinc-950/90 shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                {/* Search Bar */}
+                <div className="relative flex items-center flex-1">
+                  <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search places..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 bg-zinc-900/90 border border-zinc-800/90 rounded-xl text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-blue-500/50 transition-all"
+                  />
+                  {searchQuery && (
+                    <button onClick={() => setSearchQuery("")} className="absolute right-3 text-zinc-500 hover:text-zinc-300">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Close Sidebar Button (for inline mode uncluttering) */}
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                  title="Close Places Panel"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
               {/* Category Filter Tabs */}
@@ -339,7 +429,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
                           : "hover:bg-zinc-900/50 border-l-4 border-l-transparent"
                       }`}
                     >
-                      {/* Place Image Thumbnail (Dynamic DDG Stitched) */}
+                      {/* Place Image Thumbnail */}
                       <div className="w-16 h-16 rounded-xl overflow-hidden border border-zinc-800 shrink-0 bg-zinc-900 relative">
                         <img
                           src={thumb}
@@ -393,7 +483,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
               )}
             </div>
 
-            {/* --- Slide-Over Rich Place Detail Drawer (Google Maps Style) --- */}
+            {/* --- Slide-Over Rich Place Detail Drawer --- */}
             {activePlace && (
               <div className="absolute inset-0 bg-zinc-950 z-30 flex flex-col animate-in slide-in-from-left duration-300">
                 {/* Detail Drawer Header */}
@@ -411,7 +501,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
                   {/* Close Detail Drawer Button */}
                   <button
                     onClick={() => setActivePlace(null)}
-                    className="absolute top-3 right-3 p-1.5 rounded-full bg-zinc-950/80 border border-zinc-800 text-zinc-300 hover:text-white transition-colors"
+                    className="absolute top-3 right-3 p-1.5 rounded-full bg-zinc-950/80 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -464,7 +554,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
                       <span>Summarized Visitor Experience</span>
                     </div>
                     <p className="text-[11.5px] text-zinc-300 leading-relaxed font-light">
-                      Visitors praise the iconic significance, cultural richness, and vibrant ambiance of {activePlace.name}. Highly rated for morning visits and scenic photography.
+                      Visitors praise the iconic significance, cultural richness, and vibrant atmosphere of {activePlace.name}. Highly rated for morning visits and scenic photography.
                     </p>
                   </div>
 
@@ -507,9 +597,20 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
           </div>
         )}
 
-        {/* --- Right-Aligned WebGL Vector Map Container --- */}
+        {/* --- Right-Aligned Full WebGL Vector Map Container --- */}
         <div className="flex-1 h-full relative bg-zinc-950 z-0">
           <div ref={mapContainerRef} className="w-full h-full" />
+
+          {/* Floating Pill Toggle Button when Sidebar is Closed */}
+          {hasPlaces && !isSidebarOpen && (
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="absolute bottom-4 left-4 z-20 px-3.5 py-2 rounded-xl bg-zinc-950/90 border border-zinc-800 text-zinc-200 text-xs font-semibold shadow-2xl backdrop-blur-md flex items-center gap-2 hover:border-blue-500/50 hover:text-white transition-all cursor-pointer"
+            >
+              <MapPin className="w-4 h-4 text-blue-400" />
+              <span>Explore {filteredPlaces.length} Places</span>
+            </button>
+          )}
         </div>
       </div>
     </div>
