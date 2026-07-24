@@ -346,6 +346,7 @@ interface AssistantResponseBubbleProps {
   setActiveFileVersions: React.Dispatch<React.SetStateAction<{ [name: string]: number }>>;
   onFeedback?: (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => Promise<void>;
   onRetry?: (messageId: string) => void;
+  onSendPrompt?: (prompt: string) => void;
 }
 
 export default function AssistantResponseBubble({
@@ -358,6 +359,7 @@ export default function AssistantResponseBubble({
   setActiveFileVersions,
   onFeedback,
   onRetry,
+  onSendPrompt,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const [scheduleState, setScheduleState] = useState<"pending" | "success" | "cancelled" | null>(null);
@@ -916,7 +918,7 @@ export default function AssistantResponseBubble({
       {/* --- Dynamic Map Widget --- */}
       {msg.status !== "thinking" && map && (
         <ExpandableWrapper label="Map" className="w-full max-w-full sm:max-w-[90%] overflow-x-auto select-none flex justify-center">
-          <MapWidget lat={map.lat} lng={map.lng} label={map.label} places={map.places} />
+          <MapWidget lat={map.lat} lng={map.lng} label={map.label} places={map.places} onSendPrompt={onSendPrompt} />
         </ExpandableWrapper>
       )}
 
