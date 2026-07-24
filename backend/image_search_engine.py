@@ -11,36 +11,84 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
+async def _research_topic(query: str) -> str:
+    """
+    Performs a live DuckDuckGo text search and extracts real entity names,
+    titles and snippets from the top results to serve as grounded research context.
+    """
+    encoded = urllib.parse.quote(query.strip())
+    url = f"https://html.duckduckgo.com/html/?q={encoded}"
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True, headers=HEADERS) as client:
+            res = await client.get(url)
+            if res.status_code == 200:
+                def _clean(text: str) -> str:
+                    text = re.sub(r'<[^>]+>', '', text)
+                    text = (text.replace('&amp;', '&').replace('&quot;', '"')
+                            .replace('&#x27;', "'").replace('&lt;', '<')
+                            .replace('&gt;', '>').strip())
+                    return text
+
+                titles   = re.findall(r'class="result__title"[^>]*>.*?<a[^>]*>(.*?)</a>', res.text, re.DOTALL)
+                snippets = re.findall(r'class="result__snippet"[^>]*>(.*?)</span>', res.text, re.DOTALL)
+
+                clean_titles   = [_clean(t) for t in titles[:8]   if _clean(t)]
+                clean_snippets = [_clean(s) for s in snippets[:4] if _clean(s)]
+
+                parts = []
+                if clean_titles:
+                    parts.append("Top result titles: " + " | ".join(clean_titles[:6]))
+                if clean_snippets:
+                    parts.append("Snippets: " + " | ".join(clean_snippets[:2])[:350])
+                return "\n".join(parts)
+    except Exception as err:
+        print(f"[-] Research scrape notice: {err}")
+    return ""
+
+
 async def generate_suggestion_pills(query: str) -> List[str]:
     """
-    Authentic Search Refinement Chip Synthesizer.
-    Generates 8 short, highly specific, authentic search refinement chips exactly like DuckDuckGo's 
-    top image filter bar (e.g. ['Agent 47', 'World of Assassination', 'Deluxe Pack', 'PS5', 'Black Hoodie']).
-    Zero hardcoding.
+    Research-Driven Search Refinement Chip Synthesizer.
+    Step 1 — Live DDG text search → real entity/context extraction.
+    Step 2 — LLM synthesizes 8 immersive, deeply specific chips grounded in that research.
+    Zero hardcoded keyword rules.
     """
     clean_q = query.strip()
-    
+
+    # --- Step 1: Research the topic concurrently with image fetch (called in parallel outside) ---
+    research_context = await _research_topic(clean_q)
+
+    context_block = ""
+    if research_context:
+        context_block = (
+            f"\n\n[LIVE RESEARCH CONTEXT — ground your chips in this]:\n{research_context}\n"
+        )
+
     prompt = (
-        f"You are DuckDuckGo Image Search Indexer.\n"
-        f"User Query: \"{clean_q}\"\n\n"
-        "Generate 8 short, authentic search refinement chips exactly like DuckDuckGo's top image filter bar.\n"
-        "Rules:\n"
-        "1. For games (e.g. Hitman 3), output specific character names, game editions, platforms, gear, or modes (e.g. ['Agent 47', 'World of Assassination', 'Deluxe Pack', 'PS5 & PC', 'Stealth Gameplay', 'Black Hoodie', 'Contracts']).\n"
-        "2. For anatomy/science (e.g. hand skeleton), output specific anatomical parts/perspectives (e.g. ['Metacarpal', 'Phalanges', 'X-Ray Anatomy', '3D Bone Render', 'Carpal Tunnel', 'Joints']).\n"
-        "3. For travel/places (e.g. Indore), output specific famous landmarks/attractions (e.g. ['Rajwada Palace', 'Sarafa Night Market', 'Lal Bagh Palace', 'Chhatris', 'Ralamandal']).\n"
-        "4. Keep chips SHORT (1 to 3 words max each).\n"
-        "5. ZERO generic suffixes like 'overview', 'details', '4K wallpaper', 'aesthetic view'.\n"
-        "Return ONLY a raw JSON array of 8 short strings."
+        f"User Image Search Query: \"{clean_q}\"\n"
+        f"{context_block}\n"
+        "Your job: Generate exactly 8 SHORT, highly specific search refinement chips for this topic.\n\n"
+        "Chip requirements:\n"
+        "- Named entities, sub-components, specific versions, characters, locations, or visual aspects\n"
+        "- 1 to 3 words each — never longer\n"
+        "- Directly specific to what was found in the research context above\n"
+        "- Immersive and precise — NOT generic (never use: 'overview', 'details', 'HD', '4K', 'photos', 'images', 'gallery', 'wallpaper', 'aesthetic')\n"
+        "- Varied: cover different dimensions (e.g. character + location + edition + mechanic + studio etc.)\n\n"
+        "GOOD example for 'Hitman 3 game': [\"Agent 47\", \"Dartmoor\", \"Berlin\", \"Mendoza\", \"Freelancer Mode\", \"Deluxe Pack\", \"ICA19\", \"World of Assassination\"]\n"
+        "GOOD example for 'Cyberpunk 2077': [\"Night City\", \"V Character\", \"Phantom Liberty\", \"Johnny Silverhand\", \"Cyberware\", \"Dogtown\", \"Netrunner Build\", \"Rogue Amendiares\"]\n"
+        "GOOD example for 'Rajasthan travel': [\"Amber Fort\", \"Mehrangarh\", \"Jaisalmer\", \"Udaipur Lake\", \"Pushkar\", \"Ranthambore\", \"Blue City\", \"Hawa Mahal\"]\n"
+        "GOOD example for '007 First Light': [\"James Bond\", \"MI6\", \"Origin Story\", \"Young Bond\", \"IO Interactive\", \"Training\", \"00 Status\", \"Recruits\"]\n\n"
+        "Return ONLY a raw JSON array of exactly 8 strings. No explanation, no markdown."
     )
-    
+
     try:
-        async with httpx.AsyncClient(timeout=3.5) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             res = await client.post(
                 "https://opencode.ai/zen/v1/chat/completions",
                 json={
                     "model": "deepseek-v4-flash-free",
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3
+                    "temperature": 0.4
                 }
             )
             if res.status_code == 200:
@@ -51,9 +99,9 @@ async def generate_suggestion_pills(query: str) -> List[str]:
                     if isinstance(parsed, list) and len(parsed) >= 4:
                         return [str(c).strip() for c in parsed[:8]]
     except Exception as err:
-        print(f"[-] DDG chip generator notice: {err}")
+        print(f"[-] Pill LLM notice: {err}")
 
-    # Fallback to DDG live autocomplete trends
+    # Fallback: DDG live autocomplete
     try:
         encoded = urllib.parse.quote(clean_q)
         ac_url = f"https://duckduckgo.com/ac/?q={encoded}&type=list"
@@ -62,17 +110,16 @@ async def generate_suggestion_pills(query: str) -> List[str]:
             if ac_res.status_code == 200:
                 data = ac_res.json()
                 if len(data) > 1 and isinstance(data[1], list):
-                    web_chips = [item.strip() for item in data[1] if item.strip() and item.strip().lower() != clean_q.lower()]
-                    if len(web_chips) >= 4:
-                        return web_chips[:8]
-    except Exception as err:
-        print(f"[-] Autocomplete fallback notice: {err}")
+                    chips = [item.strip() for item in data[1]
+                             if item.strip() and item.strip().lower() != clean_q.lower()]
+                    if chips:
+                        return chips[:8]
+    except Exception:
+        pass
 
-    subject = re.sub(r'^(show\s+me|give\s+me|find|search|picture[s]?\s+of|image[s]?\s+of|photo[s]?\s+of|view\s+of|look\s+at)\s+', '', clean_q, flags=re.IGNORECASE).strip()
-    if not subject:
-        subject = clean_q
+    return [clean_q]
 
-    return [subject, f"{subject} HD", f"{subject} Design", f"{subject} Features", f"{subject} Specs", f"{subject} Gallery"]
+
 
 async def search_duckduckgo_images(query: str, limit: int = 24) -> Dict[str, Any]:
     """
