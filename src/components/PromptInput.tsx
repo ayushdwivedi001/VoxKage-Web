@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Plus, ChevronDown, ArrowUp, Square, X, CornerDownLeft } from "lucide-react";
+import { Plus, ChevronDown, ArrowUp, Square, X, CornerDownLeft, Zap, Compass } from "lucide-react";
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
@@ -400,8 +400,12 @@ export default function PromptInput({
 
   const handleSubmit = () => {
     if (value.trim().length > 0) {
+      let finalValue = value;
+      if (buildMode === "Plan" && !finalValue.startsWith("/plan") && !finalValue.startsWith("[PLAN MODE]")) {
+        finalValue = `[PLAN MODE] ${finalValue}`;
+      }
       if (onSubmit) {
-        onSubmit(value);
+        onSubmit(finalValue);
       }
       setValue("");
     }
@@ -863,66 +867,70 @@ export default function PromptInput({
               </div>
             )}
           </div>
-
           {/* Work / Plan Mode Dropdown */}
-          <div ref={buildDropdownRef} className="relative animate-fadeIn flex-shrink-0">
+          <div ref={buildDropdownRef} className="relative animate-fadeIn flex-shrink-0 z-[60]">
             <button
               type="button"
               onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-              className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-lg text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[11.5px] sm:text-[12.5px] font-sans font-medium select-none cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-sans font-medium select-none cursor-pointer"
             >
               <span>{buildMode}</span>
-              <ChevronDown className={`w-3.5 h-3.5 opacity-70 transition-transform duration-200 ${buildDropdownOpen ? "rotate-180" : ""}`} />
+              <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5 flex-shrink-0" />
             </button>
 
             {buildDropdownOpen && (
-              <div className="absolute bottom-full right-0 mb-2 min-w-[180px] w-[220px] fluid-glass-popup rounded-2xl p-2 z-[70] flex flex-col gap-1.5 shadow-2xl animate-fadeIn select-none">
-                {/* Option 1: Work */}
+              <div className="absolute bottom-full mb-2.5 right-0 min-w-[240px] sm:w-[270px] fluid-glass-popup rounded-2xl p-2.5 z-[9999] flex flex-col gap-1.5 shadow-2xl animate-fadeIn select-none pointer-events-auto border border-white/10">
+                <div className="px-3 py-1.5 border-b border-white/10 flex items-center justify-between text-[11px] font-mono text-zinc-400 uppercase tracking-wider pointer-events-none">
+                  <span>Execution Mode</span>
+                </div>
+
+                {/* Option 1: Work Mode */}
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setBuildMode("Work");
                     setBuildDropdownOpen(false);
                   }}
-                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer ${
+                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer select-none border border-transparent ${
                     buildMode === "Work"
-                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      ? "bg-white/10 border border-white/15 text-white font-medium shadow-sm"
                       : "text-zinc-300 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  <div className="w-full flex items-center justify-between">
-                    <span className="text-[13px] font-sans font-semibold text-white">Work</span>
-                    {buildMode === "Work" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  <div className="w-full flex items-center justify-between pointer-events-none">
+                    <span className="text-[13px] font-sans font-semibold text-white pointer-events-none">Work</span>
+                    {buildMode === "Work" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 pointer-events-none" />}
                   </div>
-                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1">
+                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1 pointer-events-none">
                     VoxKage will directly start working on the tasks.
                   </span>
                 </button>
 
-                {/* Option 2: Plan */}
+                {/* Option 2: Plan Mode */}
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setBuildMode("Plan");
                     setBuildDropdownOpen(false);
                   }}
-                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer ${
+                  className={`w-full flex flex-col items-start p-2.5 rounded-xl text-left transition-all duration-150 cursor-pointer select-none border border-transparent ${
                     buildMode === "Plan"
-                      ? "bg-white/10 text-white font-medium shadow-sm"
+                      ? "bg-white/10 border border-white/15 text-white font-medium shadow-sm"
                       : "text-zinc-300 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  <div className="w-full flex items-center justify-between">
-                    <span className="text-[13px] font-sans font-semibold text-white">Plan</span>
-                    {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400" />}
+                  <div className="w-full flex items-center justify-between pointer-events-none">
+                    <span className="text-[13px] font-sans font-semibold text-white pointer-events-none">Plan</span>
+                    {buildMode === "Plan" && <div className="w-1.5 h-1.5 rounded-full bg-blue-400 pointer-events-none" />}
                   </div>
-                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1">
+                  <span className="text-[11px] font-sans text-zinc-400 font-normal leading-snug mt-1 pointer-events-none">
                     VoxKage will create a plan before working.
                   </span>
                 </button>
               </div>
             )}
-
           </div>
 
           {/* Submit / Stop Button */}

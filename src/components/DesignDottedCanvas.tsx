@@ -191,21 +191,28 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
           // Normal non-wave dots turn pitch dark (0.28 homepage -> 0.03 active session)
           let alpha = 0.28 * (1 - dim * 0.89);
 
+          let isGlowDot = false;
           if (isBlueWaveDot && sweepFactor > 0) {
-            const colorBlend = Math.min(1, (normY - waveSurfaceNormY) / 0.35);
-            const targetR = Math.round(56 + (4 - 56) * colorBlend);
-            const targetG = Math.round(189 + (56 - 189) * colorBlend);
-            const targetB = Math.round(248 + (194 - 248) * colorBlend);
+            isGlowDot = true;
 
-            // Blue ocean wave dots stay vibrant & clearly visible
-            r = Math.round(targetR * (1 - dim * 0.22));
-            g = Math.round(targetG * (1 - dim * 0.22));
-            b = Math.round(targetB * (1 - dim * 0.12));
-            alpha = (0.35 + 0.35 * (1 - colorBlend)) * sweepFactor * (1 - dim * 0.22);
-            radius = baseDotRadius + 0.45 * sweepFactor * (1 - dim * 0.15);
+            // Interpolate colors based on dim state (home screen = bright sky blue, session = dim dark ocean blue)
+            // Home (dim=0): rgb(56, 189, 248) -> Sky blue
+            // Session (dim=1): rgb(6, 24, 75) -> Dim dark ocean blue
+            const targetR = Math.round(56 + (6 - 56) * dim);
+            const targetG = Math.round(189 + (24 - 189) * dim);
+            const targetB = Math.round(248 + (75 - 248) * dim);
+
+            r = targetR;
+            g = targetG;
+            b = targetB;
+            
+            // Reduce alpha and glow radius during active sessions to lower diversion
+            alpha = (0.85 - dim * 0.55) * sweepFactor * (1 - dim * 0.22);
+            radius = baseDotRadius + (0.45 - dim * 0.15) * sweepFactor * (1 - dim * 0.15);
           }
 
           if (maxRippleIntensity > 0) {
+            // Ripple color is always the bright, vibrant sky blue (rgb(56, 189, 248))
             r = Math.round(r + (56 - r) * maxRippleIntensity);
             g = Math.round(g + (189 - g) * maxRippleIntensity);
             b = Math.round(b + (248 - b) * maxRippleIntensity);
@@ -213,10 +220,21 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
             radius = Math.max(radius, baseDotRadius + 0.85 * maxRippleIntensity);
           }
 
+          // Main dot rendering
           ctx.beginPath();
           ctx.arc(renderX, renderY, radius, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
           ctx.fill();
+
+          // Render secondary wide-glow halo for blue ocean wave dots to simulate water glow
+          if (isGlowDot) {
+            ctx.beginPath();
+            ctx.arc(renderX, renderY, radius * 2.5, 0, Math.PI * 2);
+            // Lower the glowing effect during active session (from 0.22 down to 0.05)
+            const glowAlphaScale = 0.22 - dim * 0.17;
+            ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha * glowAlphaScale})`;
+            ctx.fill();
+          }
         }
       }
 
