@@ -222,12 +222,26 @@ async def search_duckduckgo_images(query: str, limit: int = 24) -> Dict[str, Any
         except Exception as err:
             print(f"[-] Image search secondary fallback error: {err}")
 
-    # Generate authentic DDG search refinement chips
+    # Generate authentic DDG search refinement chips (runs concurrently with image fetch)
     chips = await generate_suggestion_pills(clean_query)
+
+    # --- Stock Domain Demotion ---
+    # Push generic stock photo images to the back so real-web results appear first.
+    # This prevents alamy/istock/dreamstime from drowning out actual content images.
+    STOCK_DOMAINS = {
+        "alamy.com", "istockphoto.com", "dreamstime.com", "shutterstock.com",
+        "gettyimages.com", "depositphotos.com", "123rf.com", "stock.adobe.com",
+        "bigstockphoto.com", "pond5.com", "stocksy.com"
+    }
+    real_images = [img for img in formatted_images if img["domain"] not in STOCK_DOMAINS]
+    stock_images = [img for img in formatted_images if img["domain"] in STOCK_DOMAINS]
+    # Use real results if they exist, otherwise fall back to stock
+    final_images = real_images if len(real_images) >= 4 else formatted_images
 
     return {
         "query": clean_query,
-        "count": len(formatted_images),
-        "images": formatted_images[:limit],
+        "count": len(final_images),
+        "images": final_images[:limit],
         "pills": chips
     }
+

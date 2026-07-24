@@ -28,20 +28,32 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
   const [selectedImage, setSelectedImage] = useState<DuckDuckGoImageItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Stock photo domains that should NOT dominate results for specific queries
+  const STOCK_DOMAINS = new Set(["alamy.com", "istockphoto.com", "dreamstime.com", "shutterstock.com", "gettyimages.com", "depositphotos.com", "123rf.com", "stock.adobe.com"]);
+
+  const isCacheValid = (cached: string): boolean => {
+    try {
+      const parsed = JSON.parse(cached);
+      if (!parsed?.images?.length || !parsed?._ts) return false;
+      const age = Date.now() - parsed._ts;
+      if (age > 30 * 60 * 1000) return false; // 30-min TTL
+      // Reject cache if >60% of images are from stock photo domains
+      const stockCount = (parsed.images as { domain: string }[]).filter(img => STOCK_DOMAINS.has(img.domain)).length;
+      if (stockCount / parsed.images.length > 0.6) return false;
+      return true;
+    } catch { return false; }
+  };
+
   const fetchImages = async (searchQuery: string) => {
-    const cacheKey = `vk_img_cache_v5_${searchQuery.trim().toLowerCase()}`;
+    const cacheKey = `vk_img_cache_v6_${searchQuery.trim().toLowerCase()}`;
     try {
       const cached = sessionStorage.getItem(cacheKey);
-      if (cached) {
+      if (cached && isCacheValid(cached)) {
         const parsed = JSON.parse(cached);
-        if (parsed && parsed.images && parsed.images.length > 0) {
-          setImages(parsed.images);
-          if (parsed.pills && parsed.pills.length > 0) {
-            setPills(parsed.pills);
-          }
-          setLoading(false);
-          return;
-        }
+        setImages(parsed.images);
+        if (parsed.pills?.length > 0) setPills(parsed.pills);
+        setLoading(false);
+        return;
       }
     } catch (e) {
       console.error("Cache read error:", e);
@@ -53,11 +65,9 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
       if (res.ok) {
         const data = await res.json();
         setImages(data.images || []);
-        if (data.pills && data.pills.length > 0) {
-          setPills(data.pills);
-        }
+        if (data.pills?.length > 0) setPills(data.pills);
         try {
-          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+          sessionStorage.setItem(cacheKey, JSON.stringify({ ...data, _ts: Date.now() }));
         } catch (e) {
           console.error("Cache write error:", e);
         }
@@ -81,14 +91,22 @@ export default function DuckDuckGoImageWidget({ query, isExpanded = false }: Duc
 
   const handlePillClick = (pill: string) => {
     if (activePill === pill) {
+      // Deactivate: return to the original base query
       setActivePill(null);
       setActiveQuery(query);
       fetchImages(query);
     } else {
       setActivePill(pill);
-      const newQuery = pill.toLowerCase().includes(query.toLowerCase()) ? pill : `${query} ${pill}`;
-      setActiveQuery(newQuery);
-      fetchImages(newQuery);
+      // Pill-as-refinement: search "<originalQuery> <pill>" — this matches how DDG
+      // handles chip-select refinement: it keeps the base topic context + the chip term.
+      // Do NOT use pill alone (loses context) or repeat pill if already present.
+      const baseQuery = query.trim();
+      const pillLower = pill.toLowerCase();
+      const baseLower = baseQuery.toLowerCase();
+      // If the pill is already a substring of the base query, use pill alone
+      const refinedQuery = baseLower.includes(pillLower) ? pill : `${baseQuery} ${pill}`;
+      setActiveQuery(refinedQuery);
+      fetchImages(refinedQuery);
     }
   };
 
