@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { Sun, Moon, Star, ChevronRight, X, ExternalLink, MessageSquare, Compass, MapPin, Search, Sparkles, Layers, List } from "lucide-react";
+import { Sun, Moon, Mountain, Globe, ChevronDown, Star, ChevronRight, X, ExternalLink, MessageSquare, Compass, MapPin, Search, Sparkles, List, Box } from "lucide-react";
 import { BACKEND_URL } from "@/lib/api";
 
 export interface MapPlace {
@@ -27,6 +27,8 @@ interface MapWidgetProps {
   onSendPrompt?: (promptText: string) => void;
 }
 
+export type MapMode = "light" | "dark" | "terrain" | "satellite";
+
 const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string; hex: string }> = {
   Historic: { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/40", hex: "#cc785c" },
   Heritage: { bg: "bg-amber-500/15", text: "text-amber-400", border: "border-amber-500/40", hex: "#cc785c" },
@@ -39,22 +41,31 @@ const CATEGORY_COLORS: Record<string, { bg: string; text: string; border: string
   Default: { bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/40", hex: "#3b82f6" },
 };
 
-// 100% Reliable MapLibre Style Specification Generator (Zero CORS / Blank Canvas issues)
-const createMapStyle = (theme: "dark" | "light"): maplibregl.StyleSpecification => {
-  const isDark = theme === "dark";
+// 100% Verified MapLibre Style Specification Generator with Light Mode Default & Satellite/Terrain
+const createMapStyle = (mode: MapMode): maplibregl.StyleSpecification => {
+  let tileUrl = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+  let bgColor = "#f4f4f5";
+
+  if (mode === "dark") {
+    tileUrl = "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+    bgColor = "#09090b";
+  } else if (mode === "terrain") {
+    tileUrl = "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+    bgColor = "#18181b";
+  } else if (mode === "satellite") {
+    tileUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+    bgColor = "#040404";
+  }
+
   return {
     version: 8,
-    name: "VoxKage Vector Map",
+    name: `VoxKage Vector Map (${mode})`,
     sources: {
-      "carto-base": {
+      "base-tiles": {
         type: "raster",
-        tiles: [
-          isDark
-            ? "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            : "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        ],
+        tiles: [tileUrl],
         tileSize: 256,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+        attribution: '&copy; OpenStreetMap &copy; CARTO / ESRI'
       }
     },
     layers: [
@@ -62,13 +73,13 @@ const createMapStyle = (theme: "dark" | "light"): maplibregl.StyleSpecification 
         id: "background",
         type: "background",
         paint: {
-          "background-color": isDark ? "#09090b" : "#f4f4f5"
+          "background-color": bgColor
         }
       },
       {
-        id: "carto-base-layer",
+        id: "base-tiles-layer",
         type: "raster",
-        source: "carto-base",
+        source: "base-tiles",
         minzoom: 0,
         maxzoom: 20,
         paint: {
@@ -85,14 +96,21 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<{ marker: maplibregl.Marker; placeName: string }[]>([]);
 
-  const [mapTheme, setMapTheme] = useState<"dark" | "light">("dark");
+  // Default to Light Mode as requested by user
+  const [mapTheme, setMapTheme] = useState<MapMode>("light");
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState<boolean>(false);
+  const [is3DTilted, setIs3DTilted] = useState<boolean>(false);
+
   const [activePlace, setActivePlace] = useState<MapPlace | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("All");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [placeImages, setPlaceImages] = useState<Record<string, string>>({});
 
-  // Side Panel Open/Closed State (Closed by default in inline chat mode to prevent clutter!)
+  // Side Panel Open/Closed State (Closed by default in inline mode)
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(isExpanded);
+
+  // Cached Camera Viewport State to preserve zoom/center/globe view across theme and expansion toggles
+  const cameraStateRef = useRef<{ center: [number, number]; zoom: number; pitch: number; bearing: number } | null>(null);
 
   const hasPlaces = places && places.length > 0;
 
@@ -159,19 +177,39 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
     });
   }, [places, label]);
 
+  // Save current camera viewport state before unmount or theme change
+  const saveCameraState = () => {
+    if (mapRef.current) {
+      const center = mapRef.current.getCenter();
+      const zoom = mapRef.current.getZoom();
+      const pitch = mapRef.current.getPitch();
+      const bearing = mapRef.current.getBearing();
+      cameraStateRef.current = {
+        center: [center.lng, center.lat],
+        zoom,
+        pitch,
+        bearing
+      };
+    }
+  };
+
   // Initialize MapLibre GL JS Map instance
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
     const styleSpec = createMapStyle(mapTheme);
+    const initialCenter: [number, number] = cameraStateRef.current?.center || [lng, lat];
+    const initialZoom: number = cameraStateRef.current?.zoom ?? (hasPlaces ? 12.5 : 13.5);
+    const initialPitch: number = cameraStateRef.current?.pitch ?? (is3DTilted ? 45 : 0);
+    const initialBearing: number = cameraStateRef.current?.bearing ?? 0;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: styleSpec,
-      center: [lng, lat],
-      zoom: hasPlaces ? 12.5 : 13.5,
-      pitch: 0,
-      bearing: 0,
+      center: initialCenter,
+      zoom: initialZoom,
+      pitch: initialPitch,
+      bearing: initialBearing,
       attributionControl: false,
     });
 
@@ -185,16 +223,21 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
       }
     });
 
+    map.on("moveend", () => {
+      saveCameraState();
+    });
+
     map.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), "top-right");
     mapRef.current = map;
 
     return () => {
+      saveCameraState();
       map.remove();
       mapRef.current = null;
     };
   }, [mapTheme]);
 
-  // Render Persistent Map Markers (Fixed glitchy marker jumping on click!)
+  // Render Persistent Map Markers with High-Contrast Text Labels & Zero Hover Shift Bug!
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -204,21 +247,31 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
     markersRef.current = [];
 
     const targetPlaces = hasPlaces ? filteredPlaces : [{ name: label || "Location", lat, lng }];
+    const isDarkBg = mapTheme === "dark" || mapTheme === "satellite";
 
     targetPlaces.forEach((place) => {
       const catConfig = CATEGORY_COLORS[place.category || "Default"] || CATEGORY_COLORS.Default;
 
-      // Custom HTML Marker Pin
+      // Custom HTML Marker Pin (Hover scale applies ONLY to inner badge, preventing coordinate jump!)
       const el = document.createElement("div");
-      el.className = "custom-maplibre-pin cursor-pointer transition-transform duration-200 hover:scale-125 select-none";
+      el.className = "custom-maplibre-pin cursor-pointer flex flex-col items-center select-none pointer-events-auto group";
       el.setAttribute("data-place-name", place.name);
+      
+      const labelBgClass = isDarkBg ? "bg-zinc-950/95 text-zinc-100 border-zinc-800" : "bg-white/95 text-zinc-900 border-zinc-300";
+      
       el.innerHTML = `
-        <div class="relative flex items-center justify-center p-1">
-          <div class="w-8 h-8 rounded-full border-2 border-zinc-950 flex items-center justify-center shadow-2xl transition-all" style="background-color: ${catConfig.hex}">
-            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2">
+        <div class="relative flex flex-col items-center">
+          <!-- Pin Badge (Hover scale applies to THIS element only) -->
+          <div class="w-8 h-8 rounded-full border-2 border-zinc-950 flex items-center justify-center shadow-2xl transition-transform duration-200 group-hover:scale-125" style="background-color: ${catConfig.hex}">
+            <svg class="w-4 h-4 text-white pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
+          </div>
+          
+          <!-- High-Contrast Location Title Pill -->
+          <div class="mt-1 px-2 py-0.5 rounded-md text-[10.5px] font-sans font-semibold border shadow-md whitespace-nowrap transition-all ${labelBgClass}">
+            ${place.name}
           </div>
         </div>
       `;
@@ -231,7 +284,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
         map.flyTo({
           center: [place.lng, place.lat],
           zoom: 15.5,
-          pitch: 35,
+          pitch: is3DTilted ? 45 : 0,
           duration: 1000,
           essential: true
         });
@@ -245,7 +298,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
         </div>
       `);
 
-      const marker = new maplibregl.Marker({ element: el })
+      const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([place.lng, place.lat])
         .setPopup(popup)
         .addTo(map);
@@ -253,8 +306,8 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
       markersRef.current.push({ marker, placeName: place.name });
     });
 
-    // Auto fit bounds if multiple places exist
-    if (hasPlaces && filteredPlaces.length > 1) {
+    // Auto fit bounds if multiple places exist and camera state wasn't restored
+    if (hasPlaces && filteredPlaces.length > 1 && !cameraStateRef.current) {
       const bounds = new maplibregl.LngLatBounds();
       filteredPlaces.forEach(p => bounds.extend([p.lng, p.lat]));
       map.fitBounds(bounds, { padding: 50, maxZoom: 15, duration: 800 });
@@ -268,7 +321,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
       mapRef.current.flyTo({
         center: [place.lng, place.lat],
         zoom: 15.5,
-        pitch: 35,
+        pitch: is3DTilted ? 45 : 0,
         duration: 1000,
         essential: true
       });
@@ -283,6 +336,25 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
       window.dispatchEvent(new CustomEvent("voxkage_dispatch_prompt", { detail: { prompt: promptText } }));
     }
   };
+
+  const toggle3DTilt = () => {
+    setIs3DTilted(prev => {
+      const next = !prev;
+      if (mapRef.current) {
+        mapRef.current.easeTo({ pitch: next ? 45 : 0, duration: 800 });
+      }
+      return next;
+    });
+  };
+
+  const modeOptions: { mode: MapMode; label: string; icon: React.ReactNode }[] = [
+    { mode: "light", label: "Light / Streets", icon: <Sun className="w-3.5 h-3.5 text-amber-500" /> },
+    { mode: "dark", label: "Dark Mode", icon: <Moon className="w-3.5 h-3.5 text-indigo-400" /> },
+    { mode: "terrain", label: "3D Terrain", icon: <Mountain className="w-3.5 h-3.5 text-emerald-400" /> },
+    { mode: "satellite", label: "Satellite View", icon: <Globe className="w-3.5 h-3.5 text-cyan-400" /> },
+  ];
+
+  const currentModeObj = modeOptions.find(m => m.mode === mapTheme) || modeOptions[0];
 
   const getFallbackImage = () => {
     return "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=500&h=300&fit=crop&q=80";
@@ -304,12 +376,13 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
             <h3 className="text-sm sm:text-base font-semibold text-zinc-100 tracking-tight truncate">
               {label || (hasPlaces ? "Interactive Map Explorer" : "Location Map")}
             </h3>
-            <p className="text-[11px] text-zinc-400 truncate">MapLibre GL WebGL Engine • 3D Globe View Enabled</p>
+            <p className="text-[11px] text-zinc-400 truncate">MapLibre GL WebGL Engine • 3D Globe Mode Enabled</p>
           </div>
         </div>
 
-        {/* Right Controls: Sidebar Toggle, Theme Switcher & Coordinates */}
+        {/* Right Controls: Sidebar Toggle, Mode Dropdown, 3D Tilt & Coordinates */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* Places Toggle */}
           {hasPlaces && (
             <button
               onClick={() => setIsSidebarOpen(prev => !prev)}
@@ -324,23 +397,55 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
             </button>
           )}
 
+          {/* 3D Pitch Tilt Control */}
           <button
-            onClick={() => setMapTheme(prev => prev === "dark" ? "light" : "dark")}
-            className="px-2.5 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700 transition-all flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            onClick={toggle3DTilt}
+            className={`px-2.5 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+              is3DTilted
+                ? "bg-blue-600/20 border-blue-500/50 text-blue-300 font-semibold"
+                : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:text-white hover:border-zinc-700"
+            }`}
+            title="Toggle 3D Perspective Tilt"
           >
-            {mapTheme === "dark" ? (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Light Map</span>
-              </>
-            ) : (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-400" />
-                <span className="hidden sm:inline">Dark Map</span>
-              </>
-            )}
+            <Box className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="hidden sm:inline">3D Tilt</span>
           </button>
-          
+
+          {/* Multi-Mode Dropdown Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setIsModeDropdownOpen(prev => !prev)}
+              className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-200 hover:text-white hover:border-zinc-700 transition-all flex items-center gap-2 text-xs font-medium cursor-pointer shadow-md"
+            >
+              {currentModeObj.icon}
+              <span>{currentModeObj.label}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
+
+            {isModeDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-44 rounded-xl bg-zinc-950 border border-zinc-800 shadow-2xl py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                {modeOptions.map((opt) => (
+                  <button
+                    key={opt.mode}
+                    onClick={() => {
+                      saveCameraState();
+                      setMapTheme(opt.mode);
+                      setIsModeDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 text-xs font-medium flex items-center gap-2.5 transition-colors cursor-pointer text-left ${
+                      mapTheme === opt.mode
+                        ? "bg-blue-600/20 text-blue-300 font-semibold"
+                        : "text-zinc-300 hover:bg-zinc-900 hover:text-white"
+                    }`}
+                  >
+                    {opt.icon}
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <span className="text-[11px] font-mono text-zinc-500 hidden lg:inline-block px-2 py-1 rounded-lg bg-zinc-900/60 border border-zinc-800/60">
             {lat.toFixed(4)}°, {lng.toFixed(4)}°
           </span>
@@ -374,7 +479,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
                   )}
                 </div>
 
-                {/* Close Sidebar Button (for inline mode uncluttering) */}
+                {/* Close Sidebar Button */}
                 <button
                   onClick={() => setIsSidebarOpen(false)}
                   className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
