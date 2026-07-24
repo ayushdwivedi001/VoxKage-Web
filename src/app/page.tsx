@@ -590,7 +590,34 @@ export default function Home() {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a]">
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a] light-root-bg">
+      <svg style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} aria-hidden="true">
+        <defs>
+          <clipPath id="vc-body-clip">
+            <path d="M 50 10 C 74 10, 90 28, 90 53 C 90 76, 72 90, 50 90 C 28 90, 10 76, 10 53 C 10 28, 26 10, 50 10 Z" />
+          </clipPath>
+          <linearGradient id="vc-wave-grad-blue" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity={0.96} />
+            <stop offset="30%" stopColor="#38bdf8" stopOpacity={0.9} />
+            <stop offset="70%" stopColor="#0438c2" stopOpacity={0.95} />
+            <stop offset="92%" stopColor="#020938" stopOpacity={0.4} />
+            <stop offset="100%" stopColor="#020938" stopOpacity={0} />
+          </linearGradient>
+          <linearGradient id="vc-angry-red-body-grad" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="35%" stopColor="#f87171" />
+            <stop offset="75%" stopColor="#ef4444" />
+            <stop offset="100%" stopColor="#991b1b" />
+          </linearGradient>
+          <linearGradient id="vc-light-body-grad" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="12%" stopColor="#ffffff" />
+            <stop offset="68%" stopColor="#338cecff" />
+            <stop offset="100%" stopColor="#338cecff" />
+          </linearGradient>
+        </defs>
+      </svg>
+
       <GradientBackground isChatActive={isChatActive} />
 
       <Sidebar

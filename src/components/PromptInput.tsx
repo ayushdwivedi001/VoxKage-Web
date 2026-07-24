@@ -70,6 +70,19 @@ export default function PromptInput({
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  // Theme detection mutation observer
+  useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains("light");
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -733,7 +746,11 @@ export default function PromptInput({
             ref={plusButtonRef}
             type="button"
             onClick={() => setPlusPopupOpen(!plusPopupOpen)}
-            className="flex items-center justify-center w-8 h-8 rounded-full text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 active:scale-95 cursor-pointer"
+            className={`flex items-center justify-center w-8 h-8 rounded-full transition-all duration-200 active:scale-95 cursor-pointer ${
+              isLightMode 
+                ? "prompt-btn-dark-gray" 
+                : "fluid-glass-pill text-zinc-300 hover:text-white"
+            }`}
             aria-label="Add attachment"
           >
             <Plus className={`w-[20px] h-[20px] stroke-[2.2] transition-transform duration-200 ${plusPopupOpen ? "rotate-45" : ""}`} />
@@ -799,7 +816,11 @@ export default function PromptInput({
             <button
               type="button"
               onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-medium select-none cursor-pointer max-w-[130px] sm:max-w-none"
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-medium select-none cursor-pointer max-w-[130px] sm:max-w-none ${
+                isLightMode
+                  ? "prompt-btn-dark-gray"
+                  : "fluid-glass-pill text-zinc-300 hover:text-white"
+              }`}
             >
               <span className="truncate max-w-[75px] sm:max-w-none">{selectedModel}</span>
               <span className="text-zinc-400 font-normal text-[11.5px] sm:text-[12.5px] ml-0.5 hidden xs:inline sm:inline">{selectedVariant}</span>
@@ -835,10 +856,12 @@ export default function PromptInput({
             <button 
               type="button"
               onClick={() => setContextHudOpen((prev) => !prev)}
-              className={`flex items-center justify-center px-2 sm:px-2.5 py-1 rounded-lg fluid-glass-pill text-[11.5px] sm:text-[12.5px] font-mono select-none cursor-pointer transition-all duration-200 ${
+              className={`flex items-center justify-center px-2 sm:px-2.5 py-1 rounded-lg text-[11.5px] sm:text-[12.5px] font-mono select-none cursor-pointer transition-all duration-200 ${
                 contextPercent >= 85 
                   ? "text-red-400 border-red-500/40 bg-red-950/30 font-bold" 
-                  : "text-zinc-300 hover:text-white"
+                  : isLightMode
+                  ? "prompt-btn-dark-gray"
+                  : "fluid-glass-pill text-zinc-300 hover:text-white"
               }`}
             >
               <span>{contextPercent}%</span>
@@ -872,7 +895,11 @@ export default function PromptInput({
             <button
               type="button"
               onClick={() => setBuildDropdownOpen(!buildDropdownOpen)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-zinc-300 hover:text-white fluid-glass-pill transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-sans font-medium select-none cursor-pointer"
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all duration-200 text-[12.5px] sm:text-[13.5px] font-sans font-medium select-none cursor-pointer ${
+                isLightMode
+                  ? "prompt-btn-dark-gray"
+                  : "fluid-glass-pill text-zinc-300 hover:text-white"
+              }`}
             >
               <span>{buildMode}</span>
               <ChevronDown className="w-3.5 h-3.5 opacity-70 ml-0.5 flex-shrink-0" />

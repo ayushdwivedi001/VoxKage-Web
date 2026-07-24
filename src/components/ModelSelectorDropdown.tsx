@@ -34,7 +34,7 @@ export default function ModelSelectorDropdown({
   const favourites = modelsList.filter((m) => m.isFavourite);
 
   return (
-    <div className="fixed inset-x-3 bottom-20 w-auto sm:absolute sm:inset-auto sm:bottom-full sm:right-0 sm:w-[300px] rounded-2xl fluid-glass-popup p-1.5 shadow-2xl z-[70] select-none flex flex-col font-sans animate-fadeIn text-zinc-300">
+    <div className="fixed inset-x-3 bottom-20 w-auto sm:absolute sm:inset-auto sm:bottom-full sm:mb-2.5 sm:right-0 sm:w-[300px] rounded-2xl fluid-glass-popup p-1.5 shadow-2xl z-[70] select-none flex flex-col font-sans animate-fadeIn text-zinc-300">
       {/* Favourite Models Section */}
       <div className="flex items-center gap-1.5 px-3.5 py-2 text-[11px] font-semibold text-zinc-400 tracking-wider uppercase border-b border-white/10 mb-1">
         <Star className="w-3.5 h-3.5 text-zinc-300 stroke-[2]" />

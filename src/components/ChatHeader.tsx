@@ -41,6 +41,18 @@ export default function ChatHeader({
 }: ChatHeaderProps) {
   const [showHeaderDropdown, setShowHeaderDropdown] = useState(false);
   const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  React.useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains("light");
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   const currentSess = sessionsList.find((s) => s.id === currentSessionId);
   const isScheduled = currentSess?.is_scheduled || false;
@@ -103,7 +115,11 @@ export default function ChatHeader({
           <button
             type="button"
             onClick={onToggleSidebar}
-            className="flex md:hidden items-center justify-center w-9 h-9 rounded-xl text-zinc-300 hover:text-white bg-white/5 border border-white/10 active:scale-95 cursor-pointer transition-all duration-200"
+            className={`flex md:hidden items-center justify-center w-9 h-9 rounded-xl active:scale-95 cursor-pointer transition-all duration-200 ${
+              isLightMode 
+                ? "bg-[#3d3d3a] border border-[#252523] text-[#e6dfd8] shadow-sm" 
+                : "bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
+            }`}
             aria-label="Open sidebar"
           >
             <PanelLeft className="w-4 h-4" />
@@ -115,7 +131,11 @@ export default function ChatHeader({
           <button
             type="button"
             onClick={() => setShowHeaderDropdown((prev) => !prev)}
-            className="flex items-center gap-1.5 py-1.5 px-3 rounded-xl hover:bg-white/5 text-zinc-300 hover:text-zinc-100 transition-all duration-200 text-[14.5px] font-medium cursor-pointer"
+            className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl transition-all duration-200 text-[14.5px] font-medium cursor-pointer ${
+              isLightMode
+                ? "text-[#141413] hover:bg-black/5"
+                : "hover:bg-white/5 text-zinc-300 hover:text-zinc-100"
+            }`}
           >
             <span className="truncate max-w-[200px]">{chatTitle}</span>
             <ChevronDown className="w-4 h-4 opacity-75 flex-shrink-0" />

@@ -185,8 +185,8 @@ export default function Sidebar({
         onClick={() => !isExpanded && setIsExpanded(true)}
         className={`fixed inset-y-0 left-0 z-50 flex flex-col h-full bg-[#0e0e11] border-r border-zinc-800/85 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none text-zinc-300 shadow-2xl md:shadow-none md:relative md:h-screen ${
           isExpanded
-            ? "w-[280px] max-w-[85vw] md:w-[260px] translate-x-0 cursor-default"
-            : "-translate-x-full md:translate-x-0 md:w-[48px] cursor-pointer bg-transparent border-transparent md:hover:bg-[#0e0e11] md:hover:border-zinc-800/85"
+            ? "w-[280px] max-w-[85vw] md:w-[260px] translate-x-0 cursor-default sidebar-expanded"
+            : "-translate-x-full md:translate-x-0 md:w-[48px] cursor-pointer bg-transparent border-transparent md:hover:bg-[#0e0e11] md:hover:border-zinc-800/85 sidebar-collapsed"
         }`}
       >
       {/* === TOP STICKY HEADER & NAVIGATION === */}

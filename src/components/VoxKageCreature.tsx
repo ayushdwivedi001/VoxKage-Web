@@ -16,6 +16,7 @@ import React, { useEffect, useRef, useState } from "react";
 export default function VoxKageCreature() {
   const containerRef = useRef<SVGSVGElement>(null);
   const [isNight, setIsNight] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(false);
 
   // Day/night detection: night = 7 PM (19:00) to 6 AM (06:00)
   useEffect(() => {
@@ -26,6 +27,18 @@ export default function VoxKageCreature() {
     check();
     const interval = setInterval(check, 60_000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Theme detection mutation observer
+  useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains("light");
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -273,7 +286,7 @@ export default function VoxKageCreature() {
         style={{ cursor: "pointer", gap: 0 }}
       >
         {/* Night mode: flat bright yellow moon + blinking pixel stars above the creature */}
-        {isNight && (
+        {isNight && !isLightMode && (
           <svg
             width="54"
             height="20"
@@ -330,12 +343,20 @@ export default function VoxKageCreature() {
               <stop offset="75%" stopColor="#ef4444" />
               <stop offset="100%" stopColor="#991b1b" />
             </linearGradient>
+
+            {/* Light Mode Body Gradient — white bottom → VoxKage blue top */}
+            <linearGradient id="vc-light-body-grad" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor="#ffffff" />
+              <stop offset="12%" stopColor="#ffffff" />
+              <stop offset="68%" stopColor="#338cecff" />
+              <stop offset="100%" stopColor="#338cecff" />
+            </linearGradient>
           </defs>
 
-          {/* Base Body — warm cream by day, cool blue-tinted white by night */}
+          {/* Base Body — gradient blue in light mode, cream/cool-white in dark mode */}
           <path
             d="M 50 10 C 74 10, 90 28, 90 53 C 90 76, 72 90, 50 90 C 28 90, 10 76, 10 53 C 10 28, 26 10, 50 10 Z"
-            fill={isNight ? "#eef0f8" : "#FAF9F5"}
+            fill={isLightMode ? "url(#vc-light-body-grad)" : (isNight ? "#eef0f8" : "#FAF9F5")}
           />
 
           {/* Red Gradient Anger Overlay (strictly contained, NO shadow/glow) */}
@@ -369,7 +390,7 @@ export default function VoxKageCreature() {
                 cy="48"
                 rx="5.8"
                 ry="9.5"
-                fill="#141413"
+                fill={isLightMode ? "#FAF9F5" : "#141413"}
               />
             </g>
 
@@ -382,13 +403,13 @@ export default function VoxKageCreature() {
                 cy="48"
                 rx="5.8"
                 ry="9.5"
-                fill="#141413"
+                fill={isLightMode ? "#FAF9F5" : "#141413"}
               />
               {/* Hover Wink Shape '<' — hidden by default */}
               <path
                 id="vc-right-eye-wink"
                 d="M 71 43 L 60 48 L 71 53"
-                stroke="#141413"
+                stroke={isLightMode ? "#FAF9F5" : "#141413"}
                 strokeWidth="3.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"

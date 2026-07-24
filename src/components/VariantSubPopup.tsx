@@ -22,7 +22,7 @@ export default function VariantSubPopup({
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className="fixed inset-x-3 bottom-24 w-auto sm:absolute sm:inset-auto sm:bottom-0 sm:right-[304px] sm:w-[280px] rounded-2xl fluid-glass-popup p-4 shadow-2xl z-[90] select-none flex flex-col font-sans animate-fadeIn text-zinc-300 border border-white/10"
+      className="fixed inset-x-3 bottom-24 w-auto sm:absolute sm:inset-auto sm:bottom-full sm:mb-2.5 sm:right-[304px] sm:w-[280px] rounded-2xl fluid-glass-popup p-4 shadow-2xl z-[90] select-none flex flex-col font-sans animate-fadeIn text-zinc-300 border border-white/10"
     >
       {/* Header Description */}
       <span className="text-[11.5px] leading-relaxed text-zinc-400 font-normal border-b border-white/10 pb-3.5 mb-2.5">

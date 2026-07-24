@@ -32,16 +32,16 @@ const CitationPill = ({ source, index }: { source: any; index: number }) => {
         rel="noopener noreferrer"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-sans font-medium bg-[#1e293b]/70 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-150 cursor-pointer"
+        className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] font-sans font-medium bg-[#1e293b]/70 border border-zinc-800 text-zinc-300 hover:text-white hover:bg-zinc-800 hover:border-zinc-700 transition-all duration-150 cursor-pointer [.light_&]:bg-[#3d3d3a] [.light_&]:border-[#252523] [.light_&]:text-[#e6dfd8] [.light_&]:hover:bg-[#525250] [.light_&]:hover:text-white"
       >
         {shortLabel} ↗
       </a>
       {showTooltip && (
-        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#0c0c0e] border border-zinc-800 rounded-xl shadow-2xl z-50 text-[12px] text-zinc-300 font-sans leading-normal pointer-events-none animate-fadeIn block text-left">
-          <span className="block text-white font-medium mb-1 line-clamp-2">
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-[#0c0c0e] border border-zinc-800 rounded-xl shadow-2xl z-50 text-[12px] text-zinc-300 font-sans leading-normal pointer-events-none animate-fadeIn block text-left [.light_&]:bg-[#efe9de] [.light_&]:border-[#c3c2b7] [.light_&]:text-[#141413] [.light_&]:shadow-md">
+          <span className="block text-white font-medium mb-1 line-clamp-2 [.light_&]:text-[#141413]">
             {source.title || "Consulted Source"}
           </span>
-          <span className="block text-zinc-500 font-mono text-[10px] truncate">
+          <span className="block text-zinc-500 font-mono text-[10px] truncate [.light_&]:text-[#525250]">
             {source.url}
           </span>
         </span>
@@ -1132,14 +1132,14 @@ export function parseInlineElements(text: string, sources: any[] = []) {
       } else if (matchStr.startsWith("**") && matchStr.endsWith("**")) {
         const boldText = matchStr.slice(2, -2);
         tokens.push(
-          <strong key={tokenKey++} className="font-bold text-zinc-100">
+          <strong key={tokenKey++} className="font-bold text-zinc-100 [.light_&]:text-[#141413]">
             {boldText}
           </strong>
         );
       } else if (matchStr.startsWith("`") && matchStr.endsWith("`")) {
         const codeText = matchStr.slice(1, -1);
         tokens.push(
-          <code key={tokenKey++} className="bg-zinc-850/60 text-zinc-200 border border-zinc-700/50 px-1.5 py-0.5 rounded font-mono text-[13.5px] mx-0.5">
+          <code key={tokenKey++} className="bg-zinc-850/60 text-zinc-200 border border-zinc-700/50 [.light_&]:bg-[#efe9de] [.light_&]:text-[#141413] [.light_&]:border-[#c3c2b7] px-1.5 py-0.5 rounded font-mono text-[13.5px] mx-0.5">
             {codeText}
           </code>
         );
@@ -1168,22 +1168,22 @@ export function renderTable(rows: string[][], key: string, sources: any[] = []) 
   const bodyRows = rows.slice(1);
 
   return (
-    <div key={key} className="w-full my-3.5 overflow-x-auto rounded-xl border border-zinc-850 bg-zinc-950/40 custom-scrollbar select-text">
+    <div key={key} className="w-full my-3.5 overflow-x-auto rounded-xl border border-zinc-850 bg-zinc-950/40 custom-scrollbar select-text vk-table-container [.light_&]:bg-[#efe9de] [.light_&]:border-[#c3c2b7]">
       <table className="w-full text-left border-collapse min-w-[500px]">
         <thead>
-          <tr className="border-b border-zinc-800/80 bg-zinc-900/10">
+          <tr className="border-b border-zinc-800/80 bg-zinc-900/10 [.light_&]:border-[#c3c2b7] [.light_&]:bg-black/5">
             {headers.map((h, idx) => (
-              <th key={idx} className="px-4 py-2.5 text-[13px] font-semibold text-zinc-300 tracking-wide font-sans">
+              <th key={idx} className="px-4 py-2.5 text-[13px] font-semibold text-zinc-300 [.light_&]:text-[#141413] tracking-wide font-sans">
                 {parseInlineElements(h, sources)}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-900/60">
+        <tbody className="divide-y divide-zinc-900/60 [.light_&]:divide-[#c3c2b7]">
           {bodyRows.map((row, rowIdx) => (
-            <tr key={rowIdx} className="hover:bg-zinc-900/10 transition-colors duration-150">
+            <tr key={rowIdx} className="hover:bg-zinc-900/10 [.light_&]:hover:bg-black/5 transition-colors duration-150">
               {row.map((cell, cellIdx) => (
-                <td key={cellIdx} className="px-4 py-2.5 text-[13px] text-zinc-400 font-sans leading-relaxed">
+                <td key={cellIdx} className="px-4 py-2.5 text-[13px] text-zinc-400 [.light_&]:text-[#141413] font-sans leading-relaxed">
                   {parseInlineElements(cell, sources)}
                 </td>
               ))}
@@ -1391,21 +1391,38 @@ export function renderFormattedContent(content: string, sources: any[] = []) {
         const level = headingMatch[1].length;
         const headingText = headingMatch[2];
         const headingClass = level === 1 
-          ? "text-[22px] font-bold text-zinc-100 mt-4 mb-2 block" 
+          ? "text-[22px] font-bold text-zinc-100 [.light_&]:text-[#141413] vk-heading-1 mt-4 mb-2 block" 
           : level === 2 
-            ? "text-[19px] font-bold text-zinc-100 mt-3.5 mb-1.5 block" 
-            : "text-[17px] font-bold text-zinc-100 mt-3 mb-1 block";
+            ? "text-[19px] font-bold text-zinc-100 [.light_&]:text-[#141413] vk-heading-2 mt-3.5 mb-1.5 block" 
+            : "text-[17px] font-bold text-zinc-100 [.light_&]:text-[#141413] vk-heading-3 mt-3 mb-1 block";
         renderedElements.push(
           <span key={`h-${i}`} className={headingClass}>
             {parseInlineElements(headingText, sources)}
           </span>
         );
       } else {
-        renderedElements.push(
-          <div key={`p-${i}`} className="min-h-[1.5em] mb-1">
-            {parseInlineElements(line, sources)}
-          </div>
-        );
+        const bulletMatch = line.match(/^(\s*)[-*•]\s+(.*)$/);
+        if (bulletMatch) {
+          const indentLength = bulletMatch[1].length;
+          const bulletText = bulletMatch[2];
+          const mlClass = indentLength >= 4 ? "ml-6" : indentLength >= 2 ? "ml-3" : "ml-0";
+          renderedElements.push(
+            <div key={`bullet-${i}`} className={`flex items-start gap-2.5 my-1.5 leading-relaxed select-text ${mlClass}`}>
+              <span className="inline-flex items-center justify-center w-3.5 mt-[9.6px] flex-shrink-0 select-none">
+                <span className="w-[6.5px] h-[6.5px] rounded-full border-[1.5px] border-zinc-300 [.light_&]:border-[#141413] inline-block" />
+              </span>
+              <div className="flex-grow">
+                {parseInlineElements(bulletText, sources)}
+              </div>
+            </div>
+          );
+        } else {
+          renderedElements.push(
+            <div key={`p-${i}`} className="min-h-[1.5em] mb-1">
+              {parseInlineElements(line, sources)}
+            </div>
+          );
+        }
       }
     }
   }

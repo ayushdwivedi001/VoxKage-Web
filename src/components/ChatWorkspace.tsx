@@ -100,6 +100,19 @@ export default function ChatWorkspace({
   setJumpToLine,
   onToggleSidebar,
 }: ChatWorkspaceProps) {
+  const [isLightMode, setIsLightMode] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains("light");
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div
       style={{
@@ -166,7 +179,11 @@ export default function ChatWorkspace({
           id="mobile-sidebar-toggle-homepage"
           type="button"
           onClick={onToggleSidebar}
-          className="md:hidden absolute top-4 left-4 z-30 flex items-center justify-center w-9 h-9 rounded-xl text-zinc-300 hover:text-white bg-white/5 border border-white/10 active:scale-95 cursor-pointer transition-all duration-200"
+          className={`md:hidden absolute top-4 left-4 z-30 flex items-center justify-center w-9 h-9 rounded-xl active:scale-95 cursor-pointer transition-all duration-200 ${
+            isLightMode 
+              ? "bg-[#3d3d3a] border border-[#252523] text-[#e6dfd8] shadow-sm" 
+              : "bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
+          }`}
           aria-label="Open sidebar"
         >
           <PanelLeft className="w-4 h-4" />
@@ -226,7 +243,11 @@ export default function ChatWorkspace({
           </div>
 
           {/* Mobile-only: Prompt box fixed to bottom edge */}
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-5 pt-3 bg-gradient-to-t from-[#05050a] via-[#05050a]/90 to-transparent">
+          <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-5 pt-3 bg-gradient-to-t ${
+            isLightMode 
+              ? "from-[#DBDAD4] via-[#DBDAD4]/90 to-transparent" 
+              : "from-[#05050a] via-[#05050a]/90 to-transparent"
+          }`}>
             <PromptInput
               isSession={false}
               onSubmit={handleSendMessage}

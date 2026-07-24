@@ -44,6 +44,14 @@ body {
   animation: thinkingGlow 2s linear infinite;
 }
 
+.light .animate-thinking-glow {
+  background: linear-gradient(90deg, #141413 20%, #38bdf8 50%, #141413 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: thinkingGlow 2s linear infinite;
+}
+
 /* ExpandableWrapper overlay animations */
 @keyframes vk-fade-in {
   from { opacity: 0; }
@@ -161,5 +169,168 @@ body {
   border-color: rgba(255, 255, 255, 0.22);
   box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px rgba(0, 0, 0, 0.2);
 }
+
+/* ─── Light Mode Prompt Box Overrides ───────────────────────────────── */
+.light strong {
+  color: #141413 !important;
+}
+
+.light code {
+  background-color: #efe9de !important;
+  color: #141413 !important;
+  border-color: #c3c2b7 !important;
+}
+
+.light .vk-heading-1,
+.light .vk-heading-2,
+.light .vk-heading-3 {
+  color: #141413 !important;
+}
+
+.light .vk-table-container {
+  background-color: #efe9de !important;
+  border-color: #c3c2b7 !important;
+}
+
+.light .vk-table-container tr {
+  border-color: #c3c2b7 !important;
+}
+
+.light .vk-table-container tr:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+.light .vk-table-container th {
+  color: #141413 !important;
+  border-color: #c3c2b7 !important;
+  background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+.light .vk-table-container td {
+  color: #141413 !important;
+}
+
+.light .fluid-glass-box-frosty {
+  background: #EFE9DE !important; /* solid non-transparent warm off-white card background */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid #C3C2B7 !important; /* solid border */
+  box-shadow: none !important; /* completely flat, no shadow */
+}
+
+/* Light mode overrides for all popup menus - remove shadows */
+.light .fluid-glass-popup {
+  box-shadow: none !important;
+}
+
+/* Light mode overrides for buttons in prompt box - dark gray styling */
+.light .prompt-btn-dark-gray,
+.light .mobile-sidebar-toggle-btn {
+  background: #3d3d3a !important; /* proper dark background gray style */
+  border: 1px solid #252523 !important;
+  color: #e6dfd8 !important; /* cream/light text */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+.light .prompt-btn-dark-gray:hover,
+.light .mobile-sidebar-toggle-btn:hover {
+  background: #525250 !important;
+  border-color: #3d3d3a !important;
+  color: #ffffff !important;
+}
+
+/* Force light SVG strokes inside these dark buttons in light mode */
+.light .prompt-btn-dark-gray svg,
+.light .mobile-sidebar-toggle-btn svg {
+  stroke: #e6dfd8 !important;
+}
+
+.light .prompt-btn-dark-gray:hover svg {
+  stroke: #ffffff !important;
+}
+
+/* Text Input & Caret controls */
+.light .prompt-textarea {
+  caret-color: #000000 !important;
+}
+
+.light .prompt-textarea::placeholder {
+  color: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Highlighted Text Overlay */
+.light .prompt-overlay span.text-zinc-100 {
+  color: #141413 !important;
+}
+
+.light .prompt-overlay span.text-blue-400 {
+  color: #1d4ed8 !important; /* Rich contrast blue-750 */
+}
+
+/* Send & Stop Buttons styling in light mode */
+.light button[aria-label="Submit prompt"].cursor-default {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(0, 0, 0, 0.3) !important;
+}
+
+.light button[aria-label="Stop generation"] svg {
+  fill: #ffffff !important; /* White stop icon for the dark gray button */
+}
+
+
+/* Collapsed sidebar icons in light mode */
+.light .sidebar-collapsed svg {
+  color: #141413 !important;
+  stroke: #141413 !important;
+}
+
+.light .sidebar-collapsed button:hover svg {
+  color: #000000 !important;
+  stroke: #000000 !important;
+}
+
+.light .sidebar-collapsed .fluid-glass-pill {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+
+.light .sidebar-collapsed button:hover {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+/* User profile button in collapsed state */
+.light .sidebar-collapsed button[aria-label="User profile"] {
+  background-color: #141413 !important;
+  color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Revert icons to light mode inside collapsed sidebar when hover opens it dark */
+.light .sidebar-collapsed:hover svg {
+  color: #a1a1aa !important;
+  stroke: #a1a1aa !important;
+}
+
+.light .sidebar-collapsed:hover button:hover svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+.light .sidebar-collapsed:hover .fluid-glass-pill {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.light .sidebar-collapsed:hover button:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+
 
 

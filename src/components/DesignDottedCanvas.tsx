@@ -74,6 +74,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
     const render = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const elapsed = (timestamp - startTime) / 1000;
+      const isLight = typeof document !== "undefined" && document.documentElement.classList.contains("light");
 
       // Smooth dimming interpolation towards target (0.0 homepage -> 1.0 active session)
       const targetDim = chatActiveRef.current ? 1 : 0;
@@ -92,15 +93,24 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
       const width = window.innerWidth;
       const height = window.innerHeight;
 
-      // Pitch black background
-      ctx.fillStyle = "#040406";
+      // Fill canvas background based on theme mode
+      ctx.fillStyle = isLight ? "#DBDAD4" : "#040406";
       ctx.fillRect(0, 0, width, height);
 
-      // Subtle ambient bottom VoxKage blue background gradient (softly tuned during active session)
-      const ambientAlpha = 0.07 * (1 - dim * 0.35);
+      // In light theme: plain background only, no dots or ocean waves
+      if (isLight) {
+        animFrameId = requestAnimationFrame(render);
+        return;
+      }
+      const ambientAlpha = (isLight ? 0.04 : 0.07) * (1 - dim * 0.35);
       const bgGrad = ctx.createLinearGradient(0, height, 0, height * 0.35);
-      bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
-      bgGrad.addColorStop(1, "rgba(4, 4, 6, 0)");
+      if (isLight) {
+        bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
+        bgGrad.addColorStop(1, "rgba(219, 218, 212, 0)");
+      } else {
+        bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
+        bgGrad.addColorStop(1, "rgba(4, 4, 6, 0)");
+      }
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
@@ -185,22 +195,28 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
 
           // 5. Color & Radius Styling
           let radius = baseDotRadius;
-          let r = 255;
-          let g = 255;
-          let b = 255;
-          // Normal non-wave dots turn pitch dark (0.28 homepage -> 0.03 active session)
-          let alpha = 0.28 * (1 - dim * 0.89);
+          let r = isLight ? 0 : 255;
+          let g = isLight ? 0 : 255;
+          let b = isLight ? 0 : 255;
+          // Normal non-wave dots turn proper black in light mode, white in dark mode
+          let alpha = (isLight ? 0.28 : 0.28) * (1 - dim * 0.89);
 
           let isGlowDot = false;
           if (isBlueWaveDot && sweepFactor > 0) {
             isGlowDot = true;
 
-            // Interpolate colors based on dim state (home screen = bright sky blue, session = dim dark ocean blue)
-            // Home (dim=0): rgb(56, 189, 248) -> Sky blue
-            // Session (dim=1): rgb(6, 24, 75) -> Dim dark ocean blue
-            const targetR = Math.round(56 + (6 - 56) * dim);
-            const targetG = Math.round(189 + (24 - 189) * dim);
-            const targetB = Math.round(248 + (75 - 248) * dim);
+            // Interpolate colors based on dim state
+            const startR = isLight ? 29 : 56;
+            const startG = isLight ? 78 : 189;
+            const startB = isLight ? 216 : 248;
+
+            const endR = isLight ? 0 : 200;
+            const endG = isLight ? 0 : 210;
+            const endB = isLight ? 0 : 230;
+
+            const targetR = Math.round(startR + (endR - startR) * dim);
+            const targetG = Math.round(startG + (endG - startG) * dim);
+            const targetB = Math.round(startB + (endB - startB) * dim);
 
             r = targetR;
             g = targetG;
@@ -212,10 +228,13 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
           }
 
           if (maxRippleIntensity > 0) {
-            // Ripple color is always the bright, vibrant sky blue (rgb(56, 189, 248))
-            r = Math.round(r + (56 - r) * maxRippleIntensity);
-            g = Math.round(g + (189 - g) * maxRippleIntensity);
-            b = Math.round(b + (248 - b) * maxRippleIntensity);
+            // Ripple color is sky blue in dark mode, royal blue in light mode
+            const ripR = isLight ? 29 : 56;
+            const ripG = isLight ? 78 : 189;
+            const ripB = isLight ? 216 : 248;
+            r = Math.round(r + (ripR - r) * maxRippleIntensity);
+            g = Math.round(g + (ripG - g) * maxRippleIntensity);
+            b = Math.round(b + (ripB - b) * maxRippleIntensity);
             alpha = Math.min(0.95, alpha + 0.45 * maxRippleIntensity);
             radius = Math.max(radius, baseDotRadius + 0.85 * maxRippleIntensity);
           }
@@ -257,7 +276,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
         inset: 0,
         width: "100vw",
         height: "100vh",
-        zIndex: 5,
+        zIndex: 2,
         pointerEvents: "none",
       }}
       className={`transition-opacity duration-700 ease-out ${
