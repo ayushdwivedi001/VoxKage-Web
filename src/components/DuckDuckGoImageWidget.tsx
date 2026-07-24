@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
+import { ExternalLink, X, Image as ImageIcon, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
 import { BACKEND_URL } from "@/lib/api";
 
 export interface DuckDuckGoImageItem {
@@ -16,95 +16,57 @@ export interface DuckDuckGoImageItem {
 
 interface DuckDuckGoImageWidgetProps {
   query: string;
-  entities?: string;
   isExpanded?: boolean;
-  onAskVoxKage?: (item: DuckDuckGoImageItem) => void;
 }
 
-const getCacheKey = (searchQuery: string, entitiesParam?: string) => {
-  return `vk_img_cache_v3_${searchQuery.toLowerCase().trim()}_${(entitiesParam || '').toLowerCase().trim()}`;
-};
-
-const getCachedData = (searchQuery: string, entitiesParam?: string) => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(getCacheKey(searchQuery, entitiesParam));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.images) && parsed.images.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.error("Image cache read error:", e);
-  }
-  return null;
-};
-
-const setCachedData = (searchQuery: string, entitiesParam: string | undefined, data: { images: DuckDuckGoImageItem[]; pills: string[] }) => {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(getCacheKey(searchQuery, entitiesParam), JSON.stringify({
-      images: data.images,
-      pills: data.pills,
-      timestamp: Date.now()
-    }));
-  } catch (e) {
-    console.error("Image cache write error:", e);
-  }
-};
-
-export default function DuckDuckGoImageWidget({ query, entities, isExpanded = false, onAskVoxKage }: DuckDuckGoImageWidgetProps) {
+export default function DuckDuckGoImageWidget({ query, isExpanded = false }: DuckDuckGoImageWidgetProps) {
   const [activeQuery, setActiveQuery] = useState(query);
-  
-  // Synchronous state initialization from browser localStorage cache
-  const initialCache = getCachedData(query, entities);
-  const [images, setImages] = useState<DuckDuckGoImageItem[]>(initialCache ? initialCache.images : []);
-  const [pills, setPills] = useState<string[]>(initialCache ? initialCache.pills : []);
-  const [loading, setLoading] = useState<boolean>(!initialCache);
-  
+  const [loading, setLoading] = useState(true);
+  const [images, setImages] = useState<DuckDuckGoImageItem[]>([]);
+  const [pills, setPills] = useState<string[]>([]);
   const [activePill, setActivePill] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<DuckDuckGoImageItem | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const fetchImages = async (searchQuery: string, isInitialQuery: boolean = false) => {
-    const entParam = isInitialQuery ? entities : undefined;
-    const cached = getCachedData(searchQuery, entParam);
-    
-    // If cached data exists, populate immediately to prevent flickering
-    if (cached) {
-      setImages(cached.images);
-      if (cached.pills && cached.pills.length > 0) {
-        setPills(cached.pills);
-      }
-      setLoading(false);
-    } else {
-      setLoading(true);
-    }
-
+  const fetchImages = async (searchQuery: string) => {
+    const cacheKey = `vk_img_cache_v5_${searchQuery.trim().toLowerCase()}`;
     try {
-      let url = `${BACKEND_URL}/api/search/images?query=${encodeURIComponent(searchQuery)}&limit=24`;
-      if (entParam) {
-        url += `&entities=${encodeURIComponent(entParam)}`;
-      }
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        const fetchedImages = data.images || [];
-        const fetchedPills = data.pills || [];
-
-        if (fetchedImages.length > 0) {
-          setImages(fetchedImages);
-          if (fetchedPills.length > 0) {
-            setPills(fetchedPills);
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.images && parsed.images.length > 0) {
+          setImages(parsed.images);
+          if (parsed.pills && parsed.pills.length > 0) {
+            setPills(parsed.pills);
           }
-          setCachedData(searchQuery, entParam, { images: fetchedImages, pills: fetchedPills });
-        } else if (!cached) {
-          setImages([]);
+          setLoading(false);
+          return;
         }
       }
+    } catch (e) {
+      console.error("Cache read error:", e);
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/search/images?query=${encodeURIComponent(searchQuery)}&limit=24`);
+      if (res.ok) {
+        const data = await res.json();
+        setImages(data.images || []);
+        if (data.pills && data.pills.length > 0) {
+          setPills(data.pills);
+        }
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (e) {
+          console.error("Cache write error:", e);
+        }
+      } else {
+        setImages([]);
+      }
     } catch (err) {
-      console.error("Image search fetch error:", err);
+      console.error("Image search error:", err);
+      setImages([]);
     } finally {
       setLoading(false);
     }
@@ -113,27 +75,20 @@ export default function DuckDuckGoImageWidget({ query, entities, isExpanded = fa
   useEffect(() => {
     if (query) {
       setActiveQuery(query);
-      const cached = getCachedData(query, entities);
-      if (cached) {
-        setImages(cached.images);
-        setPills(cached.pills);
-        setLoading(false);
-      } else {
-        fetchImages(query, true);
-      }
+      fetchImages(query);
     }
-  }, [query, entities]);
+  }, [query]);
 
   const handlePillClick = (pill: string) => {
     if (activePill === pill) {
       setActivePill(null);
       setActiveQuery(query);
-      fetchImages(query, true);
+      fetchImages(query);
     } else {
       setActivePill(pill);
       const newQuery = pill.toLowerCase().includes(query.toLowerCase()) ? pill : `${query} ${pill}`;
       setActiveQuery(newQuery);
-      fetchImages(newQuery, false);
+      fetchImages(newQuery);
     }
   };
 
@@ -218,7 +173,7 @@ export default function DuckDuckGoImageWidget({ query, entities, isExpanded = fa
       </div>
 
       {/* --- Image Grid (3 columns desktop inline, 4 columns expanded) --- */}
-      {loading && images.length === 0 ? (
+      {loading ? (
         <div className={`grid gap-4 ${isExpanded ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 flex-1 auto-rows-max" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
           {Array.from({ length: isExpanded ? 12 : 6 }).map((_, idx) => (
             <div
@@ -337,19 +292,6 @@ export default function DuckDuckGoImageWidget({ query, entities, isExpanded = fa
               </div>
 
               <div className="flex items-center gap-2">
-                {onAskVoxKage && (
-                  <button
-                    onClick={() => {
-                      onAskVoxKage(selectedImage);
-                      setSelectedImage(null);
-                    }}
-                    className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-850 border border-zinc-700 text-zinc-100 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shadow-md"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5 text-zinc-300" />
-                    <span>Ask VoxKage</span>
-                  </button>
-                )}
-
                 <a
                   href={selectedImage.source_url}
                   target="_blank"

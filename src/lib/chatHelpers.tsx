@@ -385,23 +385,20 @@ export interface ImageItem {
 
 export interface ImageGalleryInfo {
   query: string;
-  entities?: string;
 }
 
 export const parseImageGallery = (content: string) => {
-  if (!content) return { cleanContent: "", imageGalleryQuery: null, imageGalleryEntities: null };
-  const galleryRegex = /<ImageGallery\s+query="([^"]*)"(?:\s+entities="([^"]*)")?\s*\/>/gi;
+  if (!content) return { cleanContent: "", imageGalleryQuery: null };
+  const galleryRegex = /<ImageGallery\s+query="([^"]*)"\s*\/>/gi;
   let match;
   let query: string | null = null;
-  let entities: string | null = null;
   
   while ((match = galleryRegex.exec(content)) !== null) {
     query = match[1];
-    entities = match[2] || null;
   }
 
-  const cleanContent = content.replace(/<ImageGallery\s+[^>]*\/>/gi, '').trim();
-  return { cleanContent, imageGalleryQuery: query, imageGalleryEntities: entities };
+  const cleanContent = content.replace(/<ImageGallery\s+query="[^"]*"\s*\/>/gi, '').trim();
+  return { cleanContent, imageGalleryQuery: query };
 };
 
 export const parseImages = (content: string) => {
@@ -933,7 +930,7 @@ export const parseScheduleSetup = (content: string) => {
 
 export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
-  const { cleanContent: noGalleryContent, imageGalleryQuery, imageGalleryEntities } = parseImageGallery(noSourcesContent);
+  const { cleanContent: noGalleryContent, imageGalleryQuery } = parseImageGallery(noSourcesContent);
   const { cleanContent: noImagesContent, images } = parseImages(noGalleryContent);
   const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
   const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
@@ -973,7 +970,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, imageGalleryQuery, imageGalleryEntities, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
+  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {
