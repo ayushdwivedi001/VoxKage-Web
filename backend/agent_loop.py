@@ -503,6 +503,7 @@ async def execute_tool_call_v2(
                 tool_context["timeline_tag"] = f'<Timeline title="{title}" events="{events_str}" />'
                 tool_output = json.dumps({"status": "success", "title": title, "events_count": len(events_list)})
             elif name == "render_calculator":
+                await send_to_client({"type": "hud_log", "content": "Rendering Financial Calculator..."})
                 c_type = args.get("type", "loan")
                 title = args.get("title", "")
                 tool_context["calculator_tag"] = f'<Calculator type="{c_type}" title="{title}" />'

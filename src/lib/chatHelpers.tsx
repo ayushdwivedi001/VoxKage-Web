@@ -541,8 +541,8 @@ export const parseScienceAndHistory = (content: string) => {
     cleanContent = cleanContent.replace(timelineRegex, '').trim();
   }
 
-  // 3. Calculator Tag: <Calculator type="..." title="..." />
-  const calcRegex = /<Calculator\s+([^>]*?)\s*\/>/i;
+  // 3. Calculator Tag: <Calculator ... /> or <render_calculator ... />
+  const calcRegex = /<(?:Calculator|render_calculator)\s+([^>]*?)\s*\/>/i;
   const calcMatch = cleanContent.match(calcRegex);
   if (calcMatch) {
     const attrString = calcMatch[1];
