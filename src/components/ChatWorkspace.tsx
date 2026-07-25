@@ -335,7 +335,7 @@ export default function ChatWorkspace({
                 onRemoveEditingFile={() => setEditingFile(null)}
               />
             </div>
-            <span className="text-[12px] text-zinc-300 font-sans tracking-wide select-none pointer-events-auto">
+            <span className="text-[12px] text-zinc-300 [.light_&]:text-[#6c6a64] font-sans tracking-wide select-none pointer-events-auto">
               VoxKage can make mistakes. Please double check responses.
             </span>
           </div>

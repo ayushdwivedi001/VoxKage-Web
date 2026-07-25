@@ -1171,21 +1171,21 @@ export default function AssistantResponseBubble({
       {/* --- Response actions block --- */}
       {msg.status === "completed" && (
         <div className="relative mt-3 mb-2 font-sans select-none">
-          <div className="flex items-center gap-4 text-zinc-500 animate-fadeIn">
+          <div className="flex items-center gap-4 text-zinc-500 [.light_&]:text-[#6c6a64] animate-fadeIn">
             <button
               type="button"
               onClick={handleCopy}
-              className="hover:text-zinc-300 transition-colors cursor-pointer"
+              className="hover:text-zinc-300 [.light_&]:hover:text-[#141413] transition-colors cursor-pointer"
               aria-label="Copy response"
               title="Copy response"
             >
-              {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-green-400 [.light_&]:text-green-600" /> : <Copy className="w-4 h-4" />}
             </button>
             <button
               type="button"
               onClick={handleSpeak}
               className={`transition-colors duration-200 cursor-pointer ${
-                isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300"
+                isSpeaking ? "text-blue-400 animate-pulse" : "hover:text-zinc-300 [.light_&]:hover:text-[#141413]"
               }`}
               aria-label={isSpeaking ? "Stop speaking" : "Speak response"}
               title="Speak response"
@@ -1197,8 +1197,8 @@ export default function AssistantResponseBubble({
               onClick={handleThumbsUp}
               className={`transition-colors cursor-pointer ${
                 feedbackChoice === "thumbs_up"
-                  ? "text-white"
-                  : "hover:text-zinc-300"
+                  ? "text-white [.light_&]:text-[#141413]"
+                  : "hover:text-zinc-300 [.light_&]:hover:text-[#141413]"
               }`}
               aria-label="Thumbs up"
               title="Thumbs up"
@@ -1216,8 +1216,8 @@ export default function AssistantResponseBubble({
               onClick={handleThumbsDownClick}
               className={`transition-colors cursor-pointer ${
                 feedbackChoice === "thumbs_down"
-                  ? "text-white"
-                  : "hover:text-zinc-300"
+                  ? "text-white [.light_&]:text-[#141413]"
+                  : "hover:text-zinc-300 [.light_&]:hover:text-[#141413]"
               }`}
               aria-label="Thumbs down"
               title="Thumbs down"
@@ -1233,7 +1233,7 @@ export default function AssistantResponseBubble({
             <button
               type="button"
               onClick={handleRetry}
-              className="hover:text-zinc-300 transition-colors cursor-pointer"
+              className="hover:text-zinc-300 [.light_&]:hover:text-[#141413] transition-colors cursor-pointer"
               aria-label="Retry response"
               title="Retry response"
             >

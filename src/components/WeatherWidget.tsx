@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+"use client";
+
+import React, { useEffect, useState, useId } from "react";
 import { 
   Sun, 
   Cloud, 
@@ -6,17 +8,18 @@ import {
   CloudRain, 
   CloudLightning, 
   CloudSnow, 
-  Wind, 
+  Wind as WindIcon, 
   Droplets,
   Thermometer,
   Calendar,
   Clock,
-  Compass
+  ArrowUp
 } from "lucide-react";
 
 interface WeatherWidgetProps {
   lat?: number;
   lng?: number;
+  isExpanded?: boolean;
 }
 
 interface WeatherData {
@@ -31,6 +34,9 @@ interface WeatherData {
   hourly: {
     time: string[];
     temperature: number[];
+    precipitation_probability: number[];
+    wind_speed: number[];
+    wind_direction: number[];
     weather_code: number[];
   };
   daily: {
@@ -41,12 +47,15 @@ interface WeatherData {
   };
 }
 
-export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
+export default function WeatherWidget({ lat, lng, isExpanded = false }: WeatherWidgetProps) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const [cityName, setCityName] = useState("Selected Location");
+  const [activeTab, setActiveTab] = useState<"temperature" | "precipitation" | "wind">("temperature");
+
+  const gradientId = useId();
 
   // Geolocation trigger or default coordinates
   useEffect(() => {
@@ -60,13 +69,11 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
           setCityName("Your Location");
         },
         () => {
-          // Default to Kovaya, Gujarat if location blocked
           setCoords({ lat: 20.88, lng: 71.40 });
           setCityName("Kovaya, Gujarat (Default)");
         }
       );
     } else {
-      // Default fallback
       setCoords({ lat: 20.88, lng: 71.40 });
       setCityName("Kovaya, Gujarat (Default)");
     }
@@ -79,12 +86,13 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
     const fetchWeather = async () => {
       try {
         setLoading(true);
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=3`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m&hourly=temperature_2m,precipitation_probability,wind_speed_10m,wind_direction_10m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("Weather request failed");
         
         const data = await res.json();
         
+        const hourLimit = 24; // fetch 24 hours
         setWeather({
           current: {
             temperature: data.current.temperature_2m,
@@ -95,15 +103,18 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
             is_day: data.current.is_day
           },
           hourly: {
-            time: data.hourly.time.slice(0, 12), // next 12 hours
-            temperature: data.hourly.temperature_2m.slice(0, 12),
-            weather_code: data.hourly.weather_code.slice(0, 12)
+            time: (data.hourly.time || []).slice(0, hourLimit),
+            temperature: (data.hourly.temperature_2m || []).slice(0, hourLimit),
+            precipitation_probability: (data.hourly.precipitation_probability || []).slice(0, hourLimit),
+            wind_speed: (data.hourly.wind_speed_10m || []).slice(0, hourLimit),
+            wind_direction: (data.hourly.wind_direction_10m || []).slice(0, hourLimit),
+            weather_code: (data.hourly.weather_code || []).slice(0, hourLimit)
           },
           daily: {
-            time: data.daily.time,
-            temp_max: data.daily.temperature_2m_max,
-            temp_min: data.daily.temperature_2m_min,
-            weather_code: data.daily.weather_code
+            time: data.daily.time || [],
+            temp_max: data.daily.temperature_2m_max || [],
+            temp_min: data.daily.temperature_2m_min || [],
+            weather_code: data.daily.weather_code || []
           }
         });
       } catch (err: any) {
@@ -117,38 +128,31 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
   }, [coords]);
 
   const getWeatherIcon = (code: number, sizeClass = "w-8 h-8") => {
+    let animClass = "";
+    if (code === 0 || code === 1) animClass = "weather-anim-sun";
+    else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) animClass = "weather-anim-rain";
+    else if (code >= 71 && code <= 77) animClass = "weather-anim-snow";
+    else if (code >= 95) animClass = "weather-anim-storm";
+
     if (code === 0) {
-      return <Sun className={`${sizeClass} text-amber-400 drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]`} />;
+      return <Sun className={`${sizeClass} text-amber-400 [.light_&]:text-[#d97706] ${animClass}`} />;
     }
     if (code <= 3) {
-      return <CloudSun className={`${sizeClass} text-yellow-300 drop-shadow-[0_0_6px_rgba(253,224,71,0.4)]`} />;
+      return <CloudSun className={`${sizeClass} text-amber-300 [.light_&]:text-[#b45309] ${animClass}`} />;
     }
-    if (code >= 51 && code <= 57) {
-      return <CloudRain className={`${sizeClass} text-sky-400 drop-shadow-[0_0_6px_rgba(56,189,248,0.5)]`} />;
-    }
-    if (code >= 61 && code <= 67) {
-      return <CloudRain className={`${sizeClass} text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.6)]`} />;
+    if (code >= 51 && code <= 67) {
+      return <CloudRain className={`${sizeClass} text-sky-400 [.light_&]:text-[#0284c7] ${animClass}`} />;
     }
     if (code >= 71 && code <= 77) {
-      return <CloudSnow className={`${sizeClass} text-teal-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.5)]`} />;
+      return <CloudSnow className={`${sizeClass} text-cyan-300 [.light_&]:text-[#0891b2] ${animClass}`} />;
     }
     if (code >= 80 && code <= 82) {
-      return <CloudRain className={`${sizeClass} text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.6)]`} />;
+      return <CloudRain className={`${sizeClass} text-blue-400 [.light_&]:text-[#2563eb] ${animClass}`} />;
     }
     if (code >= 95) {
-      return <CloudLightning className={`${sizeClass} text-violet-400 drop-shadow-[0_0_8px_rgba(167,139,250,0.7)]`} />;
+      return <CloudLightning className={`${sizeClass} text-purple-400 [.light_&]:text-[#7c3aed] ${animClass}`} />;
     }
-    return <Cloud className={`${sizeClass} text-zinc-350`} />;
-  };
-
-  const getTempClass = (temp: number) => {
-    if (temp >= 30) {
-      return "bg-gradient-to-r from-amber-400 via-orange-400 to-rose-500 bg-clip-text text-transparent font-medium";
-    } else if (temp <= 15) {
-      return "bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent font-medium";
-    } else {
-      return "bg-gradient-to-r from-zinc-150 to-zinc-300 bg-clip-text text-transparent font-medium";
-    }
+    return <Cloud className={`${sizeClass} text-slate-400 [.light_&]:text-[#64748b]`} />;
   };
 
   const getWeatherDescription = (code: number) => {
@@ -167,13 +171,13 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
 
   if (loading) {
     return (
-      <div className="w-full max-w-[450px] p-5 my-4 rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex flex-col gap-4 animate-pulse select-none">
-        <div className="h-5 w-2/3 bg-zinc-850 rounded"></div>
-        <div className="flex gap-4 items-center">
-          <div className="w-14 h-14 bg-zinc-850 rounded-full"></div>
-          <div className="flex flex-col gap-2 flex-grow">
-            <div className="h-8 w-1/3 bg-zinc-850 rounded"></div>
-            <div className="h-4 w-1/2 bg-zinc-850 rounded"></div>
+      <div className="w-full max-w-full p-6 my-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/95 [.light_&]:bg-[#faf9f5] [.light_&]:border-[#e6dfd8] flex flex-col gap-5 animate-pulse select-none">
+        <div className="h-6 w-1/3 bg-zinc-800/80 [.light_&]:bg-[#dfd8cc] rounded-lg"></div>
+        <div className="flex gap-6 items-center">
+          <div className="w-16 h-16 bg-zinc-800/80 [.light_&]:bg-[#dfd8cc] rounded-2xl"></div>
+          <div className="flex flex-col gap-2.5 flex-grow">
+            <div className="h-10 w-1/4 bg-zinc-800/80 [.light_&]:bg-[#dfd8cc] rounded-lg"></div>
+            <div className="h-4 w-1/3 bg-zinc-800/50 [.light_&]:bg-[#e6dfd8] rounded-md"></div>
           </div>
         </div>
       </div>
@@ -182,7 +186,7 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
 
   if (errorMsg || !weather) {
     return (
-      <div className="w-full max-w-[450px] p-5 my-4 rounded-2xl border border-zinc-850/60 bg-zinc-950/20 text-zinc-400 text-[13.5px] font-sans">
+      <div className="w-full max-w-full p-6 my-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/95 [.light_&]:bg-[#faf9f5] [.light_&]:border-[#e6dfd8] text-zinc-400 [.light_&]:text-[#6c6a64] text-sm font-sans">
         {errorMsg || "Weather metrics unavailable."}
       </div>
     );
@@ -191,136 +195,402 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
   const currentTemp = Math.round(weather.current.temperature);
   const feelsLike = Math.round(weather.current.apparent_temp);
 
-  return (
-    <div className="w-full max-w-[650px] mx-auto my-4 rounded-2xl border border-zinc-850/60 bg-[#0e0e11]/80 backdrop-blur-md p-5 text-zinc-200 flex flex-col sm:flex-row gap-6 select-none shadow-xl font-sans relative overflow-hidden group">
-      {/* Decorative gradient overlay */}
-      <div className="absolute top-0 right-0 w-[120px] h-[120px] bg-blue-500/5 rounded-full blur-2xl group-hover:bg-blue-500/8 transition-all duration-500 pointer-events-none"></div>
+  // Slice hourly data: 12 items in normal mode, 24 in expanded mode
+  const displayedCount = isExpanded ? 24 : 12;
+  const hourlyTimes = weather.hourly.time.slice(0, displayedCount);
+  const hourlyTemps = weather.hourly.temperature.slice(0, displayedCount);
+  const hourlyPrecip = weather.hourly.precipitation_probability.slice(0, displayedCount);
+  const hourlyWindSpeed = weather.hourly.wind_speed.slice(0, displayedCount);
+  const hourlyWindDir = weather.hourly.wind_direction.slice(0, displayedCount);
+  const hourlyCodes = weather.hourly.weather_code.slice(0, displayedCount);
 
-      {/* Left Column: Current weather summary & highlights (42% width) */}
-      <div className="w-full sm:w-[42%] flex flex-col gap-4 sm:border-r sm:border-zinc-850/30 sm:pr-6 justify-between">
-        {/* Header Info */}
-        <div className="flex justify-between items-start">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-[15px] font-semibold text-zinc-350 tracking-wide select-text">{cityName}</span>
-            <span className="text-[12.5px] text-zinc-500">Current Forecast</span>
+  // Slice daily data: 7 days in all views
+  const dailyCount = 7;
+  const dailyTimes = weather.daily.time.slice(0, dailyCount);
+
+  // Graph dimensions calculation
+  const itemWidth = 64; // width per hourly card
+  const svgWidth = displayedCount * itemWidth;
+  const svgHeight = 85;
+
+  // Temperature graph points calculation
+  const minTemp = Math.min(...hourlyTemps);
+  const maxTemp = Math.max(...hourlyTemps);
+  const tempRange = maxTemp - minTemp || 1;
+
+  const tempPoints = hourlyTemps.map((temp, idx) => {
+    const x = idx * itemWidth + itemWidth / 2;
+    // Map Y coordinate (padding top: 22px, padding bottom: 18px)
+    const y = 22 + (1 - (temp - minTemp) / tempRange) * (svgHeight - 40);
+    return { x, y, temp };
+  });
+
+  // Construct SVG smooth Bezier path for Temperature line graph
+  const makeSmoothPath = (pts: Array<{ x: number; y: number }>) => {
+    if (pts.length === 0) return "";
+    let d = `M ${pts[0].x} ${pts[0].y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const curr = pts[i];
+      const next = pts[i + 1];
+      const cp1x = curr.x + itemWidth * 0.45;
+      const cp1y = curr.y;
+      const cp2x = next.x - itemWidth * 0.45;
+      const cp2y = next.y;
+      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${next.x} ${next.y}`;
+    }
+    return d;
+  };
+
+  const linePath = makeSmoothPath(tempPoints);
+  const areaPath = (pts: Array<{ x: number; y: number }>) => {
+    if (pts.length === 0) return "";
+    const line = makeSmoothPath(pts);
+    const last = pts[pts.length - 1];
+    const first = pts[0];
+    return `${line} L ${last.x} ${svgHeight} L ${first.x} ${svgHeight} Z`;
+  };
+
+  return (
+    <div className={`w-full max-w-full my-4 rounded-2xl border border-zinc-800/80 bg-zinc-950/95 [.light_&]:bg-[#faf9f5] [.light_&]:border-[#e6dfd8] p-5 sm:p-7 shadow-2xl [.light_&]:shadow-xl backdrop-blur-md overflow-hidden select-none font-sans relative group ${
+      isExpanded ? "max-w-4xl mx-auto my-6 p-6 sm:p-8 space-y-6" : ""
+    }`}>
+      {/* Decorative gradient blur */}
+      <div className="absolute top-0 right-0 w-[200px] h-[200px] bg-blue-500/5 [.light_&]:bg-amber-500/10 rounded-full blur-3xl group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+      {/* --- 1. TOP HEADER BAR --- */}
+      <div className="flex items-center justify-between gap-3 w-full border-b border-zinc-800/70 [.light_&]:border-[#e6dfd8] pb-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 [.light_&]:bg-[#efe9de] [.light_&]:border-[#c3c2b7] text-zinc-300 [.light_&]:text-[#141413]">
+            {getWeatherIcon(weather.current.weather_code, "w-5 h-5")}
           </div>
-          <span className="text-[10px] font-mono text-zinc-500 bg-zinc-900/60 border border-zinc-850/60 px-2 py-0.5 rounded-md">
-            Open-Meteo
-          </span>
+          <div>
+            <h3 className="font-serif text-xl sm:text-2xl md:text-3xl font-normal text-zinc-100 [.light_&]:text-[#141413] tracking-tight capitalize select-text">
+              {cityName}
+            </h3>
+            <span className="text-xs text-zinc-400 [.light_&]:text-[#6c6a64] font-medium">Current Weather Report</span>
+          </div>
         </div>
 
-        {/* Main Temp & Description Row */}
-        <div className="flex items-center gap-4 my-2">
-          <div className="p-2.5 rounded-2xl bg-zinc-950/30 border border-zinc-850/30 flex items-center justify-center">
-            {getWeatherIcon(weather.current.weather_code, "w-12 h-12")}
-          </div>
+        <span className="text-xs font-mono text-zinc-400 [.light_&]:text-[#6c6a64] bg-zinc-900/60 [.light_&]:bg-[#efe9de] border border-zinc-800/80 [.light_&]:border-[#c3c2b7] px-3 py-1 rounded-full shrink-0">
+          Open-Meteo
+        </span>
+      </div>
+
+      {/* --- 2. HERO TEMPERATURE & KEY METRICS ROW --- */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 my-2">
+        {/* Main Temperature Hero */}
+        <div className="flex items-center gap-4">
+          <span className="font-serif text-5xl sm:text-6xl md:text-7xl font-light text-zinc-100 [.light_&]:text-[#141413] tracking-tight">
+            {currentTemp}°C
+          </span>
           <div className="flex flex-col">
-            <div className="flex items-start">
-              <span className={`text-5xl font-light tracking-tighter ${getTempClass(currentTemp)}`}>{currentTemp}</span>
-              <span className="text-lg font-light text-zinc-400 mt-0.5 ml-0.5">°C</span>
-            </div>
-            <span className="text-[13.5px] font-medium text-zinc-400">
+            <span className="text-base sm:text-lg font-medium text-zinc-200 [.light_&]:text-[#141413] capitalize">
               {getWeatherDescription(weather.current.weather_code)}
+            </span>
+            <span className="text-xs text-zinc-400 [.light_&]:text-[#6c6a64]">
+              RealFeel {feelsLike}°C
             </span>
           </div>
         </div>
 
-        {/* Details Grid (Stacked bottom-aligned) */}
-        <div className="grid grid-cols-3 gap-2 bg-zinc-950/20 border border-zinc-850/40 rounded-xl p-3 text-[12px]">
-          <div className="flex flex-col gap-1.5 items-center text-center">
-            <Thermometer className="w-4 h-4 text-zinc-500" />
+        {/* 3-Stat Quick Metrics Group */}
+        <div className="flex items-center gap-3 sm:gap-4 bg-zinc-900/50 [.light_&]:bg-[#efe9de] border border-zinc-800/80 [.light_&]:border-[#c3c2b7] rounded-2xl px-4 py-3 text-xs w-full sm:w-auto justify-around">
+          <div className="flex items-center gap-2">
+            <Thermometer className="w-4 h-4 text-zinc-400 [.light_&]:text-[#6c6a64]" />
             <div className="flex flex-col">
-              <span className="text-zinc-500 text-[11px]">Feels Like</span>
-              <span className="font-semibold text-zinc-355">{feelsLike}°C</span>
+              <span className="text-[11px] text-zinc-400 [.light_&]:text-[#6c6a64]">Feels Like</span>
+              <span className="font-semibold text-zinc-100 [.light_&]:text-[#141413]">{feelsLike}°C</span>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5 items-center text-center border-x border-zinc-850/40">
-            <Droplets className="w-4 h-4 text-zinc-500" />
+
+          <div className="h-6 w-px bg-zinc-800/80 [.light_&]:bg-[#c3c2b7]" />
+
+          <div className="flex items-center gap-2">
+            <Droplets className="w-4 h-4 text-zinc-400 [.light_&]:text-[#6c6a64]" />
             <div className="flex flex-col">
-              <span className="text-zinc-500 text-[11px]">Humidity</span>
-              <span className="font-semibold text-zinc-355">{weather.current.humidity}%</span>
+              <span className="text-[11px] text-zinc-400 [.light_&]:text-[#6c6a64]">Humidity</span>
+              <span className="font-semibold text-zinc-100 [.light_&]:text-[#141413]">{weather.current.humidity}%</span>
             </div>
           </div>
-          <div className="flex flex-col gap-1.5 items-center text-center">
-            <Wind className="w-4 h-4 text-zinc-500" />
+
+          <div className="h-6 w-px bg-zinc-800/80 [.light_&]:bg-[#c3c2b7]" />
+
+          <div className="flex items-center gap-2">
+            <WindIcon className="w-4 h-4 text-zinc-400 [.light_&]:text-[#6c6a64]" />
             <div className="flex flex-col">
-              <span className="text-zinc-500 text-[11px]">Wind</span>
-              <span className="font-semibold text-zinc-355">{weather.current.wind_speed} km/h</span>
+              <span className="text-[11px] text-zinc-400 [.light_&]:text-[#6c6a64]">Wind</span>
+              <span className="font-semibold text-zinc-100 [.light_&]:text-[#141413]">{weather.current.wind_speed} km/h</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Right Column: Hourly & Multi-Day Outlooks (58% width) */}
-      <div className="w-full sm:w-[58%] flex flex-col gap-4 justify-between">
-        {/* Hourly Timeline */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-1.5 text-zinc-500 select-text">
-            <Clock className="w-3.5 h-3.5" />
-            <span className="text-[12px] font-medium tracking-wide">Hourly Outlook</span>
-          </div>
-          
-          <div className="flex gap-2.5 overflow-x-auto pb-2.5 custom-scrollbar snap-x snap-mandatory">
-            {weather.hourly.time.map((timeStr, idx) => {
-              const date = new Date(timeStr);
-              const hour = date.getHours();
-              const ampm = hour >= 12 ? "PM" : "AM";
-              const hourLabel = `${hour % 12 || 12} ${ampm}`;
-              const temp = Math.round(weather.hourly.temperature[idx]);
-              const code = weather.hourly.weather_code[idx];
+      {/* --- 3. INTERACTIVE METRIC TABS & GRAPH HOURLY SECTION --- */}
+      <div className="flex flex-col gap-3 mt-4 bg-zinc-900/40 [.light_&]:bg-[#efe9de] border border-zinc-800/80 [.light_&]:border-[#c3c2b7] rounded-2xl p-4 sm:p-5">
+        {/* Tab Selector Buttons */}
+        <div className="flex items-center gap-6 border-b border-zinc-800/70 [.light_&]:border-[#c3c2b7] pb-3 text-xs sm:text-sm font-medium">
+          <button
+            type="button"
+            onClick={() => setActiveTab("temperature")}
+            className={`pb-1 transition-all cursor-pointer relative ${
+              activeTab === "temperature"
+                ? "text-amber-400 [.light_&]:text-[#d97706] font-semibold"
+                : "text-zinc-400 [.light_&]:text-[#6c6a64] hover:text-zinc-200 [.light_&]:hover:text-[#141413]"
+            }`}
+          >
+            Temperature
+            {activeTab === "temperature" && (
+              <span className="absolute bottom-[-13px] left-0 right-0 h-0.5 bg-amber-400 [.light_&]:bg-[#d97706] rounded-full" />
+            )}
+          </button>
 
-              return (
-                <div key={idx} className="flex flex-col items-center gap-1.5 flex-shrink-0 min-w-[52px] bg-zinc-950/10 border border-zinc-850/20 rounded-lg p-2 snap-start">
-                  <span className="text-[11px] text-zinc-500">{hourLabel}</span>
-                  {getWeatherIcon(code, "w-4.5 h-4.5")}
-                  <span className={`text-[12px] font-medium ${getTempClass(temp)}`}>{temp}°</span>
-                </div>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab("precipitation")}
+            className={`pb-1 transition-all cursor-pointer relative ${
+              activeTab === "precipitation"
+                ? "text-sky-400 [.light_&]:text-[#0284c7] font-semibold"
+                : "text-zinc-400 [.light_&]:text-[#6c6a64] hover:text-zinc-200 [.light_&]:hover:text-[#141413]"
+            }`}
+          >
+            Precipitation
+            {activeTab === "precipitation" && (
+              <span className="absolute bottom-[-13px] left-0 right-0 h-0.5 bg-sky-400 [.light_&]:bg-[#0284c7] rounded-full" />
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("wind")}
+            className={`pb-1 transition-all cursor-pointer relative ${
+              activeTab === "wind"
+                ? "text-teal-400 [.light_&]:text-[#0f766e] font-semibold"
+                : "text-zinc-400 [.light_&]:text-[#6c6a64] hover:text-zinc-200 [.light_&]:hover:text-[#141413]"
+            }`}
+          >
+            Wind
+            {activeTab === "wind" && (
+              <span className="absolute bottom-[-13px] left-0 right-0 h-0.5 bg-teal-400 [.light_&]:bg-[#0f766e] rounded-full" />
+            )}
+          </button>
         </div>
 
-        {/* 3-Day Forecast Outlook */}
-        <div className="flex flex-col gap-2 border-t border-zinc-850/40 pt-4">
-          <div className="flex items-center gap-1.5 text-zinc-500">
-            <Calendar className="w-3.5 h-3.5" />
-            <span className="text-[12px] font-medium tracking-wide">3-Day Forecast</span>
-          </div>
+        {/* Dynamic SVG Trend Graph Container */}
+        <div className="overflow-x-auto custom-scrollbar pt-2 pb-1">
+          <div style={{ width: `${svgWidth}px` }} className="relative flex flex-col">
+            
+            {/* --- SVG Visualization Stage --- */}
+            <div className="h-[90px] w-full relative">
+              {activeTab === "temperature" && (
+                <svg width={svgWidth} height={svgHeight} className="overflow-visible">
+                  <defs>
+                    <linearGradient id={`${gradientId}-temp-dark`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.30" />
+                      <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.0" />
+                    </linearGradient>
+                    <linearGradient id={`${gradientId}-temp-light`} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#d97706" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#d97706" stopOpacity="0.0" />
+                    </linearGradient>
+                  </defs>
 
-          <div className="flex flex-col gap-2">
-            {weather.daily.time.map((dayStr, idx) => {
-              const date = new Date(dayStr);
-              const today = new Date().toDateString();
-              const dayLabel = date.toDateString() === today 
-                ? "Today" 
-                : date.toLocaleDateString("en-US", { weekday: "short" });
-              const maxTemp = Math.round(weather.daily.temp_max[idx]);
-              const minTemp = Math.round(weather.daily.temp_min[idx]);
-              const code = weather.daily.weather_code[idx];
+                  {/* Gradient Area Fill — Dark Mode */}
+                  <path
+                    d={areaPath(tempPoints)}
+                    fill={`url(#${gradientId}-temp-dark)`}
+                    className="[.light_&]:hidden"
+                  />
 
-              return (
-                <div key={idx} className="flex items-center justify-between text-[12.5px] bg-zinc-950/10 border border-zinc-850/10 p-2 rounded-xl">
-                  <span className="w-14 font-medium text-zinc-400">{dayLabel}</span>
-                  <div className="flex items-center gap-2">
+                  {/* Gradient Area Fill — Light Mode */}
+                  <path
+                    d={areaPath(tempPoints)}
+                    fill={`url(#${gradientId}-temp-light)`}
+                    className="hidden [.light_&]:block"
+                  />
+
+                  {/* Bezier Line Stroke */}
+                  <path
+                    d={linePath}
+                    fill="none"
+                    strokeWidth="2.5"
+                    className="stroke-amber-400 [.light_&]:stroke-[#d97706]"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+
+                  {/* Data Point Circles & Temperature Numerical Labels */}
+                  {tempPoints.map((pt, idx) => (
+                    <g key={idx}>
+                      <circle
+                        cx={pt.x}
+                        cy={pt.y}
+                        r="3.5"
+                        className="fill-amber-400 [.light_&]:fill-[#d97706] stroke-zinc-950 [.light_&]:stroke-[#faf9f5]"
+                        strokeWidth="1.5"
+                      />
+                      <text
+                        x={pt.x}
+                        y={pt.y - 8}
+                        textAnchor="middle"
+                        className="text-[11px] font-mono font-semibold fill-zinc-200 [.light_&]:fill-[#141413]"
+                      >
+                        {pt.temp}°
+                      </text>
+                    </g>
+                  ))}
+                </svg>
+              )}
+
+              {activeTab === "precipitation" && (
+                <svg width={svgWidth} height={svgHeight} className="overflow-visible">
+                  {hourlyPrecip.map((prob, idx) => {
+                    const x = idx * itemWidth + (itemWidth - 24) / 2;
+                    const barHeight = Math.max((prob / 100) * 52, prob > 0 ? 4 : 2);
+                    const y = svgHeight - barHeight;
+                    return (
+                      <g key={idx}>
+                        <rect
+                          x={x}
+                          y={y}
+                          width="24"
+                          height={barHeight}
+                          rx="4"
+                          className="fill-sky-400/80 [.light_&]:fill-[#0284c7]/80"
+                        />
+                        <text
+                          x={x + 12}
+                          y={y - 6}
+                          textAnchor="middle"
+                          className="text-[10.5px] font-mono font-semibold fill-sky-300 [.light_&]:fill-[#0284c7]"
+                        >
+                          {prob}%
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              )}
+
+              {activeTab === "wind" && (
+                <div style={{ width: `${svgWidth}px` }} className="flex h-full items-end pb-2">
+                  {hourlyWindSpeed.map((speed, idx) => {
+                    const dir = hourlyWindDir[idx] || 0;
+                    return (
+                      <div
+                        key={idx}
+                        style={{ width: `${itemWidth}px` }}
+                        className="flex flex-col items-center justify-end gap-1.5 shrink-0"
+                      >
+                        <span className="text-[10.5px] font-mono font-semibold text-teal-300 [.light_&]:text-[#0f766e]">
+                          {Math.round(speed)} km/h
+                        </span>
+                        <div
+                          style={{ transform: `rotate(${dir}deg)` }}
+                          className="p-1 rounded-full bg-teal-500/10 [.light_&]:bg-[#0f766e]/10 text-teal-400 [.light_&]:text-[#0f766e] transition-transform duration-300"
+                        >
+                          <ArrowUp className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* --- Hourly Cards Bottom Row --- */}
+            <div className="flex w-full pt-3 border-t border-zinc-800/60 [.light_&]:border-[#c3c2b7]">
+              {hourlyTimes.map((timeStr, idx) => {
+                const date = new Date(timeStr);
+                const hour = date.getHours();
+                const ampm = hour >= 12 ? "PM" : "AM";
+                const hourLabel = `${hour % 12 || 12} ${ampm}`;
+                const code = hourlyCodes[idx];
+
+                return (
+                  <div
+                    key={idx}
+                    style={{ width: `${itemWidth}px` }}
+                    className="flex flex-col items-center gap-1.5 shrink-0 text-center"
+                  >
+                    <span className="text-[11px] text-zinc-400 [.light_&]:text-[#6c6a64] font-medium">{hourLabel}</span>
                     {getWeatherIcon(code, "w-4.5 h-4.5")}
-                    <span className="text-[11.5px] text-zinc-500">{getWeatherDescription(code)}</span>
                   </div>
-                  <div className="flex gap-2 font-mono text-[11.5px]">
-                    <span className={`font-semibold ${getTempClass(maxTemp)}`}>{maxTemp}°</span>
-                    <span className="text-zinc-600">/</span>
-                    <span className={`font-medium ${getTempClass(minTemp)}`}>{minTemp}°</span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Custom thin horizontal scrollbar */}
+      {/* --- 4. MULTI-DAY FORECAST SECTION --- */}
+      <div className="flex flex-col gap-3 mt-4">
+        <div className="flex items-center gap-2 text-zinc-400 [.light_&]:text-[#6c6a64]">
+          <Calendar className="w-4 h-4" />
+          <span className="text-xs font-medium tracking-wider uppercase">
+            7-Day Forecast
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2.5 max-h-[220px] overflow-y-auto custom-scrollbar pr-1">
+          {dailyTimes.map((dayStr, idx) => {
+            const date = new Date(dayStr);
+            const today = new Date().toDateString();
+            const dayLabel = date.toDateString() === today 
+              ? "Today" 
+              : date.toLocaleDateString("en-US", { weekday: "short" });
+            const maxTemp = Math.round(weather.daily.temp_max[idx]);
+            const minTemp = Math.round(weather.daily.temp_min[idx]);
+            const code = weather.daily.weather_code[idx];
+
+            return (
+              <div 
+                key={idx} 
+                className="flex items-center justify-between bg-zinc-900/40 [.light_&]:bg-[#efe9de] border border-zinc-800/70 [.light_&]:border-[#c3c2b7] px-4 py-3 rounded-xl text-xs sm:text-sm"
+              >
+                <span className="w-20 font-medium text-zinc-200 [.light_&]:text-[#141413] shrink-0">{dayLabel}</span>
+                <div className="flex items-center gap-2.5 flex-1 justify-start px-2 min-w-0">
+                  {getWeatherIcon(code, "w-4.5 h-4.5 shrink-0")}
+                  <span className="text-xs text-zinc-400 [.light_&]:text-[#6c6a64] truncate">
+                    {getWeatherDescription(code)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-xs shrink-0">
+                  <span className="font-semibold text-zinc-100 [.light_&]:text-[#141413]">{maxTemp}°</span>
+                  <span className="text-zinc-500 [.light_&]:text-[#8e8b82]">/</span>
+                  <span className="font-medium text-zinc-400 [.light_&]:text-[#6c6a64]">{minTemp}°</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Embedded Weather CSS Animations & Custom Scrollbar */}
       <style jsx>{`
+        @keyframes rainPulse {
+          0%, 100% { transform: translateY(0px); opacity: 0.85; }
+          50% { transform: translateY(3px); opacity: 1; }
+        }
+        @keyframes sunShimmer {
+          0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.9; }
+          50% { transform: scale(1.06) rotate(3deg); opacity: 1; }
+        }
+        @keyframes snowDrift {
+          0%, 100% { transform: translateY(0px) translateX(0px); }
+          50% { transform: translateY(2px) translateX(2px); }
+        }
+        @keyframes stormPulse {
+          0%, 100% { opacity: 0.85; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.04); }
+        }
+        .weather-anim-rain { animation: rainPulse 2s ease-in-out infinite; }
+        .weather-anim-sun { animation: sunShimmer 6s ease-in-out infinite; }
+        .weather-anim-snow { animation: snowDrift 4s ease-in-out infinite; }
+        .weather-anim-storm { animation: stormPulse 3s ease-in-out infinite; }
+
         .custom-scrollbar::-webkit-scrollbar {
-          height: 4px;
+          height: 5px;
+          width: 5px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
           background: transparent;
@@ -328,10 +598,9 @@ export default function WeatherWidget({ lat, lng }: WeatherWidgetProps) {
         .custom-scrollbar::-webkit-scrollbar-thumb {
           background: #27272a;
           border-radius: 9999px;
-          transition: background 0.2s;
         }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #3f3f46;
+        :global(.light) .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #c3c2b7;
         }
       `}</style>
     </div>
