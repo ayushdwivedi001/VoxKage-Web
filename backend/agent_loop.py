@@ -486,29 +486,6 @@ async def execute_tool_call_v2(
                 
                 tool_context["flow_tag"] = f'<Flow title="{title}" nodes="{nodes_str}" edges="{edges_str}" />'
                 tool_output = json.dumps({"status": "success", "title": title, "nodes_count": len(nodes_list), "edges_count": len(edges_list)})
-            elif name == "get_chemical_structure":
-                comp = args.get("compound_name", "")
-                smiles = args.get("smiles_notation", "")
-                
-                formula = "Unknown"
-                weight = "Unknown"
-                canonical_smiles = smiles or "Unknown"
-                
-                try:
-                    import httpx
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{comp}/property/MolecularFormula,MolecularWeight,CanonicalSMILES/JSON"
-                        r = await client.get(url)
-                        if r.status_code == 200:
-                            props = r.json().get("PropertyTable", {}).get("Properties", [{}])[0]
-                            formula = props.get("MolecularFormula", "Unknown")
-                            weight = str(props.get("MolecularWeight", "Unknown"))
-                            canonical_smiles = smiles or props.get("CanonicalSMILES", "Unknown")
-                except:
-                    pass
-                    
-                tool_context["chemistry_tag"] = f'<Chemistry compound="{comp}" formula="{formula}" weight="{weight}" smiles="{canonical_smiles}" />'
-                tool_output = json.dumps({"status": "success", "compound": comp, "formula": formula, "weight": weight, "smiles": canonical_smiles})
             elif name == "render_timeline":
                 title = args.get("title", "")
                 events_list = args.get("events", [])
@@ -1443,9 +1420,6 @@ async def run_agentic_loop(
 
     if tool_context.get("flow_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['flow_tag']}"})
-
-    if tool_context.get("chemistry_tag"):
-        yield json.dumps({"type": "token", "content": f"\n\n{tool_context['chemistry_tag']}"})
 
     if tool_context.get("timeline_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['timeline_tag']}"})

@@ -433,27 +433,6 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "get_chemical_structure",
-            "description": "Retrieve structural chemistry data (molecular weight, formula, and SVG structure skeleton) for a compound or molecule.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "compound_name": {
-                        "type": "string",
-                        "description": "Name of the chemical compound (e.g., 'Paracetamol', 'Aspirin')."
-                    },
-                    "smiles_notation": {
-                        "type": "string",
-                        "description": "Optional SMILES structure notation (e.g., 'CC(=O)NC1=CC=C(O)C=C1')."
-                    }
-                },
-                "required": ["compound_name"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "render_timeline",
             "description": "Render a clean, collapsible vertical history event track timeline widget.",
             "parameters": {

@@ -477,13 +477,6 @@ export interface FlowItem {
   edges: FlowEdge[];
 }
 
-export interface ChemistryItem {
-  compound: string;
-  formula: string;
-  weight: string;
-  smiles: string;
-}
-
 export interface TimelineEvent {
   date: string;
   title: string;
@@ -508,32 +501,12 @@ export interface FunctionPlotItem {
 }
 
 export const parseScienceAndHistory = (content: string) => {
-  if (!content) return { cleanContent: content, chemistry: null, timeline: null, calculator: null, plot: null };
+  if (!content) return { cleanContent: content, timeline: null, calculator: null, plot: null };
   
   let cleanContent = content;
-  let chemistry: ChemistryItem | null = null;
   let timeline: TimelineItem | null = null;
   let calculator: CalculatorItem | null = null;
   let plot: FunctionPlotItem | null = null;
-
-  // 1. Chemistry Tag: <Chemistry compound="..." formula="..." weight="..." smiles="..." />
-  const chemRegex = /<Chemistry\s+([^>]*?)\s*\/>/i;
-  const chemMatch = cleanContent.match(chemRegex);
-  if (chemMatch) {
-    const attrString = chemMatch[1];
-    const getAttr = (name: string): string => {
-      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
-      const m = attrString.match(regex);
-      return m ? m[1] : "";
-    };
-    chemistry = {
-      compound: getAttr("compound"),
-      formula: getAttr("formula"),
-      weight: getAttr("weight"),
-      smiles: getAttr("smiles")
-    };
-    cleanContent = cleanContent.replace(chemRegex, '').trim();
-  }
 
   // 2. Timeline Tag: <Timeline title="..." events="..." />
   const timelineRegex = /<Timeline\s+([^>]*?)\s*\/>/i;
@@ -603,7 +576,7 @@ export const parseScienceAndHistory = (content: string) => {
     cleanContent = cleanContent.replace(plotRegex, '').trim();
   }
 
-  return { cleanContent, chemistry, timeline, calculator, plot };
+  return { cleanContent, timeline, calculator, plot };
 };
 
 export const parseChartAndFlow = (content: string) => {
@@ -933,7 +906,7 @@ export const parseMessageContent = (content: string) => {
   const { cleanContent: noGalleryContent, imageGalleryQuery } = parseImageGallery(noSourcesContent);
   const { cleanContent: noImagesContent, images } = parseImages(noGalleryContent);
   const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
-  const { cleanContent: noScienceContent, chemistry, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
+  const { cleanContent: noScienceContent, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
   const { cleanContent: noMapContent, map, weather } = parseMapAndWeather(noScienceContent);
   const { cleanContent: cleanTextContent, canva, gmail, calendar } = parseMcpWidgets(noMapContent);
   const { cleanContent: finalCleanContent, scheduleSetup } = parseScheduleSetup(cleanTextContent);
@@ -970,7 +943,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
+  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {

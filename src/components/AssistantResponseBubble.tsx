@@ -69,14 +69,6 @@ const FlowWidget = dynamic(() => import("./FlowWidget"), {
   )
 });
 
-const ChemistryWidget = dynamic(() => import("./ChemistryWidget"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-[180px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
-      Loading chemistry skeletal canvas...
-    </div>
-  )
-});
 
 const TimelineWidget = dynamic(() => import("./TimelineWidget"), {
   ssr: false,
@@ -519,7 +511,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, chemistry, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -994,12 +986,6 @@ export default function AssistantResponseBubble({
         </ExpandableWrapper>
       )}
 
-      {/* --- Dynamic Chemistry Structure Widget --- */}
-      {msg.status !== "thinking" && chemistry && (
-        <ExpandableWrapper label="Chemical Structure" className="w-full max-w-full overflow-x-auto select-none flex justify-center">
-          <ChemistryWidget compound={chemistry.compound} formula={chemistry.formula} weight={chemistry.weight} smiles={chemistry.smiles} />
-        </ExpandableWrapper>
-      )}
 
       {/* --- Dynamic Timeline Widget --- */}
       {msg.status !== "thinking" && timeline && (
