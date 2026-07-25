@@ -77,6 +77,48 @@ export default function useChatSessions({
     setContextPercent(pct);
   }, [messages]);
 
+  // Synchronize chatTitle with active session in sessionsList or localStorage
+  useEffect(() => {
+    if (!currentSessionId) return;
+    
+    if (typeof window !== "undefined") {
+      const cachedTitle = localStorage.getItem(`voxkage_title_${currentSessionId}`);
+      if (cachedTitle && cachedTitle !== "Greeting") {
+        setChatTitle(cachedTitle);
+      }
+    }
+
+    if (sessionsList.length > 0) {
+      const sess = sessionsList.find((s) => s.id === currentSessionId);
+      if (sess && sess.name) {
+        setChatTitle(sess.name);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`voxkage_title_${currentSessionId}`, sess.name);
+        }
+      }
+    }
+  }, [sessionsList, currentSessionId]);
+
+  // Hydrate contextPercent from localStorage when currentSessionId changes
+  useEffect(() => {
+    if (currentSessionId && typeof window !== "undefined") {
+      const cachedPct = localStorage.getItem(`voxkage_pct_${currentSessionId}`);
+      if (cachedPct) {
+        const num = parseInt(cachedPct, 10);
+        if (!isNaN(num) && num > 0) {
+          setContextPercent(num);
+        }
+      }
+    }
+  }, [currentSessionId]);
+
+  // Persist contextPercent to localStorage whenever it updates to > 0
+  useEffect(() => {
+    if (currentSessionId && contextPercent > 0 && typeof window !== "undefined") {
+      localStorage.setItem(`voxkage_pct_${currentSessionId}`, String(contextPercent));
+    }
+  }, [contextPercent, currentSessionId]);
+
   const loadSessionsOnly = async () => {
     try {
       const sess = await fetchSessions();
@@ -221,11 +263,27 @@ export default function useChatSessions({
   const loadSessionHistory = async (sessionId: string, scrollToBottom: () => void) => {
     setCurrentSessionId(sessionId);
     initializeTelemetryWS(sessionId);
+
+    // Fast hydration from localStorage cache
+    if (typeof window !== "undefined") {
+      const cachedTitle = localStorage.getItem(`voxkage_title_${sessionId}`);
+      if (cachedTitle && cachedTitle !== "Greeting") {
+        setChatTitle(cachedTitle);
+      }
+      const cachedPct = localStorage.getItem(`voxkage_pct_${sessionId}`);
+      if (cachedPct) {
+        const num = parseInt(cachedPct, 10);
+        if (!isNaN(num) && num > 0) {
+          setContextPercent(num);
+        }
+      }
+    }
+
     const cached = messagesCache[sessionId];
     if (cached) {
       setMessages(cached);
       const sess = sessionsList.find((s) => s.id === sessionId);
-      if (sess) {
+      if (sess && sess.name) {
         setChatTitle(sess.name);
       }
       setTimeout(scrollToBottom, 50);
@@ -233,7 +291,7 @@ export default function useChatSessions({
       setIsSessionLoading(true);
       setMessages([]);
       const sess = sessionsList.find((s) => s.id === sessionId);
-      if (sess) {
+      if (sess && sess.name) {
         setChatTitle(sess.name);
       }
     }

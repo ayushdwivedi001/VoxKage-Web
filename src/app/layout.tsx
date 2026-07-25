@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VoxKage Web",
-  description: "What should we build, Ayush?",
+  title: "VoxKage AI",
+  description: "What should we build, sir?",
   icons: {
     icon: "/assets/voxkage_logo.png?v=3",
   },

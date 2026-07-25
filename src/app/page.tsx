@@ -49,7 +49,11 @@ export default function Home() {
   const [connectedServers, setConnectedServers] = useState<string[]>([]);
 
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const [isChatActive, setIsChatActive] = useState(false);
+  const [isChatActive, setIsChatActive] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const path = window.location.pathname;
+    return Boolean(urlSessionId || (path.length > 1 && path !== "/"));
+  });
 
   // Code inspection split pane states
   const [activeFile, setActiveFile] = useState<{ name: string; code: string } | null>(null);

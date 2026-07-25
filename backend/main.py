@@ -37,7 +37,7 @@ app = FastAPI(title="VoxKage Web API", version="2026.06.30")
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://voxkage.vercel.app,http://localhost:3000,http://localhost:5173,http://localhost:8081").split(",")
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://voxkage.vercel.app,https://voxkage-ai.vercel.app,https://voxkage-web.vercel.app,http://localhost:3000,http://localhost:5173,http://localhost:8081").split(",")
 
 app.add_middleware(
     CORSMiddleware,
