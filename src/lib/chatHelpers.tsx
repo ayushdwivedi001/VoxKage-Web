@@ -471,12 +471,6 @@ export interface FlowEdge {
   label?: string;
 }
 
-export interface FlowItem {
-  title: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-}
-
 export interface TimelineEvent {
   date: string;
   title: string;
@@ -489,11 +483,6 @@ export interface TimelineItem {
   events: TimelineEvent[];
 }
 
-export interface CalculatorItem {
-  type: "loan" | "compound" | "tax";
-  title: string;
-}
-
 export interface FunctionPlotItem {
   formula: string;
   minX?: number;
@@ -501,11 +490,10 @@ export interface FunctionPlotItem {
 }
 
 export const parseScienceAndHistory = (content: string) => {
-  if (!content) return { cleanContent: content, timeline: null, calculator: null, plot: null };
+  if (!content) return { cleanContent: content, timeline: null, plot: null };
   
   let cleanContent = content;
   let timeline: TimelineItem | null = null;
-  let calculator: CalculatorItem | null = null;
   let plot: FunctionPlotItem | null = null;
 
   // 2. Timeline Tag: <Timeline ... /> or <render_timeline ... />
@@ -541,23 +529,6 @@ export const parseScienceAndHistory = (content: string) => {
     cleanContent = cleanContent.replace(timelineRegex, '').trim();
   }
 
-  // 3. Calculator Tag: <Calculator ... /> or <render_calculator ... />
-  const calcRegex = /<(?:Calculator|render_calculator)\s+([^>]*?)\s*\/>/i;
-  const calcMatch = cleanContent.match(calcRegex);
-  if (calcMatch) {
-    const attrString = calcMatch[1];
-    const getAttr = (name: string): string => {
-      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
-      const m = attrString.match(regex);
-      return m ? m[1] : "";
-    };
-    calculator = {
-      type: (getAttr("type") || "loan") as "loan" | "compound" | "tax",
-      title: getAttr("title")
-    };
-    cleanContent = cleanContent.replace(calcRegex, '').trim();
-  }
-
   // 4. FunctionPlot Tag: <FunctionPlot formula="..." minX="..." maxX="..." />
   const plotRegex = /<FunctionPlot\s+([^>]*?)\s*\/>/i;
   const plotMatch = cleanContent.match(plotRegex);
@@ -576,15 +547,14 @@ export const parseScienceAndHistory = (content: string) => {
     cleanContent = cleanContent.replace(plotRegex, '').trim();
   }
 
-  return { cleanContent, timeline, calculator, plot };
+  return { cleanContent, timeline, plot };
 };
 
-export const parseChartAndFlow = (content: string) => {
-  if (!content) return { cleanContent: content, chart: null, flow: null };
+export const parseChart = (content: string) => {
+  if (!content) return { cleanContent: content, chart: null };
   
   let cleanContent = content;
   let chart: ChartItem | null = null;
-  let flow: FlowItem | null = null;
 
   // 1. Match Chart Tag: <Chart ... />
   const chartRegex = /<Chart\s+([^>]*?)\s*\/>/i;
@@ -629,59 +599,7 @@ export const parseChartAndFlow = (content: string) => {
     cleanContent = cleanContent.replace(chartRegex, '').trim();
   }
 
-  // 2. Match Flow Tag: <Flow ... />
-  const flowRegex = /<Flow\s+([^>]*?)\s*\/>/i;
-  const flowMatch = cleanContent.match(flowRegex);
-  if (flowMatch) {
-    const attrString = flowMatch[1];
-    const getAttr = (name: string): string => {
-      const regex = new RegExp(`${name}="([^"]*)"`, 'i');
-      const m = attrString.match(regex);
-      return m ? m[1] : "";
-    };
-
-    const title = getAttr("title");
-    const rawNodes = getAttr("nodes");
-    const rawEdges = getAttr("edges");
-
-    let nodes: FlowNode[] = [];
-    if (rawNodes) {
-      const items = rawNodes.split("||");
-      items.forEach((item) => {
-        const parts = item.split("|");
-        if (parts.length >= 2) {
-          nodes.push({
-            id: parts[0],
-            label: parts[1],
-            description: parts[2] && parts[2] !== "empty" ? parts[2] : undefined,
-            category: parts[3] && parts[3] !== "empty" ? parts[3] : undefined
-          });
-        }
-      });
-    }
-
-    let edges: FlowEdge[] = [];
-    if (rawEdges) {
-      const items = rawEdges.split("||");
-      items.forEach((item) => {
-        const parts = item.split("|");
-        if (parts.length >= 2) {
-          edges.push({
-            from: parts[0],
-            to: parts[1],
-            label: parts[2] && parts[2] !== "empty" ? parts[2] : undefined
-          });
-        }
-      });
-    }
-
-    if (title && nodes.length > 0) {
-      flow = { title, nodes, edges };
-    }
-    cleanContent = cleanContent.replace(flowRegex, '').trim();
-  }
-
-  return { cleanContent, chart, flow };
+  return { cleanContent, chart };
 };
 
 export const parseMapAndWeather = (content: string) => {
@@ -905,8 +823,8 @@ export const parseMessageContent = (content: string) => {
   const { cleanContent: noSourcesContent, sources } = parseSources(content);
   const { cleanContent: noGalleryContent, imageGalleryQuery } = parseImageGallery(noSourcesContent);
   const { cleanContent: noImagesContent, images } = parseImages(noGalleryContent);
-  const { cleanContent: noChartContent, chart, flow } = parseChartAndFlow(noImagesContent);
-  const { cleanContent: noScienceContent, timeline, calculator, plot } = parseScienceAndHistory(noChartContent);
+  const { cleanContent: noChartContent, chart } = parseChart(noImagesContent);
+  const { cleanContent: noScienceContent, timeline, plot } = parseScienceAndHistory(noChartContent);
   const { cleanContent: noMapContent, map, weather } = parseMapAndWeather(noScienceContent);
   const { cleanContent: cleanTextContent, canva, gmail, calendar } = parseMcpWidgets(noMapContent);
   const { cleanContent: finalCleanContent, scheduleSetup } = parseScheduleSetup(cleanTextContent);
@@ -943,7 +861,7 @@ export const parseMessageContent = (content: string) => {
       .trim();
   }
 
-  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup };
+  return { thinkingContent, finalContent, sources, imageGalleryQuery, images, map, weather, chart, timeline, plot, canva, gmail, calendar, scheduleSetup };
 };
 
 export function parseInlineElements(text: string, sources: any[] = []) {

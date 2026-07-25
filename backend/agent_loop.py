@@ -377,7 +377,7 @@ async def execute_tool_call_v2(
         tool_output = ""
 
         # --- Route Search and Fetch Tools ---
-        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather", "render_chart", "render_flow", "get_chemical_structure", "render_timeline", "render_calculator"}:
+        if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "get_images", "show_map", "get_weather", "render_chart", "render_timeline"}:
             announcement = ""
             if name == "get_images":
                 announcement = f"Searching free image assets for: '{args.get('query', '')}'..."
@@ -387,14 +387,8 @@ async def execute_tool_call_v2(
                 announcement = f"Retrieving local weather forecast reports..."
             elif name == "render_chart":
                 announcement = f"Generating interactive dark analytics chart: '{args.get('title', '')}'..."
-            elif name == "render_flow":
-                announcement = f"Generating responsive process pipeline: '{args.get('title', '')}'..."
-            elif name == "get_chemical_structure":
-                announcement = f"Retrieving structural chemistry data for: '{args.get('compound_name', '')}'..."
             elif name == "render_timeline":
                 announcement = f"Generating collapsible history timeline: '{args.get('title', '')}'..."
-            elif name == "render_calculator":
-                announcement = f"Configuring interactive finance calculator: '{args.get('title', '')}'..."
             elif name == "web_search":
                 announcement = f"Searching the web for: '{args.get('query', '')}'..."
             elif name == "web_fetch":
@@ -462,30 +456,6 @@ async def execute_tool_call_v2(
                 data_str = "||".join(formatted_pts)
                 tool_context["chart_tag"] = f'<Chart type="{chart_type}" title="{title}" xLabel="{x_lbl}" yLabel="{y_lbl}" data="{data_str}" />'
                 tool_output = json.dumps({"status": "success", "type": chart_type, "title": title, "points_count": len(data_list)})
-            elif name == "render_flow":
-                title = args.get("title", "")
-                nodes_list = args.get("nodes", [])
-                edges_list = args.get("edges", [])
-                
-                formatted_nodes = []
-                for n in nodes_list:
-                    n_id = str(n.get("id", "")).replace("|", "").replace(";", "")
-                    n_lbl = str(n.get("label", "")).replace("|", "").replace(";", "")
-                    n_desc = str(n.get("description", "") or "empty").replace("|", "").replace(";", "")
-                    n_cat = str(n.get("category", "") or "empty").replace("|", "").replace(";", "")
-                    formatted_nodes.append(f"{n_id}|{n_lbl}|{n_desc}|{n_cat}")
-                nodes_str = "||".join(formatted_nodes)
-                
-                formatted_edges = []
-                for e in edges_list:
-                    e_from = str(e.get("from_id", "")).replace("|", "").replace(";", "")
-                    e_to = str(e.get("to_id", "")).replace("|", "").replace(";", "")
-                    e_lbl = str(e.get("label", "") or "empty").replace("|", "").replace(";", "")
-                    formatted_edges.append(f"{e_from}|{e_to}|{e_lbl}")
-                edges_str = "||".join(formatted_edges)
-                
-                tool_context["flow_tag"] = f'<Flow title="{title}" nodes="{nodes_str}" edges="{edges_str}" />'
-                tool_output = json.dumps({"status": "success", "title": title, "nodes_count": len(nodes_list), "edges_count": len(edges_list)})
             elif name == "render_timeline":
                 await send_to_client({"type": "hud_log", "content": "Rendering Timeline..."})
                 title = args.get("title", "")
@@ -502,12 +472,6 @@ async def execute_tool_call_v2(
                 events_str = "||".join(formatted_evs)
                 tool_context["timeline_tag"] = f'<Timeline title="{title}" events="{events_str}" />'
                 tool_output = json.dumps({"status": "success", "title": title, "events_count": len(events_list)})
-            elif name == "render_calculator":
-                await send_to_client({"type": "hud_log", "content": "Rendering Financial Calculator..."})
-                c_type = args.get("type", "loan")
-                title = args.get("title", "")
-                tool_context["calculator_tag"] = f'<Calculator type="{c_type}" title="{title}" />'
-                tool_output = json.dumps({"status": "success", "type": c_type, "title": title})
             elif name == "web_search":
                 tool_context["web_search_called"] = True
                 q = args.get("query", "")

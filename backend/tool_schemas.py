@@ -389,50 +389,6 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "render_flow",
-            "description": "Render a clean, responsive custom SVG workflow/process flow diagram or architecture pipeline.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "title": {
-                        "type": "string",
-                        "description": "Title of the flow diagram (e.g., 'Query Execution Pipeline')."
-                    },
-                    "nodes": {
-                        "type": "array",
-                        "description": "List of process nodes in the flow.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "string", "description": "Unique node identifier (e.g., 'user_input')."},
-                                "label": {"type": "string", "description": "Node title/label (e.g., 'Parse Prompt')."},
-                                "description": {"type": "string", "description": "Optional short detail text below the label."},
-                                "category": {"type": "string", "description": "Visual class tag (e.g. 'Process', 'System', 'Storage', 'User', 'API')."}
-                            },
-                            "required": ["id", "label"]
-                        }
-                    },
-                    "edges": {
-                        "type": "array",
-                        "description": "List of directed connectors joining the nodes.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "from_id": {"type": "string", "description": "Source node ID matching one of the defined node IDs."},
-                                "to_id": {"type": "string", "description": "Target destination node ID."},
-                                "label": {"type": "string", "description": "Optional label text overlaid on the connector path."}
-                            },
-                            "required": ["from_id", "to_id"]
-                        }
-                    }
-                },
-                "required": ["title", "nodes", "edges"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "render_timeline",
             "description": "Render a clean, collapsible vertical history event track timeline widget.",
             "parameters": {
@@ -458,28 +414,6 @@ TOOLS_SCHEMA = [
                     }
                 },
                 "required": ["title", "events"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "render_calculator",
-            "description": "Render a live high-tech calculator widget (loan amortization, compound interest, or tax estimates) with interactive sliders.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "type": {
-                        "type": "string",
-                        "enum": ["loan", "compound", "tax"],
-                        "description": "Type of calculator widget."
-                    },
-                    "title": {
-                        "type": "string",
-                        "description": "Header title of the calculator (e.g., 'Mortgage Payment Calculator')."
-                    }
-                },
-                "required": ["type", "title"]
             }
         }
     },

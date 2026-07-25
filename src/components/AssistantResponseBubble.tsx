@@ -60,30 +60,11 @@ const ChartWidget = dynamic(() => import("./ChartWidget"), {
   )
 });
 
-const FlowWidget = dynamic(() => import("./FlowWidget"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-[320px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
-      Loading process flow diagram...
-    </div>
-  )
-});
-
-
 const TimelineWidget = dynamic(() => import("./TimelineWidget"), {
   ssr: false,
   loading: () => (
     <div className="w-full h-[160px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
       Loading timeline data...
-    </div>
-  )
-});
-
-const CalculatorWidget = dynamic(() => import("./CalculatorWidget"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full h-[160px] rounded-2xl border border-zinc-850/60 bg-zinc-950/20 flex items-center justify-center text-zinc-500 font-sans text-[13.5px]">
-      Loading finance modules...
     </div>
   )
 });
@@ -511,7 +492,7 @@ export default function AssistantResponseBubble({
   const isMsgRunning = msg.status === "thinking" || msg.status === "streaming";
 
   // Parse message content to extract thinking, final output, and consulted web sources
-  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, flow, timeline, calculator, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
+  const { thinkingContent, finalContent: rawFinalContent, sources, imageGalleryQuery, images, map, weather, chart, timeline, plot, canva, gmail, calendar, scheduleSetup } = parseMessageContent(msg.content);
 
   // Merge sources from all assistant messages so far to ensure citations from previous turns still match
   const allSources: any[] = [];
@@ -654,9 +635,6 @@ export default function AssistantResponseBubble({
     }
     if (chart) {
       processedThoughts.push({ id: "render-chart", label: "Compiled analytics chart", status: "success" as const });
-    }
-    if (flow) {
-      processedThoughts.push({ id: "render-flow", label: "Rendered logic flow diagram", status: "success" as const });
     }
     if (images && images.length > 0) {
       processedThoughts.push({ id: "render-images", label: `Rendered ${images.length} generated images`, status: "success" as const });
@@ -979,25 +957,10 @@ export default function AssistantResponseBubble({
         </ExpandableWrapper>
       )}
 
-      {/* --- Dynamic Flow Widget --- */}
-      {msg.status !== "thinking" && flow && (
-        <ExpandableWrapper label="Process Flow" className="w-full max-w-full overflow-x-auto select-none flex justify-center">
-          <FlowWidget title={flow.title} nodes={flow.nodes} edges={flow.edges} />
-        </ExpandableWrapper>
-      )}
-
-
       {/* --- Dynamic Timeline Widget --- */}
       {msg.status !== "thinking" && timeline && (
         <ExpandableWrapper label="Timeline" className="w-full max-w-full overflow-x-auto select-none flex justify-center">
           <TimelineWidget title={timeline.title} events={timeline.events} />
-        </ExpandableWrapper>
-      )}
-
-      {/* --- Dynamic Calculator Widget --- */}
-      {msg.status !== "thinking" && calculator && (
-        <ExpandableWrapper label="Calculator" className="w-full max-w-full select-none flex justify-center">
-          <CalculatorWidget type={calculator.type} title={calculator.title} />
         </ExpandableWrapper>
       )}
 
