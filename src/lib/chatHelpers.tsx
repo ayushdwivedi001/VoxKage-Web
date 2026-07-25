@@ -508,8 +508,8 @@ export const parseScienceAndHistory = (content: string) => {
   let calculator: CalculatorItem | null = null;
   let plot: FunctionPlotItem | null = null;
 
-  // 2. Timeline Tag: <Timeline title="..." events="..." />
-  const timelineRegex = /<Timeline\s+([^>]*?)\s*\/>/i;
+  // 2. Timeline Tag: <Timeline ... /> or <render_timeline ... />
+  const timelineRegex = /<(?:Timeline|render_timeline)\s+([^>]*?)\s*\/>/i;
   const timelineMatch = cleanContent.match(timelineRegex);
   if (timelineMatch) {
     const attrString = timelineMatch[1];

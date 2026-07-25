@@ -487,6 +487,7 @@ async def execute_tool_call_v2(
                 tool_context["flow_tag"] = f'<Flow title="{title}" nodes="{nodes_str}" edges="{edges_str}" />'
                 tool_output = json.dumps({"status": "success", "title": title, "nodes_count": len(nodes_list), "edges_count": len(edges_list)})
             elif name == "render_timeline":
+                await send_to_client({"type": "hud_log", "content": "Rendering Timeline..."})
                 title = args.get("title", "")
                 events_list = args.get("events", [])
                 
