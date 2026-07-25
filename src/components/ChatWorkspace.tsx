@@ -179,7 +179,7 @@ export default function ChatWorkspace({
           id="mobile-sidebar-toggle-homepage"
           type="button"
           onClick={onToggleSidebar}
-          className={`md:hidden absolute top-4 left-4 z-30 flex items-center justify-center w-9 h-9 rounded-xl active:scale-95 cursor-pointer transition-all duration-200 ${
+          className={`md:hidden fixed top-4 left-4 z-50 flex items-center justify-center w-9 h-9 rounded-xl active:scale-95 cursor-pointer transition-all duration-200 ${
             isLightMode 
               ? "bg-[#3d3d3a] border border-[#252523] text-[#e6dfd8] shadow-sm" 
               : "bg-white/5 border border-white/10 text-zinc-300 hover:text-white"
@@ -234,16 +234,16 @@ export default function ChatWorkspace({
             </div>
           </div>
 
-          {/* ── MOBILE LAYOUT (<md): creature+greeting centered; prompt box fixed at bottom ── */}
-          <div className="md:hidden flex flex-grow flex-col items-center justify-center w-full z-20 px-4 pb-[130px]">
-            <div className="overflow-hidden flex flex-col items-center mb-7">
+          {/* ── MOBILE LAYOUT (<md): creature+greeting centered in available viewport above prompt bar ── */}
+          <div className="md:hidden flex flex-col items-center justify-center w-full h-full pb-36 px-4 z-20 pointer-events-none select-none">
+            <div className="flex flex-col items-center pointer-events-auto">
               <VoxKageCreature />
               <AnimatedHomepageGreeting greeting={greeting} />
             </div>
           </div>
 
-          {/* Mobile-only: Prompt box fixed to bottom edge */}
-          <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pb-5 pt-3 bg-gradient-to-t ${
+          {/* Mobile-only: Prompt box fixed to bottom edge with safe-area padding */}
+          <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 px-3 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-gradient-to-t ${
             isLightMode 
               ? "from-[#DBDAD4] via-[#DBDAD4]/90 to-transparent" 
               : "from-[#05050a] via-[#05050a]/90 to-transparent"
@@ -283,12 +283,14 @@ export default function ChatWorkspace({
         </>
       )}
 
-
-
       {/* Active Normal Chat Session Container */}
       {isChatActive && (
-        <div className="absolute bottom-0 left-0 right-0 z-30 pb-5 pt-10 px-4 flex flex-col items-center gap-2.5 pointer-events-none">
-          <div className="relative z-10 w-full flex flex-col items-center gap-2.5">
+        <div className={`fixed md:absolute bottom-0 left-0 right-0 z-30 pt-4 md:pt-10 px-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-5 flex flex-col items-center gap-1.5 md:gap-2.5 pointer-events-none bg-gradient-to-t ${
+          isLightMode 
+            ? "from-[#DBDAD4] via-[#DBDAD4]/95 to-transparent" 
+            : "from-[#05050a] via-[#05050a]/95 to-transparent"
+        }`}>
+          <div className="relative z-10 w-full flex flex-col items-center gap-1.5 md:gap-2.5">
             {showScrollBottom && (
               <button
                 type="button"
@@ -335,7 +337,7 @@ export default function ChatWorkspace({
                 onRemoveEditingFile={() => setEditingFile(null)}
               />
             </div>
-            <span className="text-[12px] text-zinc-300 [.light_&]:text-[#6c6a64] font-sans tracking-wide select-none pointer-events-auto">
+            <span className="text-[11.5px] md:text-[12px] text-zinc-300 [.light_&]:text-[#6c6a64] font-sans tracking-wide select-none pointer-events-auto text-center px-2">
               VoxKage can make mistakes. Please double check responses.
             </span>
           </div>

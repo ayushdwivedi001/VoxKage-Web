@@ -120,6 +120,7 @@ export default function UserBubble({ messageId, content, onImageClick, onDocumen
                 overflow: "hidden",
                 maxHeight: needsClamp && !expanded ? `${USER_BUBBLE_MAX_H}px` : undefined,
                 wordBreak: "break-word",
+                overflowWrap: "anywhere",
                 whiteSpace: "pre-wrap",
               }}
             >

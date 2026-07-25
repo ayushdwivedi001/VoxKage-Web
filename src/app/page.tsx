@@ -703,12 +703,7 @@ export default function Home() {
       <GradientBackground isChatActive={false} isDesignMode={true} />
       <DesignDottedCanvas active={true} isChatActive={isChatActive} />
 
-      <main
-        className="relative flex flex-col flex-grow items-center justify-between overflow-hidden bg-transparent transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-10"
-        style={{
-          height: "100vh",
-        }}
-      >
+      <main className="relative flex flex-col flex-grow items-center justify-between w-full h-full max-w-full overflow-hidden bg-transparent transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-10">
         <ChatHeader
           isChatActive={isChatActive}
           isExpanded={isExpanded}

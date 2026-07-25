@@ -702,7 +702,13 @@ export default function PromptInput({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
-          onFocus={() => setIsFocused(true)}
+          onFocus={() => {
+            setIsFocused(true);
+            if (typeof window !== "undefined" && window.innerWidth < 768) {
+              window.scrollTo(0, 0);
+              document.body.scrollTop = 0;
+            }
+          }}
           onBlur={() => setIsFocused(false)}
           onPaste={handlePaste}
           rows={1}

@@ -993,7 +993,7 @@ export default function AssistantResponseBubble({
 
       {/* --- Assistant Response Text content --- */}
       {msg.status !== "thinking" && finalContent && (
-        <div className={`text-[16px] leading-relaxed font-sans font-light tracking-wide w-full max-w-full select-text whitespace-pre-wrap animate-fadeIn ${
+        <div className={`text-[16px] leading-relaxed font-sans font-light tracking-wide w-full max-w-full break-words [overflow-wrap:anywhere] select-text whitespace-pre-wrap animate-fadeIn ${
           isLightMode ? "text-[#141413]" : "text-zinc-200"
         }`}>
           {renderFormattedContent(removeFileCodeBlocks(finalContent, extracted), allSources)}
