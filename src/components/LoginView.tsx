@@ -131,7 +131,7 @@ export default function LoginView({
     setAuthLoading(true);
     setAuthError("");
 
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "948142993949-7emi9ertjv9amcdkr7eql250dmm0pdu0.apps.googleusercontent.com";
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "948142993949-169a6ugas6emks2j2b17chpu30hhnhm2.apps.googleusercontent.com";
     const redirectUri = `${window.location.origin}/oauth/callback`;
     const googleOAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
       redirectUri
