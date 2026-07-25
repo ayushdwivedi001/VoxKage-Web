@@ -1197,6 +1197,15 @@ export function renderTable(rows: string[][], key: string, sources: any[] = []) 
 
 const CodeSnippetBlock = ({ code, language }: { code: string; language: string }) => {
   const [copied, setCopied] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  React.useEffect(() => {
+    const check = () => setIsLightMode(document.documentElement.classList.contains("light"));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
 
   const handleCopy = async () => {
     try {
@@ -1208,15 +1217,144 @@ const CodeSnippetBlock = ({ code, language }: { code: string; language: string }
     }
   };
 
+  // Syntax highlight using Prism-like token patterns
+  const highlight = (src: string, lang: string): React.ReactNode[] => {
+    const nodes: React.ReactNode[] = [];
+    const lines = src.split("\n");
+
+    const DARK = {
+      keyword: "#c792ea",
+      string: "#c3e88d",
+      number: "#f78c6c",
+      comment: "#546e7a",
+      function: "#82aaff",
+      className: "#ffcb6b",
+      operator: "#89ddff",
+      punctuation: "#89ddff",
+      builtin: "#80cbc4",
+      decorator: "#f07178",
+      tag: "#f07178",
+      attr: "#c792ea",
+      plain: "#d4d4d4",
+    };
+
+    const LIGHT = {
+      keyword: "#7c3aed",
+      string: "#16a34a",
+      number: "#d97706",
+      comment: "#6b7280",
+      function: "#2563eb",
+      className: "#b45309",
+      operator: "#0891b2",
+      punctuation: "#374151",
+      builtin: "#0f766e",
+      decorator: "#dc2626",
+      tag: "#b91c1c",
+      attr: "#7c3aed",
+      plain: "#1f2937",
+    };
+
+    const C = isLightMode ? LIGHT : DARK;
+
+    const pyKeywords = /\b(import|from|as|def|class|return|if|elif|else|for|while|in|not|and|or|is|None|True|False|try|except|finally|with|yield|lambda|pass|break|continue|raise|del|global|nonlocal|assert|async|await)\b/g;
+    const jsKeywords = /\b(import|export|from|as|default|const|let|var|function|class|return|if|else|for|while|in|of|do|new|delete|typeof|instanceof|void|this|super|extends|implements|interface|type|enum|switch|case|break|continue|throw|try|catch|finally|async|await|yield|null|undefined|true|false|static|public|private|protected|abstract|readonly)\b/g;
+    const generalKeywords = /\b(import|export|return|if|else|for|while|do|class|function|const|let|var|new|delete|try|catch|finally|null|true|false|async|await)\b/g;
+    const strDoubleQ = /"(?:[^"\\]|\\.)*"/g;
+    const strSingleQ = /'(?:[^'\\]|\\.)*'/g;
+    const strBacktick = /`(?:[^`\\]|\\.)*`/g;
+    const numbers = /\b(\d+(?:\.\d+)?(?:e[+-]?\d+)?)\b/g;
+    const comments = /(\/\/.*|#.*|\/\*[\s\S]*?\*\/)/g;
+    const funcDef = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*(?=\()/g;
+    const decorator = /@([a-zA-Z_][a-zA-Z0-9_.]*)/g;
+
+    const isLow = lang.toLowerCase();
+    const keywords = isLow === "python" || isLow === "py" ? pyKeywords
+      : (isLow === "javascript" || isLow === "js" || isLow === "typescript" || isLow === "ts" || isLow === "jsx" || isLow === "tsx") ? jsKeywords
+      : generalKeywords;
+
+    lines.forEach((line, lineIdx) => {
+      if (lineIdx > 0) nodes.push("\n");
+
+      // Tokenize this line
+      const tokens: Array<{ start: number; end: number; type: string }> = [];
+
+      const addMatches = (re: RegExp, type: string) => {
+        re.lastIndex = 0;
+        let m;
+        while ((m = re.exec(line)) !== null) {
+          tokens.push({ start: m.index, end: m.index + m[0].length, type });
+        }
+      };
+
+      addMatches(comments, "comment");
+      addMatches(strDoubleQ, "string");
+      addMatches(strSingleQ, "string");
+      addMatches(strBacktick, "string");
+      addMatches(numbers, "number");
+      addMatches(decorator, "decorator");
+      addMatches(funcDef, "function");
+      addMatches(new RegExp(keywords.source, "g"), "keyword");
+
+      // Sort tokens by start, remove overlaps
+      tokens.sort((a, b) => a.start - b.start);
+      const filtered: typeof tokens = [];
+      let cursor = 0;
+      for (const tok of tokens) {
+        if (tok.start >= cursor) {
+          filtered.push(tok);
+          cursor = tok.end;
+        }
+      }
+
+      // Build spans
+      let pos = 0;
+      filtered.forEach((tok, ti) => {
+        if (tok.start > pos) {
+          nodes.push(<span key={`${lineIdx}-plain-${ti}`} style={{ color: C.plain }}>{line.slice(pos, tok.start)}</span>);
+        }
+        const colorMap: Record<string, string> = {
+          keyword: C.keyword,
+          string: C.string,
+          number: C.number,
+          comment: C.comment,
+          function: C.function,
+          decorator: C.decorator,
+        };
+        nodes.push(
+          <span key={`${lineIdx}-tok-${ti}`} style={{ color: colorMap[tok.type] || C.plain }}>
+            {line.slice(tok.start, tok.end)}
+          </span>
+        );
+        pos = tok.end;
+      });
+
+      if (pos < line.length) {
+        nodes.push(<span key={`${lineIdx}-tail`} style={{ color: C.plain }}>{line.slice(pos)}</span>);
+      }
+    });
+
+    return nodes;
+  };
+
+  const highlighted = highlight(code, language);
+
   return (
-    <div className="my-4 border border-zinc-800 rounded-xl overflow-hidden bg-[#121215] shadow-lg select-text font-mono w-full max-w-[100%]">
+    <div className={`my-4 border rounded-xl overflow-hidden shadow-lg select-text font-mono w-full max-w-[100%] transition-colors duration-200 ${
+      isLightMode ? "border-[#c3c2b7] bg-[#f0ede6]" : "border-zinc-800 bg-[#121215]"
+    }`}>
       {/* Header bar */}
-      <div className="flex justify-between items-center px-4 py-2 bg-[#18181b] border-b border-zinc-850 text-zinc-400 select-none">
+      <div className={`flex justify-between items-center px-4 py-2 border-b select-none transition-colors duration-200 ${
+        isLightMode ? "bg-[#e8e3d9] border-[#c3c2b7] text-[#6c6a64]" : "bg-[#18181b] border-zinc-850 text-zinc-400"
+      }`}>
         <span className="text-[11.5px] font-sans font-medium uppercase tracking-wider">{language || "code"}</span>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 hover:text-white text-[11px] font-sans font-medium transition-colors cursor-pointer"
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-sans font-medium transition-colors cursor-pointer ${
+            isLightMode
+              ? "bg-[#d9d3c7] hover:bg-[#c5beb2] text-[#3d3d3a] hover:text-[#141413]"
+              : "bg-[#27272a] hover:bg-[#3f3f46] text-zinc-300 hover:text-white"
+          }`}
         >
           {copied ? (
             <>
@@ -1232,8 +1370,10 @@ const CodeSnippetBlock = ({ code, language }: { code: string; language: string }
         </button>
       </div>
       {/* Code body */}
-      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed text-zinc-300 bg-[#0f0f12] scrollbar-thin">
-        <code>{code}</code>
+      <pre className={`p-4 overflow-x-auto text-[13px] leading-relaxed scrollbar-thin transition-colors duration-200 ${
+        isLightMode ? "bg-[#f5f0e8] text-[#1f2937]" : "bg-[#0f0f12] text-zinc-300"
+      }`}>
+        <code>{highlighted}</code>
       </pre>
     </div>
   );

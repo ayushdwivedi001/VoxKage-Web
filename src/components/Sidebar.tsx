@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import { saveSettingsProfile } from "@/lib/api";
 import {
   Clock,
   PanelLeft,
@@ -88,16 +89,30 @@ export default function Sidebar({
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAppearanceMenu, setShowAppearanceMenu] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
-  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
+      if (savedTheme && ["light", "dark", "system"].includes(savedTheme)) {
+        return savedTheme;
+      }
+    }
+    return "dark";
+  });
   const [avatarError, setAvatarError] = useState(false);
 
+  // Sync state if theme is updated remotely or via boot payload
   useEffect(() => {
-    const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
-    if (savedTheme) {
-      setThemeMode(savedTheme);
-    }
+    const handleThemeUpdated = (e: Event) => {
+      const customEv = e as CustomEvent<string>;
+      if (customEv.detail && ["light", "dark", "system"].includes(customEv.detail)) {
+        setThemeMode(customEv.detail as "light" | "dark" | "system");
+      }
+    };
+    window.addEventListener("voxkage_theme_updated", handleThemeUpdated);
+    return () => window.removeEventListener("voxkage_theme_updated", handleThemeUpdated);
   }, []);
 
+  // Apply theme to DOM + persist to localStorage + Supabase
   useEffect(() => {
     localStorage.setItem("voxkage_theme_mode", themeMode);
     const root = document.documentElement;
@@ -108,15 +123,39 @@ export default function Sidebar({
       root.classList.add("dark");
       root.classList.remove("light");
     } else {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-      if (systemTheme === "light") {
-        root.classList.add("light");
-        root.classList.remove("dark");
-      } else {
+      // system — apply immediately based on current OS preference
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (prefersDark) {
         root.classList.add("dark");
         root.classList.remove("light");
+      } else {
+        root.classList.add("light");
+        root.classList.remove("dark");
       }
     }
+    // Persist to Supabase (fire-and-forget) — only when user token exists
+    const token = typeof window !== "undefined" ? localStorage.getItem("voxkage_web_token") : null;
+    if (token) {
+      saveSettingsProfile({ theme_mode: themeMode }).catch(() => {});
+    }
+  }, [themeMode]);
+
+  // Live-follow OS theme changes when mode is 'system'
+  useEffect(() => {
+    if (themeMode !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => {
+      const root = document.documentElement;
+      if (mq.matches) {
+        root.classList.add("dark");
+        root.classList.remove("light");
+      } else {
+        root.classList.add("light");
+        root.classList.remove("dark");
+      }
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, [themeMode]);
 
   const glassBtnStyle = "border border-white/10 bg-white/5 backdrop-blur-md shadow-sm transition-all duration-200";

@@ -349,6 +349,7 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
         "custom_proxy_url": profile.get("custom_proxy_url") or profile.get("customProxyUrl") or "",
         "selected_model": profile.get("selected_model") or profile.get("selectedModel") or "DeepSeek V4 Flash",
         "selected_variant": profile.get("selected_variant") or profile.get("selectedVariant") or "Max",
+        "theme_mode": profile.get("theme_mode") or "",
         "soul_context": soul_context,
         "mcp_connections": list(connections.keys()),
         "mcp_tools": TOOLS_SCHEMA + mcp_tools,
@@ -356,6 +357,7 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
         "favorites": favorites,
         "models": models
     }
+
 
 @app.post("/auth/send-otp")
 def send_otp_endpoint(req: SendOtpRequest):

@@ -114,9 +114,38 @@ export default function Home() {
       chatSessions.setSessionsList(sess);
 
       const boot = await fetchBootPayload();
-      
+
+      // Cross-device theme sync — restore Supabase-stored preference on login
+      if (boot.theme_mode && ["light", "dark", "system"].includes(boot.theme_mode)) {
+        const localTheme = localStorage.getItem("voxkage_theme_mode");
+        // Only override local if Supabase has a preference and local doesn't, or they differ
+        if (!localTheme || localTheme !== boot.theme_mode) {
+          localStorage.setItem("voxkage_theme_mode", boot.theme_mode);
+          const root = document.documentElement;
+          if (boot.theme_mode === "light") {
+            root.classList.add("light");
+            root.classList.remove("dark");
+          } else if (boot.theme_mode === "dark") {
+            root.classList.add("dark");
+            root.classList.remove("light");
+          } else {
+            // system
+            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            if (prefersDark) {
+              root.classList.add("dark");
+              root.classList.remove("light");
+            } else {
+              root.classList.add("light");
+              root.classList.remove("dark");
+            }
+          }
+        }
+        window.dispatchEvent(new CustomEvent("voxkage_theme_updated", { detail: boot.theme_mode }));
+      }
+
       setConnectedServers(boot.mcp_connections || []);
       setFavorites(boot.favorites || []);
+
       
       let initialModels = mapModelsList(boot.models || [], boot.favorites || []);
       const { secureLoadKey } = await import("@/lib/secureStorage");

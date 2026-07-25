@@ -42,14 +42,15 @@ export default function LoginView({
   const [isSignUp, setIsSignUp] = useState(false);
 
   // Theme management state
-  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">("dark");
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
-    if (savedTheme) {
-      setThemeMode(savedTheme);
+  const [themeMode, setThemeMode] = useState<"light" | "dark" | "system">(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("voxkage_theme_mode") as "light" | "dark" | "system" | null;
+      if (savedTheme && ["light", "dark", "system"].includes(savedTheme)) {
+        return savedTheme;
+      }
     }
-  }, []);
+    return "dark";
+  });
 
   useEffect(() => {
     localStorage.setItem("voxkage_theme_mode", themeMode);
