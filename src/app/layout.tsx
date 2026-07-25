@@ -29,7 +29,7 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#DBDAD4" },
-    { media: "(prefers-color-scheme: dark)", color: "#0d0d0f" },
+    { media: "(prefers-color-scheme: dark)", color: "#05050a" },
   ],
 };
 
@@ -41,7 +41,7 @@ const THEME_SCRIPT = `
   try {
     var t = localStorage.getItem('voxkage_theme_mode');
     var cls = document.documentElement.classList;
-    var color = '#0d0d0f';
+    var color = '#05050a';
     if (t === 'light') {
       cls.add('light');
       cls.remove('dark');
@@ -49,14 +49,14 @@ const THEME_SCRIPT = `
     } else if (t === 'dark') {
       cls.add('dark');
       cls.remove('light');
-      color = '#0d0d0f';
+      color = '#05050a';
     } else {
       // 'system' or not set — respect OS preference
       var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       if (prefersDark) {
         cls.add('dark');
         cls.remove('light');
-        color = '#0d0d0f';
+        color = '#05050a';
       } else {
         cls.add('light');
         cls.remove('dark');
