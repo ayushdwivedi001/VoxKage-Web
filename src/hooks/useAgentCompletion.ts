@@ -544,10 +544,13 @@ export default function useAgentCompletion({
             if (tags.map_tag) finalAssistantContent += `\n\n${tags.map_tag}`;
             if (tags.weather_tag) finalAssistantContent += `\n\n${tags.weather_tag}`;
             if (tags.chart_tag) finalAssistantContent += `\n\n${tags.chart_tag}`;
-            if (tags.flow_tag) finalAssistantContent += `\n\n${tags.flow_tag}`;
-            if (tags.chemistry_tag) finalAssistantContent += `\n\n${tags.chemistry_tag}`;
             if (tags.timeline_tag) finalAssistantContent += `\n\n${tags.timeline_tag}`;
-            if (tags.calculator_tag) finalAssistantContent += `\n\n${tags.calculator_tag}`;
+            if (tags.sources_tag) {
+              finalAssistantContent = finalAssistantContent
+                .replace(/<Sources[\s\S]*?\/>/gi, "")
+                .trim();
+              finalAssistantContent += `\n\n${tags.sources_tag}`;
+            }
 
             setMessages((prev) => {
               if (prev.length === 0) return prev;

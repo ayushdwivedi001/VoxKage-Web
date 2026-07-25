@@ -1513,7 +1513,13 @@ async def execute_agent_tools(
                 seen_urls.add(s["url"])
                 unique_sources.append(s)
         if unique_sources:
-            sources_str = "||".join([f"{s['title'].replace('|', '-').replace('<', '').replace('>', '')}|{s['url']}" for s in unique_sources])
+            sources_parts = []
+            for s in unique_sources:
+                t_clean = str(s.get("title", "")).replace("|", "-").replace("<", "").replace(">", "").replace('"', '&quot;')
+                u_clean = str(s.get("url", "")).replace("|", "%7C").replace('"', '&quot;')
+                snip_clean = str(s.get("snippet", "empty")).replace("|", "-").replace("<", "").replace(">", "").replace('"', '&quot;').replace("\n", " ")
+                sources_parts.append(f"{t_clean}|{u_clean}|{snip_clean}")
+            sources_str = "||".join(sources_parts)
             sources_tag = f'<Sources data="{sources_str}" />'
 
     tags = {

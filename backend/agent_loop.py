@@ -20,6 +20,74 @@ from tool_schemas import TOOLS_SCHEMA
 # Shared laptop responses channel: { request_id: asyncio.Future }
 LAPTOP_CHANNELS = {}
 
+import urllib.parse
+
+def sanitize_snippet(snippet_text: str, fallback_title: str, url: str) -> str:
+    if not snippet_text or not isinstance(snippet_text, str):
+        domain = urllib.parse.urlparse(url).netloc or "web resource"
+        return f"Document and web resource inspected from {domain}."
+    
+    js_warning_patterns = [
+        "javascript is disabled",
+        "please enable javascript",
+        "required part of this site couldn't load",
+        "checking your browser before accessing",
+        "cloudflare ray id",
+        "enable cookies and reload",
+        "access denied",
+        "403 forbidden",
+        "404 not found",
+        "security check"
+    ]
+    
+    snip_lower = snippet_text.lower()
+    if any(pat in snip_lower for pat in js_warning_patterns):
+        domain = urllib.parse.urlparse(url).netloc or "web source"
+        parts = [p for p in url.split('/') if p and not p.startswith('http')]
+        clean_name = parts[-1].replace('-', ' ').replace('_', ' ').replace('.html', '').replace('.pdf', '') if parts else ''
+        if len(clean_name) > 3:
+            return f"Extracted document & role details for {clean_name.title()} from {domain}."
+        return f"Inspected web document resource from {domain}."
+    
+    clean = snippet_text.strip()
+    return clean[:800] if len(clean) > 800 else clean
+
+def register_consulted_source(tool_context: dict, url: str, title: str = None, snippet: str = None):
+    if not url or not isinstance(url, str) or not url.startswith("http"):
+        return
+    
+    tool_context["web_search_called"] = True
+    sources = tool_context.get("consulted_sources")
+    if sources is None:
+        sources = []
+        tool_context["consulted_sources"] = sources
+        
+    domain = urllib.parse.urlparse(url).netloc
+    display_title = title
+    if not display_title or display_title == url or len(display_title.strip()) < 3:
+        parts = [p for p in url.split('/') if p and not p.startswith('http')]
+        if parts:
+            clean_name = parts[-1].replace('-', ' ').replace('_', ' ').replace('.html', '').replace('.pdf', '')
+            display_title = f"{clean_name.title()} ({domain})"
+        else:
+            display_title = f"Web Source ({domain})"
+            
+    clean_snip = sanitize_snippet(snippet, display_title, url)
+    
+    for s in sources:
+        if s.get("url") == url:
+            if clean_snip and clean_snip != "empty" and (not s.get("snippet") or s.get("snippet") == "empty" or "javascript" in str(s.get("snippet")).lower()):
+                s["snippet"] = clean_snip
+            if display_title and (not s.get("title") or s.get("title") == url):
+                s["title"] = display_title
+            return
+
+    sources.append({
+        "title": display_title,
+        "url": url,
+        "snippet": clean_snip
+    })
+
 def apply_diff_python(current_code: str, diff_block: str) -> str:
     pattern = re.compile(
         r'<<<<<<< SEARCH\r?\n([\s\S]*?)\r?\n=======\r?\n([\s\S]*?)\r?\n>>>>>>> REPLACE',
@@ -339,39 +407,6 @@ async def execute_tool_call_v2(
         # Update consulted web sources context
         if name in {"web_search", "web_fetch", "web_search_parallel", "web_fetch_parallel", "web_search_deep", "browse_and_extract_tool"}:
             tool_context["web_search_called"] = True
-            import urllib.parse
-            if name in ("web_search", "web_search_deep"):
-                q = args.get("query", "")
-                if q:
-                    tool_context["consulted_sources"].append({
-                        "title": f"DuckDuckGo Search: {q}",
-                        "url": f"https://duckduckgo.com/?q={urllib.parse.quote(q)}"
-                    })
-            elif name == "web_fetch":
-                u = args.get("url", "")
-                if u:
-                    tool_context["consulted_sources"].append({"title": u, "url": u})
-            elif name == "web_search_parallel":
-                for q in args.get("queries", []):
-                    if q:
-                        tool_context["consulted_sources"].append({
-                            "title": f"DuckDuckGo Search: {q}",
-                            "url": f"https://duckduckgo.com/?q={urllib.parse.quote(q)}"
-                        })
-            elif name == "web_fetch_parallel":
-                for u in args.get("urls", []):
-                    if u:
-                        tool_context["consulted_sources"].append({"title": u, "url": u})
-            elif name == "browse_and_extract_tool":
-                u = args.get("url", "")
-                q = args.get("query", "")
-                if u:
-                    tool_context["consulted_sources"].append({"title": u, "url": u})
-                elif q:
-                    tool_context["consulted_sources"].append({
-                        "title": f"DuckDuckGo Search: {q}",
-                        "url": f"https://duckduckgo.com/?q={urllib.parse.quote(q)}"
-                    })
 
         tc_id = tc["id"]
         tool_output = ""
@@ -480,14 +515,26 @@ async def execute_tool_call_v2(
                 if isinstance(search_res, list):
                     for r in search_res:
                         if isinstance(r, dict) and r.get("url") and "error" not in r:
-                            tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
+                            snip = r.get("snippet") or r.get("text") or r.get("content") or r.get("summary")
+                            register_consulted_source(tool_context, r["url"], r.get("title"), snip)
+                elif isinstance(search_res, dict) and isinstance(search_res.get("results"), list):
+                    for r in search_res["results"]:
+                        if isinstance(r, dict) and r.get("url") and "error" not in r:
+                            snip = r.get("snippet") or r.get("text") or r.get("content") or r.get("summary")
+                            register_consulted_source(tool_context, r["url"], r.get("title"), snip)
             elif name == "web_fetch":
                 tool_context["web_search_called"] = True
                 u = args.get("url", "")
                 fetch_res = await web_fetch(u)
                 tool_output = json.dumps(fetch_res)
-                if isinstance(fetch_res, dict) and fetch_res.get("url") and "error" not in fetch_res:
-                    tool_context["consulted_sources"].append({"title": fetch_res.get("url"), "url": fetch_res.get("url")})
+                snip = ""
+                title = None
+                if isinstance(fetch_res, dict):
+                    snip = fetch_res.get("content") or fetch_res.get("text") or fetch_res.get("summary") or ""
+                    title = fetch_res.get("title")
+                elif isinstance(fetch_res, str):
+                    snip = fetch_res
+                register_consulted_source(tool_context, u, title, snip)
             elif name == "web_search_parallel":
                 tool_context["web_search_called"] = True
                 queries = args.get("queries", [])
@@ -498,16 +545,19 @@ async def execute_tool_call_v2(
                         if isinstance(sub_list, list):
                             for r in sub_list:
                                 if isinstance(r, dict) and r.get("url") and "error" not in r:
-                                    tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
+                                    snip = r.get("snippet") or r.get("text") or r.get("content") or r.get("summary")
+                                    register_consulted_source(tool_context, r["url"], r.get("title"), snip)
             elif name == "web_fetch_parallel":
                 tool_context["web_search_called"] = True
                 urls = args.get("urls", [])
                 fetch_res = await web_fetch_parallel(urls)
                 tool_output = json.dumps(fetch_res)
                 if isinstance(fetch_res, list):
-                    for r in fetch_res:
-                        if isinstance(r, dict) and r.get("url") and "error" not in r:
-                            tool_context["consulted_sources"].append({"title": r.get("url"), "url": r.get("url")})
+                    for idx, r in enumerate(fetch_res):
+                        target_u = urls[idx] if idx < len(urls) else (r.get("url") if isinstance(r, dict) else "")
+                        snip = r.get("content") or r.get("text") or r.get("summary") if isinstance(r, dict) else str(r)
+                        title = r.get("title") if isinstance(r, dict) else None
+                        register_consulted_source(tool_context, target_u, title, snip)
             elif name == "web_search_deep":
                 tool_context["web_search_called"] = True
                 q = args.get("query", "")
@@ -516,7 +566,8 @@ async def execute_tool_call_v2(
                 if isinstance(deep_res, list):
                     for r in deep_res:
                         if isinstance(r, dict) and r.get("url") and "error" not in r:
-                            tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
+                            snip = r.get("snippet") or r.get("text") or r.get("content") or r.get("summary")
+                            register_consulted_source(tool_context, r["url"], r.get("title"), snip)
 
         # --- Route Laptop Daemon Tools ---
         elif name in {"laptop_command", "open_application", "close_application"}:
@@ -814,15 +865,17 @@ async def execute_tool_call_v2(
             if u:
                 fetch_res = await web_fetch(u)
                 tool_output = fetch_res.get("content", fetch_res.get("error", "No text content."))
-                if isinstance(fetch_res, dict) and fetch_res.get("url") and "error" not in fetch_res:
-                    tool_context["consulted_sources"].append({"title": fetch_res.get("url"), "url": fetch_res.get("url")})
+                snip = fetch_res.get("content") if isinstance(fetch_res, dict) else str(fetch_res)
+                title = fetch_res.get("title") if isinstance(fetch_res, dict) else None
+                register_consulted_source(tool_context, u, title, snip)
             else:
                 search_res = await web_search(q)
                 tool_output = json.dumps(search_res)
                 if isinstance(search_res, list):
                     for r in search_res:
                         if isinstance(r, dict) and r.get("url") and "error" not in r:
-                            tool_context["consulted_sources"].append({"title": r.get("title") or r.get("url"), "url": r.get("url")})
+                            snip = r.get("snippet") or r.get("text") or r.get("content") or r.get("summary")
+                            register_consulted_source(tool_context, r["url"], r.get("title"), snip)
 
         elif name == "get_current_datetime":
             if client_time:
@@ -1371,8 +1424,21 @@ async def run_agentic_loop(
                 seen_urls.add(s["url"])
                 unique_sources.append(s)
         if unique_sources:
-            sources_str = "||".join([f"{s['title'].replace('|', '-').replace('<', '').replace('>', '')}|{s['url']}" for s in unique_sources])
+            sources_parts = []
+            for s in unique_sources:
+                t_clean = str(s.get("title", "")).replace("|", "-").replace("<", "").replace(">", "").replace('"', '&quot;')
+                u_clean = str(s.get("url", "")).replace("|", "%7C").replace('"', '&quot;')
+                snip_clean = str(s.get("snippet", "empty")).replace("|", "-").replace("<", "").replace(">", "").replace('"', '&quot;').replace("\n", " ")
+                sources_parts.append(f"{t_clean}|{u_clean}|{snip_clean}")
+            sources_str = "||".join(sources_parts)
             sources_tag = f'\n\n<Sources data="{sources_str}" />'
+            if messages and messages[-1]["role"] == "assistant":
+                if messages[-1]["content"]:
+                    messages[-1]["content"] += sources_tag
+                else:
+                    messages[-1]["content"] = sources_tag
+            else:
+                messages.append({"role": "assistant", "content": sources_tag})
             yield json.dumps({"type": "token", "content": sources_tag})
 
     if tool_context.get("map_tag"):

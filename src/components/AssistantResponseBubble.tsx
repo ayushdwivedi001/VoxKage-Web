@@ -4,6 +4,8 @@ import dynamic from "next/dynamic";
 import {
   Check,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Copy,
   Volume2,
@@ -12,6 +14,7 @@ import {
   RotateCcw,
   Globe,
   X,
+  ExternalLink,
   Image as ImageIcon,
   Navigation,
   Sun,
@@ -312,6 +315,80 @@ const ROTATING_STATUSES = [
   "Zesting", "Zigzagging"
 ];
 
+interface AnimatedSourcesButtonProps {
+  sourcesCount: number;
+  sources: Array<{ title: string; domain: string; url: string; snippet?: string }>;
+  onOpen: () => void;
+}
+
+function AnimatedSourcesButton({ sourcesCount, sources, onOpen }: AnimatedSourcesButtonProps) {
+  const [isRevealed, setIsRevealed] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  useEffect(() => {
+    const checkTheme = () => {
+      setIsLightMode(document.documentElement.classList.contains("light"));
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const revealTimer = setTimeout(() => setIsRevealed(true), 40);
+    const finishTimer = setTimeout(() => setIsFinished(true), 650);
+    return () => {
+      clearTimeout(revealTimer);
+      clearTimeout(finishTimer);
+    };
+  }, []);
+
+  return (
+    <div 
+      onClick={onOpen}
+      style={{
+        transform: isRevealed ? "translateY(0px)" : "translateY(14px)",
+        opacity: isRevealed ? 1 : 0,
+        transition: "transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out",
+      }}
+      className="flex items-center gap-2.5 mt-3.5 mb-1 cursor-pointer select-none w-fit group"
+    >
+      <div className="flex items-center">
+        {sources.slice(0, 3).map((src, srcIdx) => {
+          const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
+          return (
+            <img
+              key={srcIdx}
+              src={faviconUrl}
+              alt=""
+              className="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-full border-2 border-[#faf9f5] [.dark_&]:border-zinc-950 bg-white [.dark_&]:bg-zinc-900 shadow-sm transition-transform duration-200 group-hover:scale-105"
+              style={{
+                marginLeft: srcIdx > 0 ? "-8px" : "0px",
+                zIndex: 10 - srcIdx,
+              }}
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M2 12h20'/%3E%3C/svg%3E";
+              }}
+            />
+          );
+        })}
+      </div>
+      <span 
+        style={{ transition: "color 0.5s ease-out, text-decoration-color 0.5s ease-out" }}
+        className={`font-serif text-sm sm:text-[15px] font-normal underline underline-offset-4 decoration-[#6c6a64]/50 [.dark_&]:decoration-zinc-500 group-hover:decoration-[#141413] [.dark_&]:group-hover:decoration-white ${
+          !isFinished
+            ? "bg-gradient-to-r from-[#38bdf8] via-[#0438c2] to-[#020938] bg-clip-text text-transparent font-medium"
+            : (isLightMode ? "text-[#141413]" : "text-white")
+        }`}
+      >
+        +{sourcesCount} Sources
+      </span>
+    </div>
+  );
+}
+
 interface AssistantResponseBubbleProps {
   sessionId: string | null;
   msg: Message;
@@ -382,6 +459,7 @@ export default function AssistantResponseBubble({
   const [dots, setDots] = useState(".");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSourcesOpen, setIsSourcesOpen] = useState(false);
+  const [expandedSourceIdx, setExpandedSourceIdx] = useState<number | null>(null);
   const [activeWord, setActiveWord] = useState("Thinking");
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
   const [feedbackChoice, setFeedbackChoice] = useState<"thumbs_up" | "thumbs_down" | null>(null);
@@ -1033,36 +1111,13 @@ export default function AssistantResponseBubble({
         </ExpandableWrapper>
       )}
 
-      {/* --- Consulted Web Search Sources Mini Row --- */}
-      {msg.status === "completed" && sources.length > 0 && (
-        <div 
-          onClick={() => setIsSourcesOpen(true)}
-          className="flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-xl bg-zinc-900/65 border border-zinc-850 hover:bg-zinc-850 hover:border-zinc-700 transition-all duration-200 cursor-pointer select-none w-fit shadow-md"
-        >
-          <div className="flex items-center">
-            {sources.slice(0, 3).map((src, srcIdx) => {
-              const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
-              return (
-                <img
-                  key={srcIdx}
-                  src={faviconUrl}
-                  alt=""
-                  className="w-4 h-4 rounded-full border border-zinc-950 bg-zinc-900"
-                  style={{
-                    marginLeft: srcIdx > 0 ? "-6px" : "0px",
-                    zIndex: 10 - srcIdx,
-                  }}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'/%3E";
-                  }}
-                />
-              );
-            })}
-          </div>
-          <span className="text-[12px] text-zinc-400 font-medium font-sans">
-            {sources.length > 3 ? `+${sources.length - 3} sources` : `${sources.length} sources`}
-          </span>
-        </div>
+      {/* --- Consulted Web Search Sources Bottom Bar (ONLY after stream completion) --- */}
+      {msg.status === "completed" && sources && sources.length > 0 && (
+        <AnimatedSourcesButton 
+          sourcesCount={sources.length} 
+          sources={sources} 
+          onOpen={() => setIsSourcesOpen(true)} 
+        />
       )}
 
       {/* --- Files cards and Actions section --- */}
@@ -1198,62 +1253,128 @@ export default function AssistantResponseBubble({
         </div>
       )}
 
-      {/* Sources Centric Modal Popup Overlay */}
+      {/* Visited Sources & Research Modal */}
       {mounted && isSourcesOpen && createPortal(
         <div 
-          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-[100] animate-fadeIn"
+          className="fixed inset-0 bg-black/65 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fadeIn"
           onClick={() => setIsSourcesOpen(false)}
         >
           <div 
-            className="w-full max-w-md bg-[#0e0e11] border border-zinc-850 rounded-2xl p-6 shadow-2xl relative mx-4 max-h-[70vh] flex flex-col"
+            className="w-full max-w-lg max-h-[80vh] flex flex-col bg-[#faf9f5] [.dark_&]:bg-[#0c0c0e] border border-[#e6dfd8] [.dark_&]:border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-2xl relative mx-auto overflow-hidden transition-all"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-4 mb-4 select-none">
-              <div className="flex items-center gap-2 text-blue-400">
-                <Globe className="w-4.5 h-4.5" />
-                <h3 className="text-white text-[15px] font-semibold tracking-wide font-sans">Consulted Sources</h3>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-[#e6dfd8] [.dark_&]:border-zinc-800/80 pb-4 mb-4 select-none">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center">
+                  {sources.slice(0, 3).map((src, idx) => (
+                    <img
+                      key={idx}
+                      src={`https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`}
+                      alt=""
+                      className="w-6 h-6 rounded-full border-2 border-[#faf9f5] [.dark_&]:border-zinc-950 bg-white [.dark_&]:bg-zinc-900 shadow-sm"
+                      style={{ marginLeft: idx > 0 ? "-8px" : "0px", zIndex: 10 - idx }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M2 12h20'/%3E%3C/svg%3E";
+                      }}
+                    />
+                  ))}
+                </div>
+                <div>
+                  <h3 className="text-[#141413] [.dark_&]:text-white text-base font-semibold font-sans">
+                    Sources & Visited Research ({sources.length})
+                  </h3>
+                  <p className="text-[11.5px] text-[#6c6a64] [.dark_&]:text-zinc-400 font-sans">
+                    Websites inspected by VoxKage during response synthesis
+                  </p>
+                </div>
               </div>
               <button 
                 type="button"
                 onClick={() => setIsSourcesOpen(false)}
-                className="w-6 h-6 rounded-full bg-zinc-900 hover:bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors duration-150 cursor-pointer"
+                className="w-7 h-7 rounded-xl bg-[#efe9de] [.dark_&]:bg-zinc-900 hover:bg-[#e6dfd8] [.dark_&]:hover:bg-zinc-800 flex items-center justify-center text-[#141413] [.dark_&]:text-zinc-300 transition-colors cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-grow pr-1 custom-scrollbar">
-              <div className="flex flex-col gap-3">
-                {sources.map((src, idx) => {
-                  const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
-                  return (
-                    <a
-                      key={idx}
-                      href={src.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3.5 p-3 rounded-xl border border-zinc-900 hover:border-zinc-800 bg-zinc-900/30 hover:bg-zinc-800/20 transition-all duration-200 group"
+            {/* Visited Websites List */}
+            <div className="overflow-y-auto flex-grow pr-1 custom-scrollbar space-y-3">
+              {sources.map((src, idx) => {
+                const faviconUrl = `https://www.google.com/s2/favicons?sz=64&domain=${src.domain}`;
+                const isExpanded = expandedSourceIdx === idx;
+                const hasSnippet = src.snippet && src.snippet !== "empty" && src.snippet.trim().length > 0;
+
+                // Format display title cleanly if raw URL was given
+                let displayTitle = src.title || src.domain;
+                if (displayTitle.startsWith("http")) {
+                  const parts = displayTitle.split('/').filter((p) => p && !p.startsWith('http'));
+                  const cleanPath = parts.length > 0 ? parts[parts.length - 1].replace(/[-_]/g, ' ').replace(/\.html?|\.pdf/gi, '') : '';
+                  displayTitle = cleanPath && cleanPath.length > 3 ? `${cleanPath.charAt(0).toUpperCase() + cleanPath.slice(1)} (${src.domain})` : src.domain;
+                }
+
+                return (
+                  <div
+                    key={idx}
+                    className="rounded-xl border border-[#e6dfd8] [.dark_&]:border-zinc-800/80 bg-[#efe9de]/60 [.dark_&]:bg-zinc-900/40 overflow-hidden transition-all"
+                  >
+                    {/* Item Header Bar */}
+                    <div 
+                      onClick={() => setExpandedSourceIdx(isExpanded ? null : idx)}
+                      className="p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-[#efe9de] [.dark_&]:hover:bg-zinc-850/60 transition-colors select-none"
                     >
-                      <img 
-                        src={faviconUrl} 
-                        alt="" 
-                        className="w-5 h-5 rounded-full"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'/%3E";
-                        }}
-                      />
-                      <div className="flex flex-col gap-0.5 min-w-0 flex-grow">
-                        <span className="text-[13.5px] font-medium text-zinc-300 group-hover:text-white transition-colors truncate">
-                          {src.title}
-                        </span>
-                        <span className="text-[11.5px] text-zinc-500 truncate">
-                          {src.domain}
-                        </span>
+                      <div className="flex items-center gap-3 min-w-0 flex-grow">
+                        <img 
+                          src={faviconUrl} 
+                          alt="" 
+                          className="w-6 h-6 rounded-full shrink-0 bg-white [.dark_&]:bg-zinc-800 border border-[#e6dfd8] [.dark_&]:border-zinc-800"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M2 12h20'/%3E%3C/svg%3E";
+                          }}
+                        />
+                        <div className="flex flex-col min-w-0 flex-grow">
+                          <span className="text-[13.5px] font-medium text-[#141413] [.dark_&]:text-zinc-200 truncate">
+                            {displayTitle}
+                          </span>
+                          <span className="text-[11px] font-mono text-[#6c6a64] [.dark_&]:text-zinc-400 truncate">
+                            {src.domain}
+                          </span>
+                        </div>
                       </div>
-                    </a>
-                  );
-                })}
-              </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <a
+                          href={src.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1.5 rounded-lg text-sky-600 [.dark_&]:text-sky-400 hover:bg-[#e6dfd8] [.dark_&]:hover:bg-zinc-800 transition-colors"
+                          title="Open website URL"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                        {hasSnippet && (
+                          <button
+                            type="button"
+                            className="p-1 rounded-lg text-[#6c6a64] [.dark_&]:text-zinc-400"
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Collapsible Snippet Box */}
+                    {isExpanded && hasSnippet && (
+                      <div className="px-3.5 pb-3.5 pt-1 border-t border-[#e6dfd8]/60 [.dark_&]:border-zinc-800/60">
+                        <div className="p-3 rounded-xl bg-[#faf9f5] [.dark_&]:bg-zinc-950/70 border border-[#e6dfd8] [.dark_&]:border-zinc-850 text-[11.5px] font-mono leading-relaxed text-[#3d3d3a] [.dark_&]:text-zinc-300 max-h-48 overflow-y-auto custom-scrollbar select-text whitespace-pre-wrap">
+                          {src.snippet}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>,

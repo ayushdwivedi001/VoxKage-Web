@@ -346,11 +346,18 @@ export const computeSessionFiles = (messages: Message[]) => {
 
   return list;
 };
+export interface SourceItem {
+  title: string;
+  url: string;
+  domain: string;
+  snippet?: string;
+}
+
 export const parseSources = (content: string) => {
   if (!content) return { cleanContent: "", sources: [] };
   const sourcesRegex = /<Sources\s+data="([^"]+)"\s*\/>/gi;
   let match;
-  let sources: { title: string; url: string; domain: string }[] = [];
+  let sources: SourceItem[] = [];
   
   while ((match = sourcesRegex.exec(content)) !== null) {
     const rawData = match[1];
@@ -360,6 +367,7 @@ export const parseSources = (content: string) => {
       if (parts.length >= 2) {
         const title = parts[0];
         const url = parts[1];
+        const snippet = parts[2] && parts[2] !== "empty" ? parts[2] : undefined;
         let domain = '';
         try {
           const matchDomain = url.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
@@ -368,7 +376,7 @@ export const parseSources = (content: string) => {
           domain = url;
         }
         if (!sources.some(s => s.url === url)) {
-          sources.push({ title, url, domain });
+          sources.push({ title, url, domain, snippet });
         }
       }
     });
@@ -889,118 +897,25 @@ export function parseInlineElements(text: string, sources: any[] = []) {
       const mathText = matchStr.slice(2, -2);
       tokens.push(<InlineMath key={tokenKey++} math={mathText} errorColor="#d4d4d8" />);
     } else if (matchStr.startsWith("[") && matchStr.endsWith(")")) {
-      // Handle [Label](URL) or [Label] (URL) markdown links
+      // Handle standard [Label](URL) markdown links
       const closingBracketIndex = matchStr.indexOf("]");
       const cleanLabel = matchStr.slice(1, closingBracketIndex).replace(/[\u2197↗]\u200e?\ufe0f?/g, "").trim();
       const openParenIndex = matchStr.indexOf("(", closingBracketIndex);
       const targetUrl = matchStr.slice(openParenIndex + 1, -1).trim();
 
-      let domain = "";
-      try {
-        const matchDomain = targetUrl.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
-        domain = matchDomain ? matchDomain[1] : targetUrl;
-      } catch {
-        domain = targetUrl;
-      }
-
-      const matchedSource = {
-        title: cleanLabel,
-        url: targetUrl,
-        domain: domain
-      };
-
-      const sourceIndex = sources.indexOf(matchedSource) !== -1 
-        ? sources.indexOf(matchedSource) + 1 
-        : (parseInt(cleanLabel) || sources.length + 1);
-
       tokens.push(
-        <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
+        <a
+          key={tokenKey++}
+          href={targetUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-500 [.light_&]:text-sky-600 hover:underline font-medium break-all select-text"
+        >
+          {cleanLabel || targetUrl}
+        </a>
       );
     } else if (matchStr.startsWith("[") && matchStr.endsWith("]")) {
-      const cleanLabel = matchStr.slice(1, -1).replace(/[\u2197↗]\u200e?\ufe0f?/g, "").trim();
-      const numIdx = parseInt(cleanLabel);
-      let matchedSource = null;
-
-      if (!isNaN(numIdx) && sources && sources[numIdx - 1]) {
-        matchedSource = sources[numIdx - 1];
-      } else if (sources && sources.length > 0) {
-        matchedSource = sources.find(s => {
-          const dom = (s.domain || "").toLowerCase();
-          const tit = (s.title || "").toLowerCase();
-          const lbl = cleanLabel.toLowerCase();
-          
-          // 1. Direct includes checks
-          if (dom.includes(lbl) || lbl.includes(dom.replace(/^www\./, "")) || tit.includes(lbl)) {
-            return true;
-          }
-          
-          // 2. Normalized alphanumeric check (ignoring spaces, case, hyphens, periods)
-          const normLbl = lbl.replace(/[^a-z0-9]/g, "");
-          const normDomClean = dom.replace(/^www\./, "").replace(/\.[a-z]{2,6}$/, "").replace(/[^a-z0-9]/g, "");
-          const normTit = tit.replace(/[^a-z0-9]/g, "");
-          
-          if (normLbl && normDomClean && (normDomClean.includes(normLbl) || normLbl.includes(normDomClean))) {
-            return true;
-          }
-          if (normLbl && normTit && normTit.includes(normLbl)) {
-            return true;
-          }
-          
-          // 3. Word-based overlap (if label has multiple words, check if all words are present in domain or title)
-          const lblWords = lbl.split(/\s+/).filter(w => w.length > 1);
-          if (lblWords.length > 0) {
-            const allWordsInDom = lblWords.every(w => dom.includes(w));
-            const allWordsInTit = lblWords.every(w => tit.includes(w));
-            if (allWordsInDom || allWordsInTit) {
-              return true;
-            }
-          }
-          
-          // 4. Special cases (e.g. TOI -> Times of India)
-          if (lbl === "toi" && (dom.includes("timesofindia") || tit.includes("times of india"))) {
-            return true;
-          }
-          
-          return false;
-        });
-      }
-
-      if (!matchedSource) {
-        const lowerLabel = cleanLabel.toLowerCase();
-        let fallbackUrl = `https://www.google.com/search?q=${encodeURIComponent(cleanLabel)}`;
-        
-        if (cleanLabel.includes(".") && !cleanLabel.includes(" ")) {
-          fallbackUrl = `https://${cleanLabel}`;
-        } else if (lowerLabel === "sysdig") {
-          fallbackUrl = "https://sysdig.com";
-        } else if (lowerLabel === "crescendo") {
-          fallbackUrl = "https://crescendo.ai";
-        } else if (lowerLabel === "imfounder") {
-          fallbackUrl = "https://imfounder.com";
-        } else if (lowerLabel === "google blog") {
-          fallbackUrl = "https://blog.google";
-        } else if (lowerLabel === "new indian express") {
-          fallbackUrl = "https://www.newindianexpress.com";
-        } else if (lowerLabel === "livemint") {
-          fallbackUrl = "https://www.livemint.com";
-        } else if (lowerLabel === "outlook india") {
-          fallbackUrl = "https://www.outlookindia.com";
-        }
-
-        matchedSource = {
-          title: cleanLabel,
-          url: fallbackUrl,
-          domain: cleanLabel
-        };
-      }
-
-      const sourceIndex = sources.indexOf(matchedSource) !== -1 
-        ? sources.indexOf(matchedSource) + 1 
-        : (parseInt(cleanLabel) || sources.length + 1);
-
-      tokens.push(
-        <CitationPill source={matchedSource} index={sourceIndex} key={tokenKey++} />
-      );
+      tokens.push(<React.Fragment key={tokenKey++}>{matchStr}</React.Fragment>);
     } else {
       // Check if the match is a link (either starts with http/www or matches our domain TLD pattern)
       const isLink = matchStr.match(/^https?:\/\//i) || 
