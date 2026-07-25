@@ -128,7 +128,7 @@ export default function ChatWorkspace({
           isChatActive ? "opacity-100 block" : "opacity-0 hidden"
         }`}
       >
-        <div className="w-full max-w-3xl flex flex-col gap-8 pt-24 pb-[180px] px-4 md:px-6">
+        <div className="w-full max-w-3xl flex flex-col gap-8 pt-24 pb-[260px] md:pb-[280px] px-4 md:px-6">
           {isSessionLoading ? (
             <div className="flex flex-col gap-8 w-full animate-pulse select-none">
               <div className="flex gap-4 items-start w-full">

@@ -27,6 +27,10 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   interactiveWidget: "resizes-content",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#DBDAD4" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d0d0f" },
+  ],
 };
 
 // Inline script that runs synchronously BEFORE React hydrates.
@@ -37,25 +41,36 @@ const THEME_SCRIPT = `
   try {
     var t = localStorage.getItem('voxkage_theme_mode');
     var cls = document.documentElement.classList;
+    var color = '#0d0d0f';
     if (t === 'light') {
       cls.add('light');
       cls.remove('dark');
+      color = '#DBDAD4';
     } else if (t === 'dark') {
       cls.add('dark');
       cls.remove('light');
+      color = '#0d0d0f';
     } else {
       // 'system' or not set — respect OS preference
       var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       if (prefersDark) {
         cls.add('dark');
         cls.remove('light');
+        color = '#0d0d0f';
       } else {
         cls.add('light');
         cls.remove('dark');
+        color = '#DBDAD4';
       }
     }
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      document.head.appendChild(meta);
+    }
+    meta.content = color;
   } catch(e) {
-    // Fallback to dark if localStorage/matchMedia unavailable
     document.documentElement.classList.add('dark');
   }
 })();

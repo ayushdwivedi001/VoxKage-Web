@@ -27,6 +27,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
         'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="option"], .prompt-textarea, .prompt-overlay, .fluid-glass-box-frosty, .fluid-glass-pill, .fluid-glass-popup, header, sidebar, nav, [data-interactive="true"]'
       );
 
+      if (window.innerWidth < 768) return;
       if (isInteractive) return;
 
       // Spawn a new click ripple wave (tiny 2-dot circular click effect)
@@ -68,7 +69,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
     resize();
 
     const isMobile = window.innerWidth < 768;
-    const dotSpacing = isMobile ? 14 : 22;
+    const dotSpacing = isMobile ? 28 : 22;
     const baseDotRadius = isMobile ? 1.0 : 1.35;
 
     const render = (timestamp: number) => {
@@ -97,8 +98,8 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
       ctx.fillStyle = isLight ? "#DBDAD4" : "#040406";
       ctx.fillRect(0, 0, width, height);
 
-      // In light theme: plain background only, no dots or ocean waves
-      if (isLight) {
+      // In light theme OR on mobile (<768px): plain flat background only, no dots or ocean waves
+      if (isLight || isMobile) {
         animFrameId = requestAnimationFrame(render);
         return;
       }

@@ -20,22 +20,36 @@ html, body {
   overscroll-behavior: none;
 }
 
+html.light, html.light body {
+  background-color: #DBDAD4 !important;
+}
+
+html.dark, html.dark body {
+  background-color: #0d0d0f !important;
+}
+
 body {
   position: fixed;
   inset: 0;
-  background-color: transparent;
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background-color: transparent;
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* Mobile Performance Optimizations: GPU hardware acceleration & blur removal */
+@media (max-width: 768px) {
+  .backdrop-blur-md,
+  .backdrop-blur-xl,
+  .backdrop-blur-2xl,
+  .backdrop-blur-3xl {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .prompt-container-mobile {
+    transform: translateZ(0);
+    will-change: transform;
+  }
 }
 
 /* Custom Selection */

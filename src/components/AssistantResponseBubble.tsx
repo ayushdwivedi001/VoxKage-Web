@@ -1174,7 +1174,7 @@ export default function AssistantResponseBubble({
 
       {/* --- Response actions block --- */}
       {msg.status === "completed" && (
-        <div className="relative mt-3 mb-2 font-sans select-none">
+        <div className="relative mt-4 mb-6 md:mb-8 font-sans select-none">
           <div className="flex items-center gap-4 text-zinc-500 [.light_&]:text-[#6c6a64] animate-fadeIn">
             <button
               type="button"
