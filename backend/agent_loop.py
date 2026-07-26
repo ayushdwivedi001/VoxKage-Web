@@ -116,23 +116,71 @@ def apply_diff_python(current_code: str, diff_block: str) -> str:
                     new_code = code_norm[:idx] + replace_norm + code_norm[idx + len(search_trim):]
     return new_code
 
-def extract_virtual_files_from_history(messages_history: list) -> dict[str, str]:
+def validate_js_with_node(js_code: str, line_offset: int = 0) -> dict:
+    import subprocess
+    import tempfile
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False, encoding="utf-8") as tmp:
+            tmp.write(js_code)
+            tmp_path = tmp.name
+        res = subprocess.run(["node", "--check", tmp_path], capture_output=True, text=True, timeout=5)
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        if res.returncode != 0:
+            err_msg = (res.stderr or res.stdout or "JavaScript Syntax Error").strip()
+            match = re.search(r':(\d+)(?::\d+)?\r?\n', err_msg)
+            if match:
+                err_line = int(match.group(1)) + line_offset
+                first_line = err_msg.splitlines()[0] if err_msg.splitlines() else err_msg
+                return {"valid": False, "error": f"JavaScript SyntaxError in <script> tag at line {err_line}: {first_line}"}
+            first_line = err_msg.splitlines()[0] if err_msg.splitlines() else err_msg
+            return {"valid": False, "error": f"JavaScript SyntaxError: {first_line}"}
+    except Exception:
+        pass
+    return {"valid": True}
+
+def extract_virtual_files_from_history(messages_history: list, tool_context: dict = None) -> dict[str, str]:
     files_map = {}
-    for m in messages_history:
+    for m in messages_history or []:
         if m.get("role") == "assistant":
-            content = m.get("content", "")
-            code_blocks = re.finditer(r'```(\w*)\n([\s\S]*?)(?:```|$)', content)
+            content = m.get("content") or ""
+            # Match ```header\n...``` handling CRLF (\r\n) and LF (\n)
+            code_blocks = re.finditer(r'```([^\n\r]*)\r?\n([\s\S]*?)(?:```|$)', content)
             files_list = []
             for match in code_blocks:
-                lang = match.group(1) or "txt"
+                header = (match.group(1) or "").strip()
                 code = match.group(2)
                 if not code.strip():
                     continue
                 
-                start_idx = max(0, match.start() - 150)
-                preceding = content[start_idx:match.start()]
-                file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
-                fname = file_match.group(1) if file_match else ""
+                lang = "txt"
+                fname = ""
+                if header:
+                    if ":" in header:
+                        parts = header.split(":", 1)
+                        lang = parts[0].strip() or "txt"
+                        fname = parts[1].strip()
+                    elif " " in header or "\t" in header:
+                        parts = header.split(None, 1)
+                        lang = parts[0].strip() or "txt"
+                        fname = parts[1].strip()
+                    elif "." in header:
+                        fname = header
+                        ext = header.split(".")[-1].lower()
+                        lang = "python" if ext == "py" else "javascript" if ext in ("js", "jsx") else "typescript" if ext in ("ts", "tsx") else ext
+                    else:
+                        lang = header
+
+                if fname and not re.search(r'\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip)$', fname, re.IGNORECASE):
+                    fname = ""
+                
+                if not fname:
+                    start_idx = max(0, match.start() - 150)
+                    preceding = content[start_idx:match.start()]
+                    file_match = re.search(r'`?(\/?[\w\-]+(?:/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?', preceding, re.IGNORECASE)
+                    fname = file_match.group(1) if file_match else ""
                 
                 if not fname:
                     lines = code.strip().split('\n')[:3]
@@ -149,15 +197,27 @@ def extract_virtual_files_from_history(messages_history: list) -> dict[str, str]
                 if fname.startswith("/"):
                     fname = fname[1:]
                 
-                if not any(f["name"] == fname for f in files_list):
-                    files_list.append({"name": fname, "code": code.strip()})
+                is_diff = "<<<<<<< SEARCH" in code and "=======" in code and ">>>>>>> REPLACE" in code
+                if is_diff:
+                    if fname in files_map:
+                        files_map[fname] = apply_diff_python(files_map[fname], code)
+                else:
+                    files_map[fname] = code.strip()
                     
-                    is_diff = "<<<<<<< SEARCH" in code and "=======" in code and ">>>>>>> REPLACE" in code
-                    if is_diff:
-                        if fname in files_map:
-                            files_map[fname] = apply_diff_python(files_map[fname], code)
-                    else:
-                        files_map[fname] = code.strip()
+    # Merge in-memory files created in current turn
+    if tool_context and "created_files" in tool_context:
+        for fname, content_code in tool_context["created_files"].items():
+            if fname.startswith("/"):
+                fname = fname[1:]
+            is_diff = "<<<<<<< SEARCH" in content_code and "=======" in content_code and ">>>>>>> REPLACE" in content_code
+            if is_diff:
+                if fname in files_map:
+                    files_map[fname] = apply_diff_python(files_map[fname], content_code)
+                else:
+                    files_map[fname] = content_code.strip()
+            else:
+                files_map[fname] = content_code.strip()
+
     return files_map
 
 def get_tool_label(name: str, args: dict) -> str:
@@ -659,61 +719,75 @@ async def execute_tool_call_v2(
             if filename.startswith("/"):
                 filename = filename[1:]
             
-            ext = filename.split(".")[-1].lower() if "." in filename else "txt"
-            lang_tag = "html" if ext == "html" else "css" if ext == "css" else "python" if ext == "py" else "javascript" if ext in ("js", "jsx") else "typescript" if ext in ("ts", "tsx") else ext
+            created_files = tool_context.setdefault("created_files", {})
+            
+            if name == "update_code_file" and ("<<<<<<< SEARCH" in content_code and "=======" in content_code and ">>>>>>> REPLACE" in content_code):
+                try:
+                    from database import get_session_messages
+                    messages_history = get_session_messages(session_id)
+                except Exception:
+                    messages_history = []
+                files_map = extract_virtual_files_from_history(messages_history, tool_context)
+                existing_code = files_map.get(filename) or created_files.get(filename, "")
+                if existing_code:
+                    content_code = apply_diff_python(existing_code, content_code)
+            
+            created_files[filename] = content_code
 
             await send_to_client({"type": "hud_log", "content": f"{'Creating' if name=='create_code_file' else 'Updating'} workspace file: {filename}..."})
-            await send_to_client({
-                "type": "token",
-                "content": f"\n\n```{lang_tag} {filename}\n{content_code}\n```\n\n"
-            })
-            tool_output = json.dumps({"status": "success", "file": filename, "lines": len(content_code.splitlines())})
+            tool_output = json.dumps({"status": "success", "file": filename, "lines": len(content_code.splitlines()), "message": f"File '{filename}' successfully saved in workspace."})
 
         elif name == "read_code_file":
-            filename = args.get("filename", "")
+            filename = args.get("filename", "").strip()
             await send_to_client({"type": "hud_log", "content": f"Reading virtual session file: {filename}..."})
             
-            # Fetch files in session
-            from database import get_session_messages
-            messages_history = get_session_messages(session_id)
-            
-            # Extract virtual files from messages
-            files_map = extract_virtual_files_from_history(messages_history)
+            try:
+                from database import get_session_messages
+                messages_history = get_session_messages(session_id)
+            except Exception:
+                messages_history = []
+            files_map = extract_virtual_files_from_history(messages_history, tool_context)
             
             if filename.startswith("/"):
                 filename = filename[1:]
             
             match_code = files_map.get(filename)
             if not match_code:
-                # Try case-insensitive matching
                 for fn, c in files_map.items():
                     if fn.lower() == filename.lower():
                         match_code = c
+                        filename = fn
                         break
             
             if match_code is not None:
+                start_line = args.get("start_line")
+                end_line = args.get("end_line")
+                if start_line is not None or end_line is not None:
+                    lines = match_code.splitlines()
+                    s_idx = max(0, (start_line or 1) - 1)
+                    e_idx = end_line if end_line else len(lines)
+                    match_code = "\n".join(lines[s_idx:e_idx])
                 tool_output = match_code
             else:
                 available = ", ".join(list(files_map.keys())) or "none"
-                tool_output = f"Error: File '{filename}' not found. Available session files: {available}"
+                tool_output = f"Workspace File Notice: File '{filename}' was not found in active workspace. Available files: {available}. Call create_code_file if you need to create it."
 
         elif name == "verify_code_file":
-            filename = args.get("filename", "")
+            filename = args.get("filename", "").strip()
             await send_to_client({"type": "hud_log", "content": f"Performing syntax validation for: {filename}..."})
             
-            # Fetch files in session
-            from database import get_session_messages
-            messages_history = get_session_messages(session_id)
-            
-            # Extract virtual files from messages
-            files_map = extract_virtual_files_from_history(messages_history)
+            try:
+                from database import get_session_messages
+                messages_history = get_session_messages(session_id)
+            except Exception:
+                messages_history = []
+            files_map = extract_virtual_files_from_history(messages_history, tool_context)
             
             if filename.startswith("/"):
                 filename = filename[1:]
             
             match_code = files_map.get(filename)
             if not match_code:
-                # Try case-insensitive matching
                 for fn, c in files_map.items():
                     if fn.lower() == filename.lower():
                         match_code = c
@@ -778,13 +852,17 @@ async def execute_tool_call_v2(
                             top, l_num, c_num = stack.pop()
                             validation_res = {"valid": False, "error": f"SyntaxError: Unclosed bracket '{top}' opened at line {l_num}:{c_num}"}
 
-                    # 2. Specific Language Compiler checks (only run if bracket check passed)
+                    # 2. Specific Language Compiler & JS Script checks
                     if validation_res["valid"]:
                         if ext == "py":
                             try:
                                 compile(match_code, filename, 'exec')
                             except SyntaxError as e:
                                 validation_res = {"valid": False, "error": f"SyntaxError: {e.msg} at line {e.lineno}:{e.offset}"}
+                        elif ext in ("js", "jsx", "ts", "tsx"):
+                            js_val = validate_js_with_node(match_code)
+                            if not js_val["valid"]:
+                                validation_res = js_val
                         elif ext == "json":
                             try:
                                 json.loads(match_code)
@@ -820,6 +898,20 @@ async def execute_tool_call_v2(
                                     validation_res = {"valid": False, "error": f"Unclosed tag <{tag}> opened at line {pos[0]}"}
                             except Exception as e:
                                 validation_res = {"valid": False, "error": f"HTML Parsing Error: {str(e)}"}
+
+                            # Run deep JS syntax validation on all <script> blocks inside HTML
+                            if validation_res["valid"]:
+                                script_matches = list(re.finditer(r'<script\b[^>]*>([\s\S]*?)</script>', match_code, re.IGNORECASE))
+                                for sm in script_matches:
+                                    script_content = sm.group(1)
+                                    if not script_content.strip():
+                                        continue
+                                    start_pos = sm.start(1)
+                                    line_offset = match_code[:start_pos].count('\n')
+                                    js_val = validate_js_with_node(script_content, line_offset=line_offset)
+                                    if not js_val["valid"]:
+                                        validation_res = js_val
+                                        break
 
                     tool_output = json.dumps(validation_res)
                 except Exception as e:
@@ -1464,6 +1556,28 @@ async def run_agentic_loop(
                 messages.append({"role": "assistant", "content": sources_tag})
             yield json.dumps({"type": "token", "content": sources_tag})
 
+    created_files_dict = tool_context.get("created_files", {})
+    if created_files_dict:
+        files_tag = ""
+        for fname, fcode in created_files_dict.items():
+            ext = fname.split(".")[-1].lower() if "." in fname else "txt"
+            lang_tag = "html" if ext == "html" else "css" if ext == "css" else "python" if ext == "py" else "javascript" if ext in ("js", "jsx") else "typescript" if ext in ("ts", "tsx") else ext
+            
+            last_content = messages[-1].get("content", "") if messages and isinstance(messages[-1].get("content"), str) else ""
+            if f"```{lang_tag} {fname}" not in last_content and fname not in last_content:
+                files_tag += f"\n\n```{lang_tag} {fname}\n{fcode}\n```"
+        
+        if files_tag:
+            if messages and messages[-1]["role"] == "assistant":
+                if messages[-1]["content"]:
+                    messages[-1]["content"] += files_tag
+                else:
+                    messages[-1]["content"] = files_tag
+            else:
+                messages.append({"role": "assistant", "content": files_tag})
+            # Note: files_tag is saved to message content for Supabase DB persistence & workspace parsing,
+            # but NOT yielded as text tokens so the chat stream remains clean and un-cluttered.
+
     if tool_context.get("map_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['map_tag']}"})
 
@@ -1481,3 +1595,13 @@ async def run_agentic_loop(
 
     if tool_context.get("calculator_tag"):
         yield json.dumps({"type": "token", "content": f"\n\n{tool_context['calculator_tag']}"})
+
+    # Log final accumulated assistant message (including created code files and tags) to Supabase DB
+    if messages and messages[-1]["role"] == "assistant" and session_id:
+        try:
+            from database import log_message
+            final_content_to_log = messages[-1].get("content") or ""
+            if final_content_to_log.strip():
+                log_message(session_id, "assistant", final_content_to_log)
+        except Exception as db_err:
+            print(f"[-] Failed to auto-persist WebSocket assistant response to Supabase DB: {db_err}")

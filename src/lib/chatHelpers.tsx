@@ -96,13 +96,14 @@ export const applyDiff = (currentCode: string, diffBlock: string): string => {
 export const extractFilesFromContent = (content: string, userPromptFilenames: string[] = []) => {
   const files: Array<{ name: string; type: string; code: string; isDiff?: boolean }> = [];
   if (!content) return files;
-
-  const codeBlockRegex = /```(\w*)\n([\s\S]*?)(?:```|$)/g;
+  // Match code blocks: ```lang filename\n...``` or ```lang\n...```
+  const codeBlockRegex = /```(\w*)\s*([\w\-\/]*\.?[\w]*)\n([\s\S]*?)(?:```|$)/g;
   let match;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
     const lang = match[1] || "txt";
-    const code = match[2];
+    const inlineFilename = match[2] || "";
+    const code = match[3];
     if (!code.trim()) continue;
 
     const ext = lang === "python" ? "py" : 
@@ -115,11 +116,19 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
                 lang === "json" ? "json" :
                 "txt";
 
+    // 0. Check if filename was provided inline in the code fence (e.g. ```html calculator.html)
+    let fileName = "";
+    if (inlineFilename && inlineFilename.includes(".")) {
+      fileName = inlineFilename;
+    }
+
     // 1. Try to find a filename in the text preceding the code block (within last 150 characters)
-    const searchStartIndex = Math.max(0, match.index - 150);
-    const precedingText = content.substring(searchStartIndex, match.index);
-    const fileMatch = precedingText.match(/`?(\/?[\w\-]+(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?/i);
-    let fileName = fileMatch ? fileMatch[1] : "";
+    if (!fileName) {
+      const searchStartIndex = Math.max(0, match.index - 150);
+      const precedingText = content.substring(searchStartIndex, match.index);
+      const fileMatch = precedingText.match(/`?(\/?\w[\w\-]*(?:\/[\w\-]+)*\.(?:py|js|ts|tsx|jsx|json|css|html|env|txt|md|yaml|yml|sh|bat|zip))`?/i);
+      fileName = fileMatch ? fileMatch[1] : "";
+    }
 
     // 2. Try to find a filename comment inside the first 3 lines of the code block itself
     if (!fileName) {

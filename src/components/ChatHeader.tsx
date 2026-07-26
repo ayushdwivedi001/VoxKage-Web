@@ -239,8 +239,9 @@ export default function ChatHeader({
             <button
               type="button"
               onClick={() => setShowArtifactsPanel(true)}
-              className="flex items-center justify-center w-8 h-8 rounded-xl border border-zinc-800 bg-[#181715] hover:bg-[#252320] text-[#8e8b82] hover:text-[#faf9f5] transition-all duration-200 cursor-pointer"
-              aria-label="View artifacts"
+              className="flex items-center justify-center w-8 h-8 rounded-xl border border-blue-500/30 [.light_&]:border-blue-500/40 bg-blue-500/10 [.light_&]:bg-blue-500/10 hover:bg-blue-500/25 [.light_&]:hover:bg-blue-500/20 text-blue-400 [.light_&]:text-blue-600 hover:text-blue-300 [.light_&]:hover:text-blue-700 transition-all duration-200 cursor-pointer shadow-sm"
+              aria-label="View workspace artifacts"
+              title="Workspace Artifacts"
             >
               <FileText className="w-4 h-4" />
             </button>

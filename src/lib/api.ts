@@ -453,9 +453,10 @@ export async function executeBackendTools(sessionId: string, toolCalls: any[]) {
   });
 }
 
-export async function logAssistantResponse(sessionId: string, content: string) {
+export async function logAssistantResponse(sessionId: string, content: string, createdFiles?: Record<string, string>) {
   return apiRequest(`/sessions/${sessionId}/log`, "POST", {
-    content
+    content,
+    created_files: createdFiles
   });
 }
 

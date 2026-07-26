@@ -356,6 +356,7 @@ export default function useAgentCompletion({
 
         let loopCount = 0;
         const maxLoop = 12;
+        const accumulatedCreatedFiles: Record<string, string> = {};
         const controller = new AbortController();
         abortControllerRef.current = controller;
 
@@ -552,6 +553,21 @@ export default function useAgentCompletion({
               finalAssistantContent += `\n\n${tags.sources_tag}`;
             }
 
+            // Inject created code files as fenced blocks so extractFilesFromContent picks them up
+            const createdFiles = toolExecRes.created_files;
+            if (createdFiles && typeof createdFiles === "object") {
+              Object.assign(accumulatedCreatedFiles, createdFiles);
+              for (const [fname, fcode] of Object.entries(createdFiles)) {
+                if (!fname || !fcode) continue;
+                const ext = fname.includes(".") ? fname.split(".").pop()!.toLowerCase() : "txt";
+                const langTag = ext === "html" ? "html" : ext === "css" ? "css" : ext === "py" ? "python" : ["js","jsx"].includes(ext) ? "javascript" : ["ts","tsx"].includes(ext) ? "typescript" : ext;
+                // Only inject if not already present in content
+                if (!finalAssistantContent.includes(`\`\`\`${langTag} ${fname}`)) {
+                  finalAssistantContent += `\n\n\`\`\`${langTag} ${fname}\n${fcode}\n\`\`\``;
+                }
+              }
+            }
+
             setMessages((prev) => {
               if (prev.length === 0) return prev;
               const copy = [...prev];
@@ -566,7 +582,7 @@ export default function useAgentCompletion({
           }
         }
 
-        logAssistantResponse(actualSessionId, finalAssistantContent).catch((err) =>
+        logAssistantResponse(actualSessionId, finalAssistantContent, accumulatedCreatedFiles).catch((err) =>
           console.error("Failed to log assistant response:", err)
         );
 
@@ -760,6 +776,7 @@ export default function useAgentCompletion({
 
           let loopCount = 0;
           const maxLoop = 12;
+          const accumulatedCreatedFiles: Record<string, string> = {};
           const controller = new AbortController();
           abortControllerRef.current = controller;
 
@@ -988,6 +1005,20 @@ export default function useAgentCompletion({
                 finalAssistantContent += `\n\n${tags.sources_tag}`;
               }
 
+              // Inject created code files as fenced blocks so extractFilesFromContent picks them up
+              const createdFiles = toolExecRes.created_files;
+              if (createdFiles && typeof createdFiles === "object") {
+                Object.assign(accumulatedCreatedFiles, createdFiles);
+                for (const [fname, fcode] of Object.entries(createdFiles)) {
+                  if (!fname || !fcode) continue;
+                  const ext = fname.includes(".") ? fname.split(".").pop()!.toLowerCase() : "txt";
+                  const langTag = ext === "html" ? "html" : ext === "css" ? "css" : ext === "py" ? "python" : ["js","jsx"].includes(ext) ? "javascript" : ["ts","tsx"].includes(ext) ? "typescript" : ext;
+                  if (!finalAssistantContent.includes(`\`\`\`${langTag} ${fname}`)) {
+                    finalAssistantContent += `\n\n\`\`\`${langTag} ${fname}\n${fcode}\n\`\`\``;
+                  }
+                }
+              }
+
               setMessages((prev) => {
                 if (prev.length === 0) return prev;
                 const copy = [...prev];
@@ -1002,7 +1033,7 @@ export default function useAgentCompletion({
             }
           }
 
-          logAssistantResponse(currentSessionId!, finalAssistantContent).catch((err) =>
+          logAssistantResponse(currentSessionId!, finalAssistantContent, accumulatedCreatedFiles).catch((err) =>
             console.error("Failed to log assistant response:", err)
           );
 

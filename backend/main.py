@@ -258,6 +258,7 @@ class ExecuteToolsRequest(BaseModel):
 
 class LogAssistantResponseRequest(BaseModel):
     content: str
+    created_files: Optional[dict] = None
 
 class EditMessageRequest(BaseModel):
     new_content: str
@@ -1533,9 +1534,13 @@ async def execute_agent_tools(
         "sources_tag": sources_tag
     }
     
+    # Include any created/updated code files so the frontend can render file cards
+    created_files = tool_context.get("created_files", {})
+    
     return {
         "results": response_list,
-        "tags": tags
+        "tags": tags,
+        "created_files": created_files
     }
 
 @app.post("/completions/proxy")
@@ -1551,7 +1556,8 @@ async def completions_proxy(
         
     is_kilo = False
     model_str = body.get("model", "")
-    if "/" in model_str or "kilo" in model_str.lower() or authorization.startswith("Bearer eyJ"):
+    auth_lower = (authorization or "").lower()
+    if "/" in model_str or "kilo" in model_str.lower() or auth_lower.startswith("bearer kilo_") or auth_lower.startswith("bearer kl-"):
         is_kilo = True
 
     async def stream_generator():
@@ -1600,7 +1606,18 @@ async def log_agent_response(
     req: LogAssistantResponseRequest,
     user: str = Depends(get_current_user)
 ):
-    asyncio.create_task(asyncio.to_thread(log_message, session_id, "assistant", req.content))
+    final_content = req.content or ""
+    if req.created_files and isinstance(req.created_files, dict):
+        for fname, fcode in req.created_files.items():
+            if not fname or not fcode:
+                continue
+            ext = fname.split(".")[-1].lower() if "." in fname else "txt"
+            lang_tag = "html" if ext == "html" else "css" if ext == "css" else "python" if ext == "py" else "javascript" if ext in ["js","jsx"] else "typescript" if ext in ["ts","tsx"] else ext
+            code_block_header = f"```{lang_tag} {fname}"
+            if code_block_header not in final_content:
+                final_content += f"\n\n{code_block_header}\n{fcode}\n```"
+
+    asyncio.create_task(asyncio.to_thread(log_message, session_id, "assistant", final_content))
     return {"status": "success"}
 
 @app.post("/sessions/{session_id}/compact")

@@ -11,7 +11,11 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    const isKilo = body.model?.includes("/") || body.model?.toLowerCase().includes("kilo") || authorization.startsWith("Bearer eyJ");
+    const authLower = (authorization || "").toLowerCase();
+    const isKilo = 
+      !!(body.model?.includes("/") || body.model?.toLowerCase().includes("kilo")) || 
+      authLower.startsWith("bearer kilo_") || 
+      authLower.startsWith("bearer kl-");
     const targetUrl = isKilo ? "https://api.kilo.ai/api/gateway/chat/completions" : "https://opencode.ai/zen/v1/chat/completions";
 
     const apiRes = await fetch(targetUrl, {

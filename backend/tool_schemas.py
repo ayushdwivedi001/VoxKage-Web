@@ -226,21 +226,6 @@ TOOLS_SCHEMA = [
             }
         }
     },
-    # --- Laptop Remote Execution ---
-    {
-        "type": "function",
-        "function": {
-            "name": "laptop_command",
-            "description": "Execute a PowerShell command on the user's connected Windows laptop via the VoxKage Laptop Daemon.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "command": {"type": "string", "description": "PowerShell command to execute remotely."}
-                },
-                "required": ["command"]
-            }
-        }
-    },
     {
         "type": "function",
         "function": {
@@ -435,34 +420,6 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
-            "name": "read_code_file",
-            "description": "Read the contents of any virtual code file generated in this active session workspace (e.g., telegram.py, App.tsx, styles.css, etc.). Always use this instead of laptop shell commands.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filename": {"type": "string", "description": "The exact name of the file to read (e.g., 'telegram.py')."}
-                },
-                "required": ["filename"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "verify_code_file",
-            "description": "Perform deep compilation and syntax checks on any virtual code file generated in this session workspace. Use this to verify your changes compile correctly without errors before delivering.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "filename": {"type": "string", "description": "The exact name of the file to verify (e.g., 'App.tsx')."}
-                },
-                "required": ["filename"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "create_code_file",
             "description": "Create a virtual code file in the session workspace (e.g. 'index.html', 'grocery_app.html', 'App.tsx', 'styles.css', 'server.py'). ALWAYS call this tool first when building or creating an app, website, or multi-line code project so the file is created in the workspace.",
             "parameters": {
@@ -479,14 +436,44 @@ TOOLS_SCHEMA = [
         "type": "function",
         "function": {
             "name": "update_code_file",
-            "description": "Update or edit an existing virtual code file in the active session workspace using replacement code or diff blocks.",
+            "description": "Update or edit an existing virtual code file in the active session workspace using replacement code or SEARCH/REPLACE diff blocks.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "filename": {"type": "string", "description": "The exact name of the file to update (e.g., 'index.html')."},
-                    "content": {"type": "string", "description": "The new content or SEARCH/REPLACE diff block for the file."}
+                    "content": {"type": "string", "description": "The new full content or SEARCH/REPLACE diff block for targeted line edits."}
                 },
                 "required": ["filename", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_code_file",
+            "description": "Read the contents of a specific virtual code file in the current active session workspace (e.g. 'index.html', 'grocery_app.html'). Use this tool during Stage 3 of the coding workflow to review written code.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the file to read in the current active workspace."},
+                    "start_line": {"type": "integer", "description": "Optional starting line number (1-based)."},
+                    "end_line": {"type": "integer", "description": "Optional ending line number (1-based)."}
+                },
+                "required": ["filename"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "verify_code_file",
+            "description": "Perform deep syntax checking, bracket validation, and JavaScript compilation verification on a specific workspace code file. Returns valid: true if syntax is clean, or exact line numbers and error traces if syntax errors exist.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the workspace code file to verify (e.g. 'index.html', 'app.py', 'styles.css')."}
+                },
+                "required": ["filename"]
             }
         }
     },

@@ -78,16 +78,21 @@ async def query_opencode_proxy(
         if request_id in PROXY_REQUESTS:
             del PROXY_REQUESTS[request_id]
         
-        print(f"[*] Laptop bridge unavailable ({last_err}). Falling back to direct OpenCode Zen API call...")
-        if not api_key:
-            yield {"content": "Error: OPENCODE_API_KEY environment variable is not configured."}
+        model_str = payload.get("model", "")
+        is_kilo = "/" in model_str or "kilo" in model_str.lower()
+        kilo_key = os.getenv("KILO_API_KEY")
+        target_api_key = (kilo_key if is_kilo and kilo_key else api_key)
+
+        print(f"[*] Laptop bridge unavailable ({last_err}). Falling back to direct {'Kilo AI' if is_kilo else 'OpenCode Zen'} API call...")
+        if not target_api_key:
+            yield {"content": f"Error: {'KILO_API_KEY' if is_kilo else 'OPENCODE_API_KEY'} environment variable is not configured."}
             return
 
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
+            "Authorization": f"Bearer {target_api_key}"
         }
-        url = "https://opencode.ai/zen/v1/chat/completions"
+        url = "https://api.kilo.ai/api/gateway/chat/completions" if is_kilo else "https://opencode.ai/zen/v1/chat/completions"
         
         req_body = {
             "model": payload.get("model"),
