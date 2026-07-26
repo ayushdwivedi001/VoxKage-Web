@@ -5,6 +5,7 @@ import { Plus, ChevronDown, ArrowUp, Square, X, CornerDownLeft, Zap, Compass } f
 import ModelSelectorDropdown from "./ModelSelectorDropdown";
 import VariantSubPopup from "./VariantSubPopup";
 
+import { getToken, BACKEND_URL } from "@/lib/api";
 import { Attachment } from "./MessageAttachmentsRow";
 import { Monitor, FileUp, Clock, Camera } from "lucide-react";
 import PDFHoverCard from "./PDFHoverCard";
@@ -306,7 +307,7 @@ export default function PromptInput({
     }
     try {
       const token = localStorage.getItem("voxkage_jwt_token");
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       if (token) {
         fetch(`${apiBase}/user/settings-profile`, {
           method: "POST",
@@ -331,7 +332,7 @@ export default function PromptInput({
     }
     try {
       const token = localStorage.getItem("voxkage_jwt_token");
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       if (token) {
         fetch(`${apiBase}/user/settings-profile`, {
           method: "POST",

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ChevronDown, FileText, Star, Edit3, Trash2, Download, AlertTriangle, PanelLeft } from "lucide-react";
-import { getToken } from "@/lib/api";
+import { getToken, BACKEND_URL } from "@/lib/api";
 
 interface ChatHeaderProps {
   isChatActive: boolean;
@@ -63,7 +63,7 @@ export default function ChatHeader({
     
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       
       const res = await fetch(`${apiBase}/sessions/${currentSessionId}`, {
         headers: {

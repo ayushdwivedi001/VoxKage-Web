@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Play, Pause, Trash2, Edit3, Check, Calendar, Mail, Bell, AlertTriangle } from "lucide-react";
-import { getToken } from "@/lib/api";
+import { getToken, BACKEND_URL } from "@/lib/api";
 interface Schedule {
   id: string;
   name: string;
@@ -34,7 +34,7 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
     setError("");
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       const res = await fetch(`${apiBase}/schedules`, {
         headers: {
           "Authorization": `Bearer ${token}`
@@ -59,7 +59,7 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
   const handleToggleActive = async (schedule: Schedule) => {
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       
       const res = await fetch(`${apiBase}/schedules/${schedule.id}`, {
         method: "PUT",
@@ -89,7 +89,7 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
     if (!editName.trim()) return;
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       
       const res = await fetch(`${apiBase}/schedules/${id}`, {
         method: "PUT",
@@ -113,7 +113,7 @@ export default function ScheduleListModal({ isOpen, onClose }: ScheduleListModal
   const handleDeleteSchedule = async (id: string) => {
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       
       const res = await fetch(`${apiBase}/schedules/${id}`, {
         method: "DELETE",

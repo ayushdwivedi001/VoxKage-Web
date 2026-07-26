@@ -6,6 +6,8 @@ import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 
+import { BACKEND_URL } from "@/lib/api";
+
 function OAuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"connecting" | "success" | "error">("connecting");
@@ -25,7 +27,7 @@ function OAuthCallbackContent() {
     const exchangeToken = async () => {
       try {
         const redirectUri = window.location.origin + "/oauth/callback";
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+        const backendUrl = BACKEND_URL;
         
         const res = await fetch(`${backendUrl}/auth/oauth/callback`, {
           method: "POST",

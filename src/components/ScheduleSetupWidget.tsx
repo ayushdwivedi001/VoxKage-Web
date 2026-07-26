@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Clock, Mail, Bell, AlertTriangle, Check, X, Calendar } from "lucide-react";
-import { fetchSettingsProfile, getToken } from "@/lib/api";
+import { fetchSettingsProfile, getToken, BACKEND_URL } from "@/lib/api";
 
 interface ScheduleSetupWidgetProps {
   timings: string;
@@ -61,7 +61,7 @@ export default function ScheduleSetupWidget({
     setError("");
     try {
       const token = getToken();
-      const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+      const apiBase = BACKEND_URL;
       
       const payload = {
         name,
