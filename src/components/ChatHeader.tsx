@@ -150,7 +150,11 @@ export default function ChatHeader({
                 className="fixed inset-0 z-40 cursor-default"
                 onClick={() => setShowHeaderDropdown(false)}
               />
-              <div className="absolute left-0 mt-1.5 w-[160px] bg-[#121215] border border-zinc-800 rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn">
+              <div className={`absolute left-0 mt-1.5 w-[160px] rounded-xl p-1 shadow-2xl z-50 flex flex-col gap-0.5 animate-fadeIn ${
+                isLightMode
+                  ? "bg-[#efe9de] border border-[#e6dfd8]"
+                  : "bg-[#121215] border border-zinc-800"
+              }`}>
                 <button
                   type="button"
                   onClick={() => {
@@ -159,10 +163,18 @@ export default function ChatHeader({
                     }
                     setShowHeaderDropdown(false);
                   }}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] transition-colors text-left cursor-pointer ${
+                    isLightMode
+                      ? "text-[#141413] hover:bg-[#e6dfd8]"
+                      : "text-zinc-300 hover:text-white hover:bg-zinc-800/80"
+                  }`}
                 >
                   <Star
-                    className={`w-3.5 h-3.5 ${isStarred ? "fill-white text-white" : "text-zinc-400"}`}
+                    className={`w-3.5 h-3.5 ${
+                      isStarred
+                        ? (isLightMode ? "fill-[#141413] text-[#141413]" : "fill-white text-white")
+                        : (isLightMode ? "text-[#6c6a64]" : "text-zinc-400")
+                    }`}
                   />
                   <span>{isStarred ? "Remove Star" : "Star"}</span>
                 </button>
@@ -176,9 +188,13 @@ export default function ChatHeader({
                       setRenameValue(currentSess.name);
                     }
                   }}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-zinc-300 hover:text-white hover:bg-zinc-800/80 transition-colors text-left cursor-pointer"
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] transition-colors text-left cursor-pointer ${
+                    isLightMode
+                      ? "text-[#141413] hover:bg-[#e6dfd8]"
+                      : "text-zinc-300 hover:text-white hover:bg-zinc-800/80"
+                  }`}
                 >
-                  <Edit3 className="w-3.5 h-3.5 text-zinc-400" />
+                  <Edit3 className={`w-3.5 h-3.5 ${isLightMode ? "text-[#6c6a64]" : "text-zinc-400"}`} />
                   <span>Rename</span>
                 </button>
 
@@ -190,9 +206,13 @@ export default function ChatHeader({
                       handleDeleteSession(currentSessionId);
                     }
                   }}
-                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] text-red-400 hover:text-red-300 hover:bg-red-950/20 transition-colors text-left cursor-pointer"
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] transition-colors text-left cursor-pointer ${
+                    isLightMode
+                      ? "text-red-600 hover:bg-red-100/60"
+                      : "text-red-400 hover:text-red-300 hover:bg-red-950/20"
+                  }`}
                 >
-                  <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
                   <span>Delete</span>
                 </button>
               </div>

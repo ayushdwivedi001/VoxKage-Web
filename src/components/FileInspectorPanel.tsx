@@ -63,6 +63,56 @@ const VS_CODE_THEME_CSS = `
   .vscode-code-container .token.variable {
     color: #ffab70;
   }
+
+  /* Light Theme Code Syntax Highlighting */
+  .light .vscode-code-container .token.comment,
+  .light .vscode-code-container .token.prolog,
+  .light .vscode-code-container .token.doctype,
+  .light .vscode-code-container .token.cdata {
+    color: #6c6a64;
+    font-style: italic;
+  }
+  .light .vscode-code-container .token.punctuation {
+    color: #3d3d3a;
+  }
+  .light .vscode-code-container .token.property,
+  .light .vscode-code-container .token.tag,
+  .light .vscode-code-container .token.boolean,
+  .light .vscode-code-container .token.number,
+  .light .vscode-code-container .token.constant,
+  .light .vscode-code-container .token.symbol,
+  .light .vscode-code-container .token.deleted {
+    color: #0550ae;
+  }
+  .light .vscode-code-container .token.selector,
+  .light .vscode-code-container .token.attr-name,
+  .light .vscode-code-container .token.string,
+  .light .vscode-code-container .token.char,
+  .light .vscode-code-container .token.builtin,
+  .light .vscode-code-container .token.inserted {
+    color: #0a3069;
+  }
+  .light .vscode-code-container .token.operator,
+  .light .vscode-code-container .token.entity,
+  .light .vscode-code-container .token.url,
+  .light .vscode-code-container .language-css .token.string,
+  .light .vscode-code-container .style .token.string {
+    color: #cf222e;
+  }
+  .light .vscode-code-container .token.atrule,
+  .light .vscode-code-container .token.attr-value,
+  .light .vscode-code-container .token.keyword {
+    color: #cf222e;
+  }
+  .light .vscode-code-container .token.function,
+  .light .vscode-code-container .token.class-name {
+    color: #8250df;
+  }
+  .light .vscode-code-container .token.regex,
+  .light .vscode-code-container .token.important,
+  .light .vscode-code-container .token.variable {
+    color: #953800;
+  }
 `;
 
 interface FileInspectorPanelProps {
@@ -581,31 +631,31 @@ export default function FileInspectorPanel({
       <style>{VS_CODE_THEME_CSS}</style>
 
       {/* Top Header Panel */}
-      <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 min-h-[56px] border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0 gap-1.5 sm:gap-3 w-full max-w-full overflow-hidden">
+      <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 min-h-[56px] border-b border-zinc-800/80 [.light_&]:border-[#e6dfd8] bg-[#0d0d11] [.light_&]:bg-[#efe9de] select-none flex-shrink-0 gap-1.5 sm:gap-3 w-full max-w-full overflow-hidden">
         {/* Left Side: Filename & Preview Mode Toggles */}
         <div className="min-w-0 flex items-center gap-1 sm:gap-2 flex-shrink">
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 text-zinc-300 hover:text-white bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 mr-0.5 select-none flex-shrink-0"
+              className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 text-zinc-300 [.light_&]:text-[#141413] hover:text-white [.light_&]:hover:text-black bg-zinc-900 [.light_&]:bg-[#e6dfd8] border border-zinc-800 [.light_&]:border-[#d9d2c9] hover:border-zinc-700 rounded-xl cursor-pointer transition-all duration-200 mr-0.5 select-none flex-shrink-0"
               aria-label="Back"
               title="Back"
             >
               <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
           )}
-          <span className="text-[13px] sm:text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide truncate max-w-[80px] xs:max-w-[120px] sm:max-w-[200px]" title={fileName}>
+          <span className="text-[13px] sm:text-[14.5px] font-medium text-zinc-300 [.light_&]:text-[#141413] font-sans tracking-wide truncate max-w-[80px] xs:max-w-[120px] sm:max-w-[200px]" title={fileName}>
             {fileName}
           </span>
           
           {canPreview && (
-            <div className="flex items-center bg-zinc-900/60 p-0.5 rounded-lg border border-zinc-800/50 flex-shrink-0">
+            <div className="flex items-center bg-zinc-900/60 [.light_&]:bg-[#e6dfd8] p-0.5 rounded-lg border border-zinc-800/50 [.light_&]:border-[#d9d2c9] flex-shrink-0">
               <button
                 type="button"
                 onClick={() => setMode("code")}
                 className={`flex items-center justify-center w-6.5 h-6.5 sm:w-7 sm:h-7 rounded-md transition-all duration-205 cursor-pointer ${
-                  mode === "code" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
+                  mode === "code" ? "bg-zinc-800 [.light_&]:bg-[#faf9f5] text-white [.light_&]:text-[#141413]" : "text-zinc-400 [.light_&]:text-[#6c6a64] hover:text-zinc-200"
                 }`}
                 title="Code view"
               >
@@ -618,7 +668,7 @@ export default function FileInspectorPanel({
                   setConsoleLogs([{ type: "info", text: "Initializing virtual sandbox...", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
                 }}
                 className={`flex items-center justify-center w-6.5 h-6.5 sm:w-7 sm:h-7 rounded-md transition-all duration-205 cursor-pointer ${
-                  mode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-400 hover:text-zinc-200"
+                  mode === "preview" ? "bg-zinc-800 [.light_&]:bg-[#faf9f5] text-white [.light_&]:text-[#141413]" : "text-zinc-400 [.light_&]:text-[#6c6a64] hover:text-zinc-200"
                 }`}
                 title="Live preview"
               >
@@ -631,10 +681,10 @@ export default function FileInspectorPanel({
           <button
             type="button"
             onClick={() => onEditClick?.(fileName)}
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-[#141416] border border-zinc-800 hover:border-zinc-700 text-zinc-350 hover:text-zinc-100 text-[12px] font-medium rounded-lg cursor-pointer transition-all duration-200 flex-shrink-0"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 bg-[#141416] [.light_&]:bg-[#e6dfd8] border border-zinc-800 [.light_&]:border-[#d9d2c9] hover:border-zinc-700 text-zinc-350 [.light_&]:text-[#141413] hover:text-zinc-100 text-[12px] font-medium rounded-lg cursor-pointer transition-all duration-200 flex-shrink-0"
             title="Attach file context to prompt box for inline editing"
           >
-            <Sliders className="w-3.5 h-3.5 text-zinc-450" />
+            <Sliders className="w-3.5 h-3.5 text-zinc-450 [.light_&]:text-[#3d3d3a]" />
             <span className="hidden sm:inline">Edit</span>
           </button>
         </div>
@@ -645,7 +695,7 @@ export default function FileInspectorPanel({
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-300 hover:text-white text-[12px] sm:text-[12.5px] font-medium transition-all duration-200 cursor-pointer"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 [.light_&]:hover:bg-[#d9d2c9] text-zinc-300 [.light_&]:text-[#141413] hover:text-white text-[12px] sm:text-[12.5px] font-medium transition-all duration-200 cursor-pointer"
             >
               {copied ? (
                 <>
@@ -664,7 +714,7 @@ export default function FileInspectorPanel({
               <button
                 type="button"
                 onClick={() => setReloadKey(prev => prev + 1)}
-                className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+                className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 text-zinc-400 [.light_&]:text-[#141413] hover:text-zinc-200 transition-all duration-200 cursor-pointer"
                 title="Reload preview"
               >
                 <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -674,7 +724,7 @@ export default function FileInspectorPanel({
                 type="button"
                 onClick={() => setConsoleOpen(prev => !prev)}
                 className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-[12px] sm:text-[12.5px] font-medium transition-all duration-200 cursor-pointer ${
-                  consoleOpen ? "bg-zinc-850 border border-zinc-750 text-white" : "bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200"
+                  consoleOpen ? "bg-zinc-850 border border-zinc-750 text-white [.light_&]:bg-[#252523] [.light_&]:text-[#faf9f5]" : "bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 text-zinc-400 [.light_&]:text-[#141413] hover:text-zinc-200"
                 }`}
                 title="Console logs"
               >
@@ -688,7 +738,7 @@ export default function FileInspectorPanel({
           <button
             type="button"
             onClick={onToggleExpand}
-            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+            className="hidden md:flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 text-zinc-400 [.light_&]:text-[#141413] hover:text-zinc-200 transition-all duration-200 cursor-pointer"
             aria-label={isExpanded ? "Collapse panel" : "Expand panel"}
           >
             {isExpanded ? (
@@ -702,7 +752,7 @@ export default function FileInspectorPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+            className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 text-zinc-400 [.light_&]:text-[#141413] hover:text-zinc-200 transition-all duration-200 cursor-pointer"
             aria-label="Close panel"
           >
             <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -716,7 +766,7 @@ export default function FileInspectorPanel({
           /* Code Display Area */
           <div 
             ref={containerRef}
-            className="flex-grow overflow-auto p-2 sm:p-4 custom-vscode-scrollbar bg-[#0f0f13] vscode-code-container"
+            className="flex-grow overflow-auto p-2 sm:p-4 custom-vscode-scrollbar bg-[#0f0f13] [.light_&]:bg-[#FAF9F5] vscode-code-container"
           >
             <div className="w-full flex flex-col font-mono text-[12px] sm:text-[13.5px] leading-[20px] sm:leading-[22px]">
               {highlightedLines.map((htmlCode, index) => {
@@ -729,7 +779,7 @@ export default function FileInspectorPanel({
                     data-line={lineNum}
                     className="flex flex-col w-full border-l-2 border-transparent transition-all duration-300"
                   >
-                    <div className="flex items-start min-w-0 w-full hover:bg-white/5 transition-colors group relative py-0.5">
+                    <div className="flex items-start min-w-0 w-full hover:bg-white/5 [.light_&]:hover:bg-black/5 transition-colors group relative py-0.5">
                       {/* Hover comment trigger button */}
                       <button
                         type="button"
@@ -737,20 +787,20 @@ export default function FileInspectorPanel({
                           setActiveCommentLine(activeCommentLine === lineNum ? null : lineNum);
                           setCommentInputText("");
                         }}
-                        className="absolute left-[-2px] top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#1b2a47] border border-blue-500/50 flex items-center justify-center text-blue-400 opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer z-10 hover:scale-105"
+                        className="absolute left-[-2px] top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#1b2a47] [.light_&]:bg-[#e6dfd8] border border-blue-500/50 [.light_&]:border-[#cc785c] flex items-center justify-center text-blue-400 [.light_&]:text-[#cc785c] opacity-0 group-hover:opacity-100 transition-all duration-200 cursor-pointer z-10 hover:scale-105"
                         title={`Add suggestion to line ${lineNum}`}
                       >
                         <MessageSquare className="w-3.5 h-3.5" />
                       </button>
 
                       {/* Line Numbers Column */}
-                      <div className="text-zinc-650 text-right select-none w-9 pr-3 border-r border-zinc-800/60 mr-3 flex-shrink-0 font-light select-none">
+                      <div className="text-zinc-650 [.light_&]:text-[#8e8b82] text-right select-none w-9 pr-3 border-r border-zinc-800/60 [.light_&]:border-[#e6dfd8] mr-3 flex-shrink-0 font-light select-none">
                         {lineNum}
                       </div>
 
                       {/* Code Column */}
                       <pre
-                        className="flex-grow select-text overflow-visible font-mono text-zinc-300"
+                        className="flex-grow select-text overflow-visible font-mono text-zinc-300 [.light_&]:text-[#141413]"
                         style={{
                           background: "none",
                           margin: 0,

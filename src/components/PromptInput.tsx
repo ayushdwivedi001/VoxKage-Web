@@ -473,6 +473,11 @@ export default function PromptInput({
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
+      const isMobile = typeof window !== "undefined" && (window.innerWidth < 768 || "ontouchstart" in window || navigator.maxTouchPoints > 0);
+      if (isMobile) {
+        // On mobile devices, Enter key inserts a newline (\n); submission requires tapping Send button.
+        return;
+      }
       e.preventDefault();
       handleSubmit();
     }

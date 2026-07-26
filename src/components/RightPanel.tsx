@@ -92,6 +92,10 @@ export default function RightPanel({
           }}
           onEditClick={(name) => {
             setEditingFile(name);
+            if (typeof window !== "undefined" && window.innerWidth < 768) {
+              setActiveFile(null);
+              setShowArtifactsPanel(false);
+            }
           }}
         />
       </div>
@@ -104,10 +108,10 @@ export default function RightPanel({
         style={{
           width: isMobile ? "100%" : (isExpanded ? "100%" : rightPanelWidth),
         }}
-        className="fixed inset-0 z-50 w-full h-full max-w-full md:relative md:inset-auto md:z-auto md:h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden bg-[#0d0d11] border-l border-zinc-800/80 flex flex-col"
+        className="fixed inset-0 z-50 w-full h-full max-w-full md:relative md:inset-auto md:z-auto md:h-full flex-shrink-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden bg-[#0d0d11] [.light_&]:bg-[#FAF9F5] border-l border-zinc-800/80 [.light_&]:border-[#e6dfd8] flex flex-col"
       >
-        <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 bg-[#0d0d11] select-none flex-shrink-0">
-          <span className="text-[14.5px] font-medium text-zinc-300 font-sans tracking-wide">
+        <div className="flex items-center justify-between px-5 h-14 border-b border-zinc-800/80 [.light_&]:border-[#e6dfd8] bg-[#0d0d11] [.light_&]:bg-[#efe9de] select-none flex-shrink-0">
+          <span className="text-[14.5px] font-medium text-zinc-300 [.light_&]:text-[#141413] font-sans tracking-wide">
             Artifacts
           </span>
           <button
@@ -116,7 +120,7 @@ export default function RightPanel({
               setShowArtifactsPanel(false);
               setIsExpanded(false);
             }}
-            className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-all duration-200 cursor-pointer"
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-800/40 [.light_&]:bg-[#e6dfd8] hover:bg-zinc-800 [.light_&]:hover:bg-[#d9d2c9] text-zinc-400 [.light_&]:text-[#3d3d3a] hover:text-zinc-200 [.light_&]:hover:text-[#141413] transition-all duration-200 cursor-pointer"
             aria-label="Close panel"
           >
             <X className="w-4 h-4" />
@@ -125,7 +129,7 @@ export default function RightPanel({
 
         <div className="flex-grow overflow-auto p-5 flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-zinc-100 text-[15px] font-medium font-sans">
+            <h3 className="text-zinc-100 [.light_&]:text-[#141413] text-[15px] font-medium font-sans">
               Artifacts created in this session
             </h3>
             {sessionArtifacts.length > 1 && (
@@ -148,7 +152,7 @@ export default function RightPanel({
                     URL.revokeObjectURL(url);
                   });
                 }}
-                className="px-3.5 py-1.5 rounded-xl border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-355 hover:text-white text-[12.5px] font-medium transition-all duration-200 cursor-pointer select-none"
+                className="px-3.5 py-1.5 rounded-xl border border-zinc-800 [.light_&]:border-[#252523] bg-[#16161a] [.light_&]:bg-[#252523] hover:bg-[#202025] [.light_&]:hover:bg-[#cc785c] text-zinc-355 [.light_&]:text-[#faf9f5] hover:text-white text-[12.5px] font-medium transition-all duration-200 cursor-pointer select-none"
               >
                 Download all
               </button>

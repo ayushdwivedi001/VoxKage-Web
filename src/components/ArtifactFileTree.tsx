@@ -65,15 +65,15 @@ export default function ArtifactFileTree({
             onClick={() => {
               setExpandedFolders((prev) => ({ ...prev, [node.path]: !isExpanded }));
             }}
-            className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-zinc-800/40 text-zinc-400 hover:text-zinc-200 cursor-pointer text-[13.5px] font-sans font-medium transition-all duration-150"
+            className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-zinc-800/40 [.light_&]:hover:bg-[#e6dfd8] text-zinc-400 [.light_&]:text-[#3d3d3a] hover:text-zinc-200 [.light_&]:hover:text-[#141413] cursor-pointer text-[13.5px] font-sans font-medium transition-all duration-150"
             style={{ paddingLeft: `${depth * 14 + 8}px` }}
           >
             {isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-500 [.light_&]:text-[#6c6a64] flex-shrink-0" />
             ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+              <ChevronRight className="w-3.5 h-3.5 text-zinc-500 [.light_&]:text-[#6c6a64] flex-shrink-0" />
             )}
-            <FolderOpen className="w-4 h-4 text-amber-500/80 flex-shrink-0" />
+            <FolderOpen className="w-4 h-4 text-amber-500/80 [.light_&]:text-[#c96442] flex-shrink-0" />
             <span className="truncate">{node.name}</span>
           </div>
 
@@ -106,14 +106,14 @@ export default function ArtifactFileTree({
             setActiveFile({ name: file.name, code: verObj.code });
             setShowArtifactsPanel(false);
           }}
-          className="flex items-center justify-between group/file-node rounded-lg hover:bg-zinc-800/35 hover:text-white text-zinc-350 cursor-pointer text-[13.5px] font-sans font-normal py-1.5 px-2 transition-all duration-150"
+          className="flex items-center justify-between group/file-node rounded-lg hover:bg-zinc-800/35 [.light_&]:hover:bg-[#e6dfd8] hover:text-white [.light_&]:hover:text-[#141413] text-zinc-350 [.light_&]:text-[#3d3d3a] cursor-pointer text-[13.5px] font-sans font-normal py-1.5 px-2 transition-all duration-150"
           style={{ paddingLeft: `${depth * 14 + 18}px` }}
         >
           <div className="flex items-center gap-2 min-w-0 flex-grow mr-2">
-            <FileText className="w-4 h-4 text-blue-400/80 flex-shrink-0" />
+            <FileText className="w-4 h-4 text-blue-500 [.light_&]:text-blue-600 flex-shrink-0" />
             <span className="truncate">{node.name}</span>
             {file.versions && file.versions.length > 1 && (
-              <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1 py-0.2 rounded font-sans scale-90">
+              <span className="text-[10px] bg-blue-500/15 [.light_&]:bg-blue-500/15 text-blue-400 [.light_&]:text-blue-700 px-1 py-0.2 rounded font-sans scale-90 border border-blue-500/20">
                 v{activeVer}
               </span>
             )}
@@ -133,7 +133,7 @@ export default function ArtifactFileTree({
               document.body.removeChild(a);
               URL.revokeObjectURL(url);
             }}
-            className="opacity-0 group-hover/file-node:opacity-100 hover:text-blue-400 p-0.5 rounded transition-opacity duration-150 cursor-pointer flex-shrink-0"
+            className="opacity-0 group-hover/file-node:opacity-100 text-zinc-400 hover:text-blue-500 [.light_&]:text-[#6c6a64] [.light_&]:hover:text-blue-600 p-0.5 rounded transition-all duration-150 cursor-pointer flex-shrink-0"
             title="Download file"
           >
             <Download className="w-3.5 h-3.5" />
