@@ -498,7 +498,7 @@ async def oauth_callback_endpoint(req: OAuthCallbackRequest):
                 if res.status_code != 200:
                     err_text = res.text
                     print(f"[-] {provider} token exchange failed ({res.status_code}): {err_text}")
-                    raise HTTPException(status_code=400, detail=f"Google token exchange failed: {err_text}" if provider != "notion" else f"Google token exchange failed: {err_text}")
+                    raise HTTPException(status_code=400, detail=f"{provider.capitalize()} token exchange failed: {err_text}")
                     
                 token_data = res.json()
                 access_token = token_data.get("access_token")
