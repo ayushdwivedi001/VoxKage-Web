@@ -52,6 +52,8 @@ interface ChatWorkspaceProps {
   editingFile: string | null;
   setEditingFile: (file: string | null) => void;
   showScrollBottom: boolean;
+  hasUnreadResponse?: boolean;
+  userHasScrolledUp?: boolean;
   handleSendMessage: (text: string) => void;
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
@@ -95,6 +97,8 @@ export default function ChatWorkspace({
   editingFile,
   setEditingFile,
   showScrollBottom,
+  hasUnreadResponse,
+  userHasScrolledUp,
   handleSendMessage,
   setShowArtifactsPanel,
   setJumpToLine,
@@ -295,7 +299,11 @@ export default function ChatWorkspace({
               <button
                 type="button"
                 onClick={scrollToBottom}
-                className="flex items-center justify-center w-8 h-8 rounded-full border border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200 shadow-lg transition-all duration-200 cursor-pointer animate-fadeIn mb-1 pointer-events-auto"
+                className={`flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-200 cursor-pointer animate-fadeIn mb-1 pointer-events-auto shadow-md ${
+                  isLightMode
+                    ? "border-amber-900/15 bg-[#efe9de] hover:bg-[#e6dfd1] text-amber-950/80 hover:text-amber-950"
+                    : "border-zinc-800 bg-[#16161a] hover:bg-[#202025] text-zinc-400 hover:text-zinc-200"
+                }`}
                 aria-label="Scroll to bottom"
               >
                 <ArrowDown className="w-4 h-4" />

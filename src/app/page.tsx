@@ -521,7 +521,13 @@ export default function Home() {
     }
   };
 
+  const [userHasScrolledUp, setUserHasScrolledUp] = useState(false);
+  const [hasUnreadResponse, setHasUnreadResponse] = useState(false);
+  const prevMessagesLengthRef = useRef(0);
+
   const scrollToBottom = () => {
+    setUserHasScrolledUp(false);
+    setHasUnreadResponse(false);
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTo({
         top: chatContainerRef.current.scrollHeight,
@@ -535,12 +541,30 @@ export default function Home() {
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-    setShowScrollBottom(distanceToBottom > 300);
+    const isScrolledUp = distanceToBottom > 80;
+    setShowScrollBottom(isScrolledUp);
+
+    if (isScrolledUp) {
+      setUserHasScrolledUp(true);
+    } else {
+      setUserHasScrolledUp(false);
+      setHasUnreadResponse(false);
+    }
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [chatSessions.messages]);
+    if (!userHasScrolledUp) {
+      scrollToBottom();
+    } else {
+      const isStreamingActive = agentCompletion.isStreaming || (chatSessions.messages.length > 0 &&
+        (chatSessions.messages[chatSessions.messages.length - 1].status === "thinking" ||
+         chatSessions.messages[chatSessions.messages.length - 1].status === "streaming"));
+      if (chatSessions.messages.length > prevMessagesLengthRef.current || isStreamingActive) {
+        setHasUnreadResponse(true);
+      }
+    }
+    prevMessagesLengthRef.current = chatSessions.messages.length;
+  }, [chatSessions.messages, userHasScrolledUp, agentCompletion.isStreaming]);
 
   const handlePreviewImage = (url: string, rect: DOMRect) => {
     setZoomThumbnailRect(rect);
@@ -789,6 +813,8 @@ export default function Home() {
               editingFile={editingFile}
               setEditingFile={setEditingFile}
               showScrollBottom={showScrollBottom}
+              hasUnreadResponse={hasUnreadResponse}
+              userHasScrolledUp={userHasScrolledUp}
               handleSendMessage={agentCompletion.handleSendMessage}
               setShowArtifactsPanel={setShowArtifactsPanel}
               setJumpToLine={setJumpToLine}

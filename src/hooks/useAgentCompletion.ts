@@ -142,6 +142,8 @@ export default function useAgentCompletion({
   setJumpToLine,
   loginEmail,
 }: UseAgentCompletionProps) {
+  const [isStreaming, setIsStreaming] = React.useState(false);
+
   const modelNameToKey = (name: string): string => {
     const lower = name.toLowerCase();
     if (lower.includes("deepseek")) return "deepseek-flash";
@@ -152,6 +154,7 @@ export default function useAgentCompletion({
   };
 
   const handleStopGeneration = () => {
+    setIsStreaming(false);
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -173,6 +176,7 @@ export default function useAgentCompletion({
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
+    setIsStreaming(true);
     hasVisitedRef.current = true;
 
     let sessionId = currentSessionId;
@@ -1069,6 +1073,7 @@ export default function useAgentCompletion({
           });
         } finally {
           abortControllerRef.current = null;
+          setIsStreaming(false);
         }
       };
 
@@ -1120,6 +1125,7 @@ export default function useAgentCompletion({
   };
 
   return {
+    isStreaming,
     handleStopGeneration,
     handleSendMessage,
     resubmitUserMessage,
