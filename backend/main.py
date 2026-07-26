@@ -889,6 +889,21 @@ async def search_images_endpoint(query: str, limit: int = 24):
     from image_search_engine import search_duckduckgo_images
     return await search_duckduckgo_images(query=query, limit=limit)
 
+@app.get("/api/search/pinterest")
+async def search_pinterest_endpoint(query: str, limit: int = 24):
+    from image_search_engine import search_pinterest_images
+    return await search_pinterest_images(query=query, limit=limit)
+
+@app.get("/api/search/images/related")
+async def search_images_related_endpoint(title: str = "", image_url: str = "", limit: int = 24):
+    from image_search_engine import search_related_ddg_images
+    return await search_related_ddg_images(title=title, image_url=image_url, limit=limit)
+
+@app.get("/api/search/pinterest/related")
+async def search_pinterest_related_endpoint(pin_id: str = "", query: str = "", limit: int = 24):
+    from image_search_engine import search_related_pinterest_pins
+    return await search_related_pinterest_pins(pin_id=pin_id, query=query, limit=limit)
+
 @app.get("/api/image-proxy")
 async def image_proxy_endpoint(url: str):
     import httpx
