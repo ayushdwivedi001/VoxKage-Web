@@ -201,6 +201,14 @@ def get_tool_label(name: str, args: dict) -> str:
         return "Delete RAG Doc"
     elif name == "index_document":
         return f"Indexing {args.get('original_name') or args.get('filename') or ''}..."
+    elif name == "create_code_file":
+        return f"Create File: '{args.get('filename', '')}'"
+    elif name == "update_code_file":
+        return f"Update File: '{args.get('filename', '')}'"
+    elif name == "read_code_file":
+        return f"Read File: '{args.get('filename', '')}'"
+    elif name == "verify_code_file":
+        return f"Verify File: '{args.get('filename', '')}'"
     elif name == "rename_session":
         return f"Rename Session: '{args.get('title', '')}'"
     elif "__" in name:
@@ -642,9 +650,24 @@ async def execute_tool_call_v2(
                     user_id=user_id,
                     model=model_key
                 )
-                tool_output = json.dumps(res)
             else:
                 tool_output = f"Error: Uploaded file '{filename}' not found on server disk. Cannot index."
+
+        elif name in ("create_code_file", "update_code_file"):
+            filename = args.get("filename", "").strip()
+            content_code = args.get("content", "").strip()
+            if filename.startswith("/"):
+                filename = filename[1:]
+            
+            ext = filename.split(".")[-1].lower() if "." in filename else "txt"
+            lang_tag = "html" if ext == "html" else "css" if ext == "css" else "python" if ext == "py" else "javascript" if ext in ("js", "jsx") else "typescript" if ext in ("ts", "tsx") else ext
+
+            await send_to_client({"type": "hud_log", "content": f"{'Creating' if name=='create_code_file' else 'Updating'} workspace file: {filename}..."})
+            await send_to_client({
+                "type": "token",
+                "content": f"\n\n```{lang_tag} {filename}\n{content_code}\n```\n\n"
+            })
+            tool_output = json.dumps({"status": "success", "file": filename, "lines": len(content_code.splitlines())})
 
         elif name == "read_code_file":
             filename = args.get("filename", "")

@@ -145,10 +145,11 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
     const hasExplicitName = !!fileName;
     if (!hasExplicitName) {
       const linesCount = code.split("\n").length;
-      const isLargeBlock = linesCount > 35 || code.length > 1500;
+      const isLargeBlock = linesCount > 25 || code.length > 1000;
       const isCodeLang = ["py", "js", "ts", "tsx", "jsx", "html", "css"].includes(ext);
+      const isWebMarkup = ext === "html" || ext === "css";
       
-      if (isLargeBlock && isCodeLang) {
+      if ((isLargeBlock || isWebMarkup) && isCodeLang) {
         const codeLower = code.toLowerCase();
         if (ext === "py") {
           if (codeLower.includes("telegram") || codeLower.includes("telebot") || codeLower.includes("telethon")) fileName = "telegram_bot.py";
@@ -166,9 +167,10 @@ export const extractFilesFromContent = (content: string, userPromptFilenames: st
         } else if (ext === "tsx" || ext === "jsx") {
           fileName = `App.${ext}`;
         } else if (ext === "html") {
-          fileName = `index.html`;
+          if (codeLower.includes("grocery")) fileName = "grocery_app.html";
+          else fileName = "index.html";
         } else if (ext === "css") {
-          fileName = `styles.css`;
+          fileName = "styles.css";
         } else {
           fileName = `app_${files.length + 1}.txt`;
         }
@@ -268,11 +270,26 @@ export const removeCodeBlocks = (text: string) => {
 
 export const removeFileCodeBlocks = (content: string, extractedFiles: Array<{ name: string; code: string }>) => {
   if (!content) return "";
-  const codeBlockRegex = /(```\w*\n[\s\S]*?(?:```|$))/g;
+  if (!extractedFiles || extractedFiles.length === 0) return content;
+
+  const codeBlockRegex = /(```\w*[\s\S]*?(?:```|$))/g;
   let clean = content.replace(codeBlockRegex, (match) => {
-    const blockMatch = match.match(/```\w*\n([\s\S]*?)(?:```|$)/);
+    const blockMatch = match.match(/```\w*\n?([\s\S]*?)(?:```|$)/);
     const code = blockMatch ? blockMatch[1].trim() : "";
-    const isExtracted = extractedFiles.some(f => f.code.trim() === code);
+    if (!code) return "";
+
+    // Check if code matches any extracted file (full match, partial head match, or filename match)
+    const isExtracted = extractedFiles.some(f => {
+      const fCode = f.code.trim();
+      if (!fCode) return false;
+      if (fCode === code) return true;
+      if (fCode.includes(code.substring(0, Math.min(100, code.length)))) return true;
+      if (code.includes(fCode.substring(0, Math.min(100, fCode.length)))) return true;
+      // Check if match contains the file name in header or code comment
+      if (f.name && match.toLowerCase().includes(f.name.toLowerCase())) return true;
+      return false;
+    });
+
     if (isExtracted) {
       return "";
     }
@@ -286,7 +303,6 @@ export const removeFileCodeBlocks = (content: string, extractedFiles: Array<{ na
       if (clean.includes(normalizedCode)) {
         clean = clean.replace(normalizedCode, "");
       } else {
-        // Fallback for slight whitespace or CR/LF changes
         const regexStr = normalizedCode.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&').replace(/\s+/g, '\\s+');
         try {
           const rx = new RegExp(regexStr, 'g');

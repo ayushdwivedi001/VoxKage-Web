@@ -463,6 +463,36 @@ TOOLS_SCHEMA = [
     {
         "type": "function",
         "function": {
+            "name": "create_code_file",
+            "description": "Create a virtual code file in the session workspace (e.g. 'index.html', 'grocery_app.html', 'App.tsx', 'styles.css', 'server.py'). ALWAYS call this tool first when building or creating an app, website, or multi-line code project so the file is created in the workspace.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the file to create (e.g., 'index.html', 'grocery_app.html', 'App.tsx')."},
+                    "content": {"type": "string", "description": "The complete source code or initial template content for the file."}
+                },
+                "required": ["filename", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_code_file",
+            "description": "Update or edit an existing virtual code file in the active session workspace using replacement code or diff blocks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filename": {"type": "string", "description": "The exact name of the file to update (e.g., 'index.html')."},
+                    "content": {"type": "string", "description": "The new content or SEARCH/REPLACE diff block for the file."}
+                },
+                "required": ["filename", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "rename_session",
             "description": "Rename the current chat session to a clean, professional title. Use this as your first action if the current session name is 'New Chat'.",
             "parameters": {
