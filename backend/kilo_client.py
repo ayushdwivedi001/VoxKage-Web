@@ -42,3 +42,53 @@ async def fetch_kilo_models(api_key: str = None) -> list:
     except Exception as e:
         print(f"[-] Failed to fetch Kilo models: {e}")
     return []
+
+
+async def query_kilo_ai(
+    prompt: str,
+    model_key: str = "kilo-default",
+    image_url: str = None,
+    kilo_api_key: str = None
+) -> str:
+    """
+    Executes completions against Kilo AI Gateway supporting both multimodal image payloads and text.
+    """
+    api_key = kilo_api_key or os.getenv("KILO_API_KEY", "")
+    if not api_key:
+        raise ValueError("KILO_API_KEY environment variable is not configured.")
+
+    headers = {
+        "Authorization": f"Bearer {api_key.strip()}",
+        "Content-Type": "application/json"
+    }
+
+    if image_url:
+        content = [
+            {"type": "image_url", "image_url": {"url": image_url}},
+            {"type": "text", "text": prompt}
+        ]
+    else:
+        content = prompt
+
+    messages = [
+        {"role": "system", "content": "You are VoxKage's AI Image Search Query Synthesizer."},
+        {"role": "user", "content": content}
+    ]
+
+    payload = {
+        "model": model_key,
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": 250
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.post(f"{KILO_API_GATEWAY_URL}/chat/completions", headers=headers, json=payload)
+        if res.status_code == 200:
+            data = res.json()
+            choice = data.get("choices", [{}])[0]
+            msg = choice.get("message", {})
+            text = msg.get("content") or choice.get("text") or msg.get("reasoning") or ""
+            return text
+        else:
+            raise RuntimeError(f"Kilo API returned status {res.status_code}: {res.text[:200]}")

@@ -886,8 +886,8 @@ def login_password_endpoint(req: LoginPasswordRequest):
 
 @app.get("/api/search/images")
 async def search_images_endpoint(query: str, limit: int = 24):
-    from image_search_engine import search_duckduckgo_images
-    return await search_duckduckgo_images(query=query, limit=limit)
+    from image_search_engine import search_pinterest_images
+    return await search_pinterest_images(query=query, limit=limit)
 
 @app.get("/api/search/pinterest")
 async def search_pinterest_endpoint(query: str, limit: int = 24):
@@ -895,14 +895,48 @@ async def search_pinterest_endpoint(query: str, limit: int = 24):
     return await search_pinterest_images(query=query, limit=limit)
 
 @app.get("/api/search/images/related")
-async def search_images_related_endpoint(title: str = "", image_url: str = "", limit: int = 24):
-    from image_search_engine import search_related_ddg_images
-    return await search_related_ddg_images(title=title, image_url=image_url, limit=limit)
+async def search_images_related_endpoint(
+    title: str = "",
+    image_url: str = "",
+    initial_query: str = "",
+    model: Optional[str] = None,
+    provider: Optional[str] = "opencode",
+    limit: int = 24
+):
+    from image_search_engine import search_related_pinterest_pins
+    return await search_related_pinterest_pins(
+        pin_id="",
+        query=title or initial_query,
+        initial_query=initial_query,
+        image_title=title,
+        image_url=image_url,
+        model=model or "DeepSeek V4 Flash",
+        provider=provider or "opencode",
+        limit=limit
+    )
 
 @app.get("/api/search/pinterest/related")
-async def search_pinterest_related_endpoint(pin_id: str = "", query: str = "", limit: int = 24):
+async def search_pinterest_related_endpoint(
+    pin_id: str = "",
+    query: str = "",
+    initial_query: str = "",
+    image_title: str = "",
+    image_url: str = "",
+    model: Optional[str] = None,
+    provider: Optional[str] = "opencode",
+    limit: int = 24
+):
     from image_search_engine import search_related_pinterest_pins
-    return await search_related_pinterest_pins(pin_id=pin_id, query=query, limit=limit)
+    return await search_related_pinterest_pins(
+        pin_id=pin_id,
+        query=query,
+        initial_query=initial_query,
+        image_title=image_title,
+        image_url=image_url,
+        selected_model=model or "DeepSeek V4 Flash",
+        provider=provider or "opencode",
+        limit=limit
+    )
 
 @app.get("/api/image-proxy")
 async def image_proxy_endpoint(url: str):

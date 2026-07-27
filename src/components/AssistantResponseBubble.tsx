@@ -1000,7 +1000,7 @@ export default function AssistantResponseBubble({
         </div>
       )}
 
-      {/* --- Dynamic DuckDuckGo Live Image Search Grid Widget --- */}
+      {/* --- Dynamic Pinterest Live Image Search Grid Widget --- */}
       {imageGalleryQuery && (
         <ExpandableWrapper label="Image Search Gallery" className="w-full max-w-full select-none flex justify-center">
           <DuckDuckGoImageWidget query={imageGalleryQuery} />

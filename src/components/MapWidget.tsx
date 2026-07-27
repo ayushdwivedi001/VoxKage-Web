@@ -135,7 +135,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
       })
     : [];
 
-  // Fetch authentic DuckDuckGo images for places without image_url
+  // Fetch authentic Pinterest images for places without image_url
   useEffect(() => {
     if (!places) return;
 
@@ -158,7 +158,7 @@ export default function MapWidget({ lat, lng, label, places, isExpanded = false,
 
       try {
         const queryTerm = `${p.name} ${label || ""}`.trim();
-        const res = await fetch(`${BACKEND_URL}/api/search/images?query=${encodeURIComponent(queryTerm)}&limit=1`);
+        const res = await fetch(`${BACKEND_URL}/api/search/pinterest?query=${encodeURIComponent(queryTerm)}&limit=1`);
         if (res.ok) {
           const data = await res.json();
           if (data.images && data.images.length > 0) {

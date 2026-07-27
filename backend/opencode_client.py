@@ -104,7 +104,12 @@ def get_system_prompt() -> str:
     )
 
 
-async def query_opencode_zen(prompt: str, model_key: str = "deepseek-flash", history: list = None) -> str:
+async def query_opencode_zen(
+    prompt: str,
+    model_key: str = "deepseek-flash",
+    history: list = None,
+    image_url: str = None
+) -> str:
     api_key = os.getenv("OPENCODE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENCODE_API_KEY environment variable is not configured.")
@@ -126,7 +131,15 @@ async def query_opencode_zen(prompt: str, model_key: str = "deepseek-flash", his
         for msg in sanitize_history_roles(history):
             messages.append({"role": msg["role"], "content": msg["content"]})
             
-    messages.append({"role": "user", "content": prompt})
+    if image_url:
+        user_content = [
+            {"type": "image_url", "image_url": {"url": image_url}},
+            {"type": "text", "text": prompt}
+        ]
+    else:
+        user_content = prompt
+
+    messages.append({"role": "user", "content": user_content})
 
     payload = {
         "model": model_id,
@@ -139,7 +152,10 @@ async def query_opencode_zen(prompt: str, model_key: str = "deepseek-flash", his
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(url, headers=headers, json=payload)
             if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
+                data = response.json()
+                choice = data.get("choices", [{}])[0]
+                msg = choice.get("message", {})
+                return msg.get("content") or choice.get("text") or msg.get("reasoning") or ""
             else:
                 raise HTTPException(
                     status_code=response.status_code,

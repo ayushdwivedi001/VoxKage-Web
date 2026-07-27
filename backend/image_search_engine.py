@@ -1,9 +1,13 @@
 import re
 import json
+import time
 import httpx
 import asyncio
 import urllib.parse
+import warnings
 from typing import List, Dict, Any
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -49,13 +53,13 @@ async def _research_topic(query: str) -> str:
 async def generate_suggestion_pills(query: str) -> List[str]:
     """
     Research-Driven Search Refinement Chip Synthesizer.
-    Step 1 — Live DDG text search → real entity/context extraction.
+    Step 1 — Live text search → real entity/context extraction.
     Step 2 — LLM synthesizes 8 immersive, deeply specific chips grounded in that research.
     Zero hardcoded keyword rules.
     """
     clean_q = query.strip()
 
-    # --- Step 1: Research the topic concurrently with image fetch (called in parallel outside) ---
+    # --- Step 1: Research the topic concurrently with image fetch ---
     research_context = await _research_topic(clean_q)
 
     context_block = ""
@@ -101,7 +105,7 @@ async def generate_suggestion_pills(query: str) -> List[str]:
     except Exception as err:
         print(f"[-] Pill LLM notice: {err}")
 
-    # Fallback: DDG live autocomplete
+    # Fallback: Live autocomplete
     try:
         encoded = urllib.parse.quote(clean_q)
         ac_url = f"https://duckduckgo.com/ac/?q={encoded}&type=list"
@@ -118,158 +122,6 @@ async def generate_suggestion_pills(query: str) -> List[str]:
         pass
 
     return [clean_q]
-
-
-
-def _extract_vqd(html_text: str) -> str:
-    patterns = [
-        r'vqd=["\']?([0-9-]+)[^"\'&\s;,]*',
-        r'vqd=["\']?([^"\'&\s;,]+)',
-        r'vqd\s*[:=]\s*["\']?([^"\'&\s;,]+)["\']?',
-        r'vqd=([a-zA-Z0-9_-]+)'
-    ]
-    for p in patterns:
-        m = re.search(p, html_text)
-        if m:
-            val = m.group(1)
-            if val and len(val) > 5 and val != "1-":
-                return val
-    return None
-
-def _clean_bing_json(raw_m: str) -> dict:
-    import html as html_lib
-    try:
-        clean_str = html_lib.unescape(raw_m)
-        clean_str = clean_str.replace("&quot;", '"').replace("&amp;", "&")
-        return json.loads(clean_str)
-    except Exception:
-        murl_m = re.search(r'"murl"\s*:\s*"([^"]+)"', raw_m) or re.search(r'murl&quot;:&quot;([^&]+)&quot;', raw_m)
-        turl_m = re.search(r'"turl"\s*:\s*"([^"]+)"', raw_m) or re.search(r'turl&quot;:&quot;([^&]+)&quot;', raw_m)
-        purl_m = re.search(r'"purl"\s*:\s*"([^"]+)"', raw_m) or re.search(r'purl&quot;:&quot;([^&]+)&quot;', raw_m)
-        title_m = re.search(r'"t"\s*:\s*"([^"]+)"', raw_m) or re.search(r't&quot;:&quot;([^&]+)&quot;', raw_m)
-        
-        if murl_m:
-            return {
-                "murl": html_lib.unescape(murl_m.group(1)),
-                "turl": html_lib.unescape(turl_m.group(1)) if turl_m else None,
-                "purl": html_lib.unescape(purl_m.group(1)) if purl_m else None,
-                "t": html_lib.unescape(title_m.group(1)) if title_m else "Web Image"
-            }
-    return None
-
-async def search_duckduckgo_images(query: str, limit: int = 24) -> Dict[str, Any]:
-    """
-    Performs an authentic live DuckDuckGo Image Search via DDG's i.js endpoint.
-    Returns 24+ structured authentic image items + DuckDuckGo search refinement chips.
-    """
-    clean_query = query.strip()
-    encoded = urllib.parse.quote(clean_query)
-    formatted_images = []
-    
-    # Primary Method: Authentic DuckDuckGo i.js Protocol (via iax=images&ia=images landing page)
-    try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=HEADERS) as client:
-            token_res = await client.get(f"https://duckduckgo.com/?q={encoded}&iax=images&ia=images")
-            if token_res.status_code == 200:
-                vqd = _extract_vqd(token_res.text)
-                if vqd:
-                    i_url = f"https://duckduckgo.com/i.js?l=us-en&o=json&q={encoded}&vqd={vqd}&f=,,,&p=1"
-                    headers_i = {
-                        **HEADERS,
-                        "Referer": f"https://duckduckgo.com/?q={encoded}&iax=images&ia=images",
-                        "X-Requested-With": "XMLHttpRequest"
-                    }
-                    img_res = await client.get(i_url, headers=headers_i)
-                    if img_res.status_code == 200:
-                        data = img_res.json()
-                        results = data.get("results", [])
-                        for item in results[:limit]:
-                            title = item.get("title", "Web Image")
-                            image_url = item.get("image", "")
-                            thumbnail_url = item.get("thumbnail", "")
-                            source_url = item.get("url", "")
-                            width = item.get("width", 1200)
-                            height = item.get("height", 800)
-                            
-                            domain = "web"
-                            if source_url:
-                                try:
-                                    parsed = urllib.parse.urlparse(source_url)
-                                    domain = parsed.netloc.replace("www.", "")
-                                except Exception:
-                                    pass
-                                    
-                            if image_url:
-                                formatted_images.append({
-                                    "title": title,
-                                    "image_url": image_url,
-                                    "thumbnail_url": thumbnail_url or image_url,
-                                    "source_url": source_url or image_url,
-                                    "domain": domain,
-                                    "width": width,
-                                    "height": height,
-                                })
-    except Exception as err:
-        print(f"[-] DDG i.js primary search notice: {err}")
-        
-    # Secondary Fallback: Bing Async endpoint if DDG primary yielded no images
-    if not formatted_images:
-        url = f"https://www.bing.com/images/async?q={encoded}&first=1&count={limit}&scenario=ImageBasicHover&datsrc=custom&layout=RowBased"
-        try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=HEADERS) as client:
-                res = await client.get(url)
-                if res.status_code == 200:
-                    matches = re.findall(r'm=["\'](\{.*?\})["\']', res.text)
-                    for m_str in matches:
-                        b_data = _clean_bing_json(m_str)
-                        if b_data:
-                            murl = b_data.get("murl")
-                            turl = b_data.get("turl")
-                            purl = b_data.get("purl")
-                            title = b_data.get("t") or "Web Image"
-                            
-                            domain = "web"
-                            if purl:
-                                try:
-                                    parsed = urllib.parse.urlparse(purl)
-                                    domain = parsed.netloc.replace("www.", "")
-                                except Exception:
-                                    pass
-                                    
-                            if murl:
-                                formatted_images.append({
-                                    "title": title,
-                                    "image_url": murl,
-                                    "thumbnail_url": turl or murl,
-                                    "source_url": purl or murl,
-                                    "domain": domain,
-                                    "width": b_data.get("ow", 1200),
-                                    "height": b_data.get("oh", 800)
-                                })
-        except Exception as err:
-            print(f"[-] Image search secondary fallback error: {err}")
-
-    # Generate authentic DDG search refinement chips (runs concurrently with image fetch)
-    chips = await generate_suggestion_pills(clean_query)
-
-    # --- Stock Domain Demotion ---
-    STOCK_DOMAINS = {
-        "alamy.com", "istockphoto.com", "dreamstime.com", "shutterstock.com",
-        "gettyimages.com", "depositphotos.com", "123rf.com", "stock.adobe.com",
-        "bigstockphoto.com", "pond5.com", "stocksy.com"
-    }
-    real_images = [img for img in formatted_images if img["domain"] not in STOCK_DOMAINS]
-    
-    # Use real results if they exist, otherwise fall back to full array
-    final_images = real_images if len(real_images) >= 4 else formatted_images
-
-    return {
-        "query": clean_query,
-        "engine": "ddg",
-        "count": len(final_images),
-        "images": final_images[:limit],
-        "pills": chips
-    }
 
 
 async def search_pinterest_images(query: str, limit: int = 24) -> Dict[str, Any]:
@@ -376,15 +228,99 @@ async def search_pinterest_images(query: str, limit: int = 24) -> Dict[str, Any]
     }
 
 
-async def search_related_pinterest_pins(pin_id: str = "", query: str = "", limit: int = 24) -> Dict[str, Any]:
+async def curate_search_query_with_ai(
+    initial_query: str,
+    image_title: str,
+    image_url: str = "",
+    selected_model: str = "DeepSeek V4 Flash",
+    provider: str = "opencode"
+) -> str:
     """
-    Retrieves visually/topically related Pinterest pins for a specific Pin ID or Title keyword.
+    Synthesizes a targeted, noise-free search query using the user's SELECTED MODEL.
+    Routes explicitly based on provider parameter ('kilo' vs 'opencode').
+    Zero string keyword guessing.
+    Always attempts multimodal image payload first, falling back to text synthesis.
     """
-    clean_q = query.strip()
-    if not clean_q and not pin_id:
-        clean_q = "aesthetic"
-        
-    search_q = clean_q or f"pin {pin_id}"
+    clean_init = initial_query.strip()
+    clean_title = image_title.replace("Pinterest", "").replace("pinterest.com", "").replace("|", "").strip()
+
+    # Fast algorithmic fallback baseline (strips noise words like 'LOVE')
+    title_words = [w for w in re.sub(r'[^\w\s]', ' ', clean_title).split() if len(w) > 2 and w.lower() not in {"pin", "pins", "image", "jpg", "png", "love", "like", "cool", "best"}]
+    fallback_query = f"{clean_init} {' '.join(title_words[:4])}".strip() if title_words else clean_init
+
+    prompt = (
+        f"You are VoxKage's Image Search Query Synthesizer.\n"
+        f"Initial User Search: \"{clean_init}\"\n"
+        f"Selected Image Title: \"{clean_title}\"\n\n"
+        f"Task:\n"
+        f"Inspect the image visual subject, character, art style, and dominant color design.\n"
+        f"Filter out generic noise words (e.g. 'love', 'pin', 'pic', 'cool').\n"
+        f"Combine initial search '{clean_init}' with the specific visual subject/character in the image into a 2-5 term comma-separated query.\n"
+        f"Output ONLY the comma-separated search query (e.g. 'Tekken 8, Jin Kazama, wallpaper'). No extra text or quotes."
+    )
+
+    is_kilo = (provider or "").strip().lower() == "kilo"
+
+    # 1. Attempt Multimodal Payload (Image URL + Text Prompt)
+    try:
+        if is_kilo:
+            from kilo_client import query_kilo_ai
+            ai_res = await query_kilo_ai(prompt=prompt, model_key=selected_model, image_url=image_url)
+        else:
+            from opencode_client import query_opencode_zen
+            ai_res = await query_opencode_zen(prompt=prompt, model_key=selected_model, image_url=image_url)
+
+        clean_ai = ai_res.strip().replace('"', '').replace("`", "").strip()
+        if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
+            print(f"[+] VoxKage Multimodal AI Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
+            return clean_ai
+    except Exception as e:
+        print(f"[-] Multimodal payload notice for {provider.upper()} model '{selected_model}': {e}. Falling back to text synthesis...")
+
+    # 2. Fallback to Text-Only Payload (Prompt with embedded image URL reference)
+    try:
+        text_prompt = f"Image URL: {image_url}\n{prompt}"
+        if is_kilo:
+            from kilo_client import query_kilo_ai
+            ai_res = await query_kilo_ai(prompt=text_prompt, model_key=selected_model, image_url=None)
+        else:
+            from opencode_client import query_opencode_zen
+            ai_res = await query_opencode_zen(prompt=text_prompt, model_key=selected_model, image_url=None)
+
+        clean_ai = ai_res.strip().replace('"', '').replace("`", "").strip()
+        if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
+            print(f"[+] VoxKage Text Fallback Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
+            return clean_ai
+    except Exception as e:
+        print(f"[-] AI text fallback notice for {provider.upper()} model '{selected_model}': {e}")
+
+    return fallback_query
+
+
+async def search_related_pinterest_pins(
+    pin_id: str = "",
+    query: str = "",
+    initial_query: str = "",
+    image_title: str = "",
+    image_url: str = "",
+    selected_model: str = "DeepSeek V4 Flash",
+    provider: str = "opencode",
+    limit: int = 24
+) -> Dict[str, Any]:
+    """
+    Retrieves visually/topically related Pinterest pins using AI query curation.
+    """
+    if initial_query and image_title:
+        search_q = await curate_search_query_with_ai(
+            initial_query=initial_query,
+            image_title=image_title,
+            image_url=image_url,
+            selected_model=selected_model,
+            provider=provider
+        )
+    else:
+        search_q = query.strip() or f"pin {pin_id}" if pin_id else "aesthetic"
+
     res = await search_pinterest_images(query=search_q, limit=limit)
     return {
         "pin_id": pin_id,
@@ -394,23 +330,3 @@ async def search_related_pinterest_pins(pin_id: str = "", query: str = "", limit
         "images": res.get("images", []),
         "pills": res.get("pills", [])
     }
-
-
-async def search_related_ddg_images(title: str = "", image_url: str = "", limit: int = 24) -> Dict[str, Any]:
-    """
-    Retrieves visually/topically related web images based on title keywords and entity names.
-    """
-    clean_title = re.sub(r'[^\w\s]', ' ', title).strip()
-    words = [w for w in clean_title.split() if len(w) > 2 and w.lower() not in {"image", "jpg", "png", "webp", "photo", "pic"}]
-    search_q = " ".join(words[:6]) if words else "aesthetic visual design"
-    
-    res = await search_duckduckgo_images(query=search_q, limit=limit)
-    return {
-        "title": title,
-        "query": search_q,
-        "engine": "ddg",
-        "count": len(res.get("images", [])),
-        "images": res.get("images", []),
-        "pills": res.get("pills", [])
-    }
-
