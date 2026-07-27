@@ -228,6 +228,48 @@ async def search_pinterest_images(query: str, limit: int = 24) -> Dict[str, Any]
     }
 
 
+def sanitize_5_anchor_query(raw_text: str, initial_query: str) -> str:
+    """
+    Strips preambles, thinking text, conversational intros, and formats
+    a clean 5-anchor comma-separated visual search string.
+    Ensures Anchor 1 (initial search term) is always leading.
+    """
+    clean = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+    clean = clean.replace('"', '').replace('`', '').strip()
+    
+    if '\n' in clean:
+        lines = [
+            l.strip() for l in clean.split('\n')
+            if l.strip() and not any(w in l.lower() for w in ["got it", "let's", "wait", "first", "oh right", "task:", "image url", "system", "instruction", "fixed as", "term is"])
+        ]
+        if lines:
+            comma_lines = [l for l in lines if ',' in l]
+            clean = comma_lines[-1] if comma_lines else lines[-1]
+
+    clean = re.sub(r'^(the image shows|this image shows|image has a|picture of|photo of|mage has a|there is a|view of|now the image has|the first term is)\s+', '', clean, flags=re.IGNORECASE)
+
+    banned_phrases = ["got it", "let's", "wait", "task:", "image url", "fixed as", "first term", "term is", "now the image", "the image has", "no,", "no ", "wait no", "instruction"]
+
+    raw_terms = [
+        t.strip() for t in clean.split(',')
+        if t.strip() and not any(b in t.lower() for b in banned_phrases) and len(t.strip()) < 40 and t.strip().lower() not in ["no", "yes", "none", "or"]
+    ]
+
+    clean_init = initial_query.strip()
+    
+    # Ensure initial search query is the leading anchor
+    terms = []
+    if clean_init:
+        terms.append(clean_init)
+    
+    for t in raw_terms:
+        if t.lower() != clean_init.lower() and t not in terms:
+            terms.append(t)
+
+    final_terms = terms[:5]
+    return ", ".join(final_terms)
+
+
 async def curate_search_query_with_ai(
     initial_query: str,
     image_title: str,
@@ -236,27 +278,35 @@ async def curate_search_query_with_ai(
     provider: str = "opencode"
 ) -> str:
     """
-    Synthesizes a targeted, noise-free search query using the user's SELECTED MODEL.
+    Synthesizes a targeted 5-anchor visual search query using the user's SELECTED MODEL.
     Routes explicitly based on provider parameter ('kilo' vs 'opencode').
-    Zero string keyword guessing.
-    Always attempts multimodal image payload first, falling back to text synthesis.
+    Strictly bans natural language sentences and outputs 5 comma-separated terms.
     """
     clean_init = initial_query.strip()
     clean_title = image_title.replace("Pinterest", "").replace("pinterest.com", "").replace("|", "").strip()
 
-    # Fast algorithmic fallback baseline (strips noise words like 'LOVE')
     title_words = [w for w in re.sub(r'[^\w\s]', ' ', clean_title).split() if len(w) > 2 and w.lower() not in {"pin", "pins", "image", "jpg", "png", "love", "like", "cool", "best"}]
-    fallback_query = f"{clean_init} {' '.join(title_words[:4])}".strip() if title_words else clean_init
+    fallback_query = f"{clean_init}, {' '.join(title_words[:3])}, aesthetic pin, high resolution, concept art".strip()
 
     prompt = (
-        f"You are VoxKage's Image Search Query Synthesizer.\n"
-        f"Initial User Search: \"{clean_init}\"\n"
-        f"Selected Image Title: \"{clean_title}\"\n\n"
-        f"Task:\n"
-        f"Inspect the image visual subject, character, art style, and dominant color design.\n"
-        f"Filter out generic noise words (e.g. 'love', 'pin', 'pic', 'cool').\n"
-        f"Combine initial search '{clean_init}' with the specific visual subject/character in the image into a 2-5 term comma-separated query.\n"
-        f"Output ONLY the comma-separated search query (e.g. 'Tekken 8, Jin Kazama, wallpaper'). No extra text or quotes."
+        f"SYSTEM INSTRUCTION: You are VoxKage's Pinterest Visual Search Synthesizer.\n"
+        f"STRICT DIRECTIVE: Generate EXACTLY 5 comma-separated visual search terms to describe the image and integrate it with the search query text.\n\n"
+        f"INPUT ANCHORS:\n"
+        f"• Active Search Bar Query: \"{clean_init}\"\n"
+        f"• Selected Pin Title: \"{clean_title}\"\n\n"
+        f"REQUIRED 5-ANCHOR STRUCTURE (comma-separated list of 5 terms ONLY):\n"
+        f"1. Active Search Query (must be '{clean_init}')\n"
+        f"2. Specific Visual Subject / Creature / Character (e.g. 'flying black dragon', 'Jin Kazama')\n"
+        f"3. Setting / Environment (e.g. 'cloudy blue sky', 'bamboo forest')\n"
+        f"4. Lighting / Color Aesthetic (e.g. 'golden hour sunlight', 'neon rain')\n"
+        f"5. Art Style / Composition (e.g. 'gameplay concept art', 'cinematic poster')\n\n"
+        f"STRICT NEGATIVE CONSTRAINTS:\n"
+        f"- ABSOLUTELY NO natural language sentences, preambles, or explanations (NEVER write 'image has a...', 'the sky is...', 'mage has...').\n"
+        f"- ABSOLUTELY NO verbs or conversational text.\n"
+        f"- Output MUST be a single line containing EXACTLY 5 comma-separated terms.\n\n"
+        f"EXAMPLE OUTPUT for 'Crimson Desert' with dragon image:\n"
+        f"Crimson Desert, flying black dragon, cloudy blue sky, golden hour sunlight, dark fantasy concept art\n\n"
+        f"Output ONLY the 5 comma-separated terms. No markdown, no quotes."
     )
 
     is_kilo = (provider or "").strip().lower() == "kilo"
@@ -270,14 +320,15 @@ async def curate_search_query_with_ai(
             from opencode_client import query_opencode_zen
             ai_res = await query_opencode_zen(prompt=prompt, model_key=selected_model, image_url=image_url)
 
-        clean_ai = ai_res.strip().replace('"', '').replace("`", "").strip()
+        clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+
         if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
-            print(f"[+] VoxKage Multimodal AI Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
+            print(f"[+] VoxKage 5-Anchor Multimodal AI Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
             return clean_ai
     except Exception as e:
         print(f"[-] Multimodal payload notice for {provider.upper()} model '{selected_model}': {e}. Falling back to text synthesis...")
 
-    # 2. Fallback to Text-Only Payload (Prompt with embedded image URL reference)
+    # 2. Fallback to Text-Only Payload
     try:
         text_prompt = f"Image URL: {image_url}\n{prompt}"
         if is_kilo:
@@ -287,9 +338,10 @@ async def curate_search_query_with_ai(
             from opencode_client import query_opencode_zen
             ai_res = await query_opencode_zen(prompt=text_prompt, model_key=selected_model, image_url=None)
 
-        clean_ai = ai_res.strip().replace('"', '').replace("`", "").strip()
+        clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+
         if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
-            print(f"[+] VoxKage Text Fallback Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
+            print(f"[+] VoxKage 5-Anchor Text Fallback Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
             return clean_ai
     except Exception as e:
         print(f"[-] AI text fallback notice for {provider.upper()} model '{selected_model}': {e}")

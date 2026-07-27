@@ -81,20 +81,39 @@ export default function ImageWidget({ query, isExpanded = false }: ImageWidgetPr
           if (pModel && pModel.trim()) activeModelName = pModel.trim();
         }
 
-        const cachedModelsStr = localStorage.getItem("voxkage_cached_models");
-        if (cachedModelsStr) {
-          const cachedModels = JSON.parse(cachedModelsStr);
-          if (Array.isArray(cachedModels)) {
-            const found = cachedModels.find(
-              (m: any) => m.name === activeModelName || m.api_key === activeModelName
-            );
-            if (found && found.provider) {
-              return { model: activeModelName, provider: found.provider };
+        // Check explicit provider stored in settings profile
+        let provider = "opencode";
+        if (profileStr) {
+          try {
+            const parsed = JSON.parse(profileStr);
+            if (parsed.selected_provider || parsed.selectedProvider) {
+              provider = parsed.selected_provider || parsed.selectedProvider;
             }
-          }
+          } catch {}
         }
 
-        return { model: activeModelName, provider: "opencode" };
+        const cachedModelsStr = localStorage.getItem("voxkage_cached_models");
+        if (cachedModelsStr) {
+          try {
+            const cachedModels = JSON.parse(cachedModelsStr);
+            if (Array.isArray(cachedModels)) {
+              const found = cachedModels.find(
+                (m: any) => m.name === activeModelName || m.api_key === activeModelName || m.id === activeModelName
+              );
+              if (found && found.provider) {
+                return { model: activeModelName, provider: found.provider };
+              }
+            }
+          } catch {}
+        }
+
+        // Heuristic fallback: if model name contains stepfun or kilo or step, provider is kilo
+        const lowerName = activeModelName.toLowerCase();
+        if (lowerName.includes("stepfun") || lowerName.includes("step 3.7") || lowerName.includes("kilo")) {
+          provider = "kilo";
+        }
+
+        return { model: activeModelName, provider };
       } catch (e) {
         console.error("Model info resolution notice:", e);
       }

@@ -6,22 +6,33 @@ from fastapi import HTTPException
 
 OPENCODE_BASE_URL = "https://opencode.ai/zen/v1"
 
-# Map human-readable model keys to OpenCode API model strings
-MODEL_MAP = {
-    "deepseek-flash": "deepseek-v4-flash-free",
-    "DeepSeek V4 Flash": "deepseek-v4-flash-free",
-    "gemini-flash": "gemini-3.5-flash",
-    "Gemini 3.5 Flash": "gemini-3.5-flash",
-    "claude-sonnet": "claude-sonnet-4",
-    "Claude 4.6 Sonnet": "claude-sonnet-4",
-    "mimo-free": "mimo-v2.5-free",
-    "Mimo 2.5 Free": "mimo-v2.5-free",
-}
-
 def get_opencode_model(model_key: str) -> str:
-    if model_key in MODEL_MAP:
-        return MODEL_MAP[model_key]
-    return model_key
+    """
+    Dynamically resolves OpenCode API model IDs without hardcoded dictionaries.
+    If model_key is already a valid model ID (e.g., deepseek-v4-flash-free, gemini-3.5-flash),
+    returns model_key directly. Otherwise dynamically matches normalized model slugs.
+    """
+    if not model_key:
+        return "deepseek-v4-flash-free"
+    
+    clean_key = model_key.strip()
+    
+    # 1. Known OpenCode raw model IDs
+    if clean_key in ["deepseek-v4-flash-free", "gemini-3.5-flash", "claude-sonnet-4", "mimo-v2.5-free", "gpt-4o"]:
+        return clean_key
+
+    # 2. Dynamic normalized trait matching
+    key_lower = clean_key.lower()
+    if "deepseek" in key_lower:
+        return "deepseek-v4-flash-free"
+    elif "gemini" in key_lower:
+        return "gemini-3.5-flash"
+    elif "claude" in key_lower:
+        return "claude-sonnet-4"
+    elif "mimo" in key_lower:
+        return "mimo-v2.5-free"
+
+    return clean_key
 
 def sanitize_history_roles(history: list) -> list:
     """
@@ -104,6 +115,10 @@ def get_system_prompt() -> str:
     )
 
 
+def is_opencode_vision_model(model_id: str) -> bool:
+    m = (model_id or "").lower()
+    return any(v in m for v in ["gemini", "claude", "mimo", "stepfun", "vision", "vl", "gpt-4o"])
+
 async def query_opencode_zen(
     prompt: str,
     model_key: str = "deepseek-flash",
@@ -122,20 +137,27 @@ async def query_opencode_zen(
     }
 
     messages = []
-    messages.append({
-        "role": "system",
-        "content": get_system_prompt()
-    })
-
+    # Use lightweight prompt if single-turn utility call, or full system prompt if chat turn
     if history:
+        messages.append({
+            "role": "system",
+            "content": get_system_prompt()
+        })
         for msg in sanitize_history_roles(history):
             messages.append({"role": msg["role"], "content": msg["content"]})
-            
-    if image_url:
+    else:
+        messages.append({
+            "role": "system",
+            "content": "You are VoxKage's AI Image Search Query Synthesizer."
+        })
+
+    if image_url and is_opencode_vision_model(model_id):
         user_content = [
             {"type": "image_url", "image_url": {"url": image_url}},
             {"type": "text", "text": prompt}
         ]
+    elif image_url:
+        user_content = f"Image URL: {image_url}\n{prompt}"
     else:
         user_content = prompt
 
@@ -156,11 +178,28 @@ async def query_opencode_zen(
                 choice = data.get("choices", [{}])[0]
                 msg = choice.get("message", {})
                 return msg.get("content") or choice.get("text") or msg.get("reasoning") or ""
-            else:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"OpenCode API returned an error: {response.text}"
-                )
+            
+            # If multimodal array was used and failed (e.g. 400 invalid request for text-only model), retry with text fallback
+            if image_url and is_opencode_vision_model(model_id):
+                print(f"[-] OpenCode multimodal payload returned {response.status_code}. Retrying with text prompt fallback...")
+                fallback_messages = [
+                    {"role": "system", "content": "You are VoxKage's AI Image Search Query Synthesizer."},
+                    {"role": "user", "content": f"Image URL: {image_url}\n{prompt}"}
+                ]
+                fb_payload = {**payload, "messages": fallback_messages}
+                fb_res = await client.post(url, headers=headers, json=fb_payload)
+                if fb_res.status_code == 200:
+                    data_fb = fb_res.json()
+                    choice_fb = data_fb.get("choices", [{}])[0]
+                    msg_fb = choice_fb.get("message", {})
+                    return msg_fb.get("content") or choice_fb.get("text") or msg_fb.get("reasoning") or ""
+
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"OpenCode API returned an error: {response.text}"
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to query OpenCode Zen API: {str(e)}")
 
