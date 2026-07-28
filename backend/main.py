@@ -996,12 +996,15 @@ async def mcp_word_get_endpoint(doc_id: str):
     return {"status": "success", "versions": history, "latest": history[-1]}
 
 @app.post("/api/mcp/word/export-docx")
-async def mcp_word_export_docx_endpoint(doc_state: Dict[str, Any]):
+async def mcp_word_export_docx_endpoint(payload: Dict[str, Any]):
+    import re
     from word_mcp import word_engine
     from fastapi.responses import Response
     try:
+        doc_state = payload.get("doc_state") or payload.get("activeDoc") or payload
         docx_bytes = word_engine.export_to_docx_bytes(doc_state)
-        safe_filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', doc_state.get("title", "document")) + ".docx"
+        raw_title = doc_state.get("title") if isinstance(doc_state, dict) else "document"
+        safe_filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(raw_title or "document")) + ".docx"
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

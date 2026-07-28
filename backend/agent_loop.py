@@ -1123,45 +1123,42 @@ async def execute_tool_call_v2(
                             tool_output = await _run_provider_tool(fresh_token)
                     else:
                         server_url = conn.get("server_url")
-                    if not server_url:
-                        raise Exception(f"Server URL for provider '{provider}' is not configured.")
-                    
-                    from mcp_client import detect_transport
-                    transport = conn.get("transport") or detect_transport(server_url)
-                    
-                    # Execute with a fresh inline connection per tool call.
-                    # Pooled connections are incompatible with AnyIO's cancel scope lifecycle —
-                    # sessions stored outside their `async with` context cause CancelledError
-                    # propagation across asyncio.gather tasks.
-                    async def _execute_remote_tool(token, url, tp, tool, tool_args):
-                        import httpx
-                        from mcp import ClientSession
-                        headers = {"Authorization": f"Bearer {token}"}
-                        if tp == "sse":
-                            from mcp.client.sse import sse_client
-                            async with sse_client(url, headers=headers) as (read, write):
-                                async with ClientSession(read, write) as sess:
-                                    await sess.initialize()
-                                    result = await sess.call_tool(tool, tool_args)
-                                    return "\n".join([c.text for c in result.content if hasattr(c, "text")])
-                        else:
-                            from mcp.client.streamable_http import streamable_http_client
-                            aclient = httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(timeout=None, connect=15.0))
-                            async with streamable_http_client(url, http_client=aclient) as (read, write, _):
-                                async with ClientSession(read, write) as sess:
-                                    await sess.initialize()
-                                    result = await sess.call_tool(tool, tool_args)
-                                    return "\n".join([c.text for c in result.content if hasattr(c, "text")])
-                    
-                    try:
-                        tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
-                    except BaseException as first_error:
-                        print(f"[-] MCP execution failed for {provider}: {first_error}. Retrying with fresh token.")
-                        access_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
+                        if not server_url:
+                            raise Exception(f"Server URL for provider '{provider}' is not configured.")
+                        
+                        from mcp_client import detect_transport
+                        transport = conn.get("transport") or detect_transport(server_url)
+                        
+                        # Execute with a fresh inline connection per tool call.
+                        async def _execute_remote_tool(token, url, tp, tool, tool_args):
+                            import httpx
+                            from mcp import ClientSession
+                            headers = {"Authorization": f"Bearer {token}"}
+                            if tp == "sse":
+                                from mcp.client.sse import sse_client
+                                async with sse_client(url, headers=headers) as (read, write):
+                                    async with ClientSession(read, write) as sess:
+                                        await sess.initialize()
+                                        result = await sess.call_tool(tool, tool_args)
+                                        return "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                            else:
+                                from mcp.client.streamable_http import streamable_http_client
+                                aclient = httpx.AsyncClient(headers=headers, timeout=httpx.Timeout(timeout=None, connect=15.0))
+                                async with streamable_http_client(url, http_client=aclient) as (read, write, _):
+                                    async with ClientSession(read, write) as sess:
+                                        await sess.initialize()
+                                        result = await sess.call_tool(tool, tool_args)
+                                        return "\n".join([c.text for c in result.content if hasattr(c, "text")])
+                        
                         try:
                             tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
-                        except BaseException as retry_error:
-                            tool_output = f"Error: Remote MCP tool execution failed after retry: {retry_error}"
+                        except BaseException as first_error:
+                            print(f"[-] MCP execution failed for {provider}: {first_error}. Retrying with fresh token.")
+                            access_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
+                            try:
+                                tool_output = await _execute_remote_tool(access_token, server_url, transport, mcp_tool_name, args)
+                            except BaseException as retry_error:
+                                tool_output = f"Error: Remote MCP tool execution failed after retry: {retry_error}"
 
                 if not tool_output:
                     tool_output = "Success"
