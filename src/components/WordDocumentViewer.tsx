@@ -250,107 +250,190 @@ export default function WordDocumentViewer({
         </div>
       </div>
 
-      {/* ── Main A4 Document Workspace Viewport ── */}
-      <div className="relative flex-1 overflow-y-auto custom-chat-scrollbar p-3 sm:p-6 lg:p-8 flex justify-center items-start bg-[#1a1a1f] [.light_&]:bg-[#e8e3dc]">
-        <div
-          style={{
-            transform: `scale(${zoomScale / 100})`,
-            transformOrigin: "top center",
-          }}
-          className="w-full max-w-[794px] min-h-[900px] bg-white text-[#141413] shadow-xl border border-[#E6DFD8] rounded-sm p-6 sm:p-10 lg:p-14 flex flex-col justify-between transition-all duration-200"
-        >
-          {/* A4 Top Header Area */}
-          <div>
-            {activeDoc.header_text && (
-              <div className="flex justify-between items-center pb-3 mb-8 border-b border-[#E6DFD8] text-xs text-[#6C6A64] font-medium tracking-wide">
-                <span>{activeDoc.title}</span>
-                <span>{activeDoc.header_text}</span>
-              </div>
-            )}
+      {/* ── Main A4 Document Workspace Viewport (Multi-Page Stack) ── */}
+      <div className="relative flex-1 overflow-y-auto custom-chat-scrollbar p-3 sm:p-6 lg:p-10 flex flex-col items-center bg-[#1a1a1f] [.light_&]:bg-[#e8e3dc] gap-6 sm:gap-8">
+        {(() => {
+          // ── A4 Page Pagination Calculation ──
+          const normalizedSections: WordSection[] = [];
+          (activeDoc.sections || []).forEach((sec) => {
+            if (sec.body && sec.body.length > 500) {
+              const paragraphs = sec.body.split(/\n\n+/).filter((p) => p.trim());
+              if (paragraphs.length > 1) {
+                paragraphs.forEach((p, pIdx) => {
+                  normalizedSections.push({
+                    heading: pIdx === 0 ? sec.heading : undefined,
+                    level: sec.level,
+                    body: p,
+                    table: pIdx === paragraphs.length - 1 ? sec.table : undefined,
+                  });
+                });
+              } else {
+                normalizedSections.push(sec);
+              }
+            } else {
+              normalizedSections.push(sec);
+            }
+          });
 
-            {/* Document Title Header */}
-            <h1 className="text-3xl font-serif font-bold text-[#1F497D] tracking-tight mb-2">
-              {activeDoc.title}
-            </h1>
-            <p className="text-xs text-[#6C6A64] mb-8 pb-4 border-b border-[#EBE6DF]">
-              Version {activeDoc.version} • Authored by {activeDoc.author || "VoxKage AI"}
-            </p>
+          const pages: Array<{ pageNumber: number; isFirstPage: boolean; sections: WordSection[] }> = [];
+          let currentPageSections: WordSection[] = [];
+          let currentHeight = 0;
+          const page1Budget = 580; // Height allowance for Page 1 (leaves room for Title header block)
+          const otherPageBudget = 740; // Height allowance for Page 2, 3, etc.
+          let activeBudget = page1Budget;
 
-            {/* Document Sections */}
-            <div className="space-y-6">
-              {activeDoc.sections.map((sec, idx) => (
-                <div key={idx} className="space-y-3">
-                  {sec.heading && (
-                    <h2
-                      className={`font-serif font-semibold text-[#1F497D] ${
-                        sec.level === 2
-                          ? "text-xl border-b border-[#EBE6DF] pb-1"
-                          : sec.level === 3
-                          ? "text-lg"
-                          : "text-2xl border-b border-[#1F497D]/20 pb-1"
-                      }`}
-                    >
-                      {sec.heading}
-                    </h2>
-                  )}
+          const estimateSectionHeight = (sec: WordSection): number => {
+            let h = 0;
+            if (sec.heading) h += 45;
+            if (sec.body) {
+              const lines = sec.body.split("\n").filter((l) => l.trim().length > 0);
+              lines.forEach((line) => {
+                const estLineCount = Math.max(1, Math.ceil(line.length / 82));
+                h += estLineCount * 20 + 6;
+              });
+            }
+            if (sec.table) {
+              const rowCount = (sec.table.headers ? 1 : 0) + (sec.table.rows?.length || 0);
+              h += 35 + rowCount * 26 + 16;
+            }
+            return Math.max(h, 25);
+          };
 
-                  {sec.body && (
-                    <div className="text-sm leading-relaxed text-[#3D3D3A] whitespace-pre-wrap font-sans">
-                      {sec.body}
-                    </div>
-                  )}
+          normalizedSections.forEach((sec) => {
+            const secH = estimateSectionHeight(sec);
+            if (currentHeight + secH <= activeBudget || currentPageSections.length === 0) {
+              currentPageSections.push(sec);
+              currentHeight += secH;
+            } else {
+              pages.push({
+                pageNumber: pages.length + 1,
+                isFirstPage: pages.length === 0,
+                sections: currentPageSections,
+              });
+              currentPageSections = [sec];
+              currentHeight = secH;
+              activeBudget = otherPageBudget;
+            }
+          });
 
-                  {/* Styled Table Rendering */}
-                  {sec.table && (
-                    <div className="my-4 overflow-x-auto rounded-md border border-[#E6DFD8]">
-                      <table className="w-full text-left border-collapse text-xs">
-                        {sec.table.headers && sec.table.headers.length > 0 && (
-                          <thead>
-                            <tr className="bg-[#1F497D] text-white font-semibold">
-                              {sec.table.headers.map((hdr, hIdx) => (
-                                <th key={hIdx} className="px-3 py-2 border-r border-[#16355C] last:border-r-0">
-                                  {hdr}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                        )}
-                        <tbody>
-                          {sec.table.rows?.map((row, rIdx) => (
-                            <tr
-                              key={rIdx}
-                              className={rIdx % 2 === 0 ? "bg-white" : "bg-[#F5F0E8]"}
-                            >
-                              {row.map((cell, cIdx) => (
-                                <td
-                                  key={cIdx}
-                                  className="px-3 py-2 border-t border-[#E6DFD8] border-r border-[#E6DFD8] last:border-r-0 text-[#3D3D3A]"
-                                >
-                                  {cell}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+          if (currentPageSections.length > 0) {
+            pages.push({
+              pageNumber: pages.length + 1,
+              isFirstPage: pages.length === 0,
+              sections: currentPageSections,
+            });
+          }
+
+          const totalPages = pages.length;
+
+          return pages.map((page, pIdx) => (
+            <div
+              key={pIdx}
+              style={{
+                transform: `scale(${zoomScale / 100})`,
+                transformOrigin: "top center",
+              }}
+              className="w-full max-w-[794px] min-h-[1050px] bg-white text-[#141413] shadow-2xl border border-[#E6DFD8] rounded-sm p-6 sm:p-10 lg:p-14 flex flex-col justify-between transition-all duration-200 relative select-text"
+            >
+              {/* Top Header Area (on every page) */}
+              <div>
+                <div className="flex justify-between items-center pb-3 mb-6 border-b border-[#E6DFD8] text-xs text-[#6C6A64] font-medium tracking-wide">
+                  <span className="truncate max-w-[45%] font-serif font-semibold text-[#1F497D]">
+                    {activeDoc.title}
+                  </span>
+                  <span className="truncate max-w-[45%] text-right text-[#6C6A64]">
+                    {activeDoc.header_text || "VoxKage Document"}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
 
-          {/* A4 Bottom Footer Area */}
-          <div className="pt-8 mt-12 border-t border-[#E6DFD8] flex justify-between items-center text-xs text-[#6C6A64]">
-            <span>Microsoft Word Document (.docx)</span>
-            <span>
-              {activeDoc.footer_text
-                ? activeDoc.footer_text.replace("{page}", "1").replace("{pages}", "1")
-                : "Page 1 of 1"}
-            </span>
-          </div>
-        </div>
+                {/* Page 1 Document Title Banner */}
+                {page.isFirstPage && (
+                  <div className="mb-6">
+                    <h1 className="text-2xl sm:text-3xl font-serif font-bold text-[#1F497D] tracking-tight mb-1.5">
+                      {activeDoc.title}
+                    </h1>
+                    <p className="text-xs text-[#6C6A64] pb-3 border-b border-[#EBE6DF]">
+                      Version {activeDoc.version} • Authored by {activeDoc.author || "VoxKage AI"}
+                    </p>
+                  </div>
+                )}
+
+                {/* Page Sections */}
+                <div className="space-y-5">
+                  {page.sections.map((sec, sIdx) => (
+                    <div key={sIdx} className="space-y-2.5">
+                      {sec.heading && (
+                        <h2
+                          className={`font-serif font-semibold text-[#1F497D] ${
+                            sec.level === 2
+                              ? "text-lg sm:text-xl border-b border-[#EBE6DF] pb-1"
+                              : sec.level === 3
+                              ? "text-base sm:text-lg"
+                              : "text-xl sm:text-2xl border-b border-[#1F497D]/20 pb-1"
+                          }`}
+                        >
+                          {sec.heading}
+                        </h2>
+                      )}
+
+                      {sec.body && (
+                        <div className="text-[13.5px] sm:text-sm leading-relaxed text-[#3D3D3A] whitespace-pre-wrap font-sans">
+                          {sec.body}
+                        </div>
+                      )}
+
+                      {/* Styled Table */}
+                      {sec.table && (
+                        <div className="my-3 overflow-x-auto rounded-md border border-[#E6DFD8]">
+                          <table className="w-full text-left border-collapse text-xs">
+                            {sec.table.headers && sec.table.headers.length > 0 && (
+                              <thead>
+                                <tr className="bg-[#1F497D] text-white font-semibold">
+                                  {sec.table.headers.map((hdr, hIdx) => (
+                                    <th key={hIdx} className="px-3 py-2 border-r border-[#16355C] last:border-r-0">
+                                      {hdr}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                            )}
+                            <tbody>
+                              {sec.table.rows?.map((row, rIdx) => (
+                                <tr
+                                  key={rIdx}
+                                  className={rIdx % 2 === 0 ? "bg-white" : "bg-[#F5F0E8]"}
+                                >
+                                  {row.map((cell, cIdx) => (
+                                    <td
+                                      key={cIdx}
+                                      className="px-3 py-2 border-t border-[#E6DFD8] border-r border-[#E6DFD8] last:border-r-0 text-[#3D3D3A]"
+                                    >
+                                      {cell}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bottom Footer Area (on every page) */}
+              <div className="pt-4 mt-8 border-t border-[#E6DFD8] flex justify-between items-center text-xs text-[#6C6A64]">
+                <span>Microsoft Word Document (.docx)</span>
+                <span className="font-mono font-medium text-[#3D3D3A]">
+                  Page {page.pageNumber} of {totalPages}
+                </span>
+              </div>
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );
 }
+

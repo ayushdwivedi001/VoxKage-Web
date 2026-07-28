@@ -103,10 +103,19 @@ class WordDocumentEngine:
         self.documents[doc_id] = history
         return latest
 
-    def export_to_docx_bytes(self, doc_state: Dict[str, Any]) -> bytes:
+    def export_to_docx_bytes(self, doc_state: Any) -> bytes:
         """
         Generates binary .docx file bytes using python-docx.
         """
+        if isinstance(doc_state, str):
+            try:
+                doc_state = json.loads(doc_state)
+            except Exception:
+                doc_state = {"title": "Document", "sections": [{"heading": "Content", "body": doc_state}]}
+
+        if not isinstance(doc_state, dict):
+            doc_state = {"title": "Document", "sections": []}
+
         doc = docx.Document()
         
         # Page Margins (1 inch)
@@ -119,84 +128,105 @@ class WordDocumentEngine:
             # Header
             if doc_state.get("header_text"):
                 header_para = sec.header.paragraphs[0]
-                header_para.text = doc_state["header_text"]
+                header_para.text = str(doc_state["header_text"])
                 header_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
             # Footer
             if doc_state.get("footer_text"):
                 footer_para = sec.footer.paragraphs[0]
-                footer_para.text = doc_state["footer_text"]
+                footer_para.text = str(doc_state["footer_text"])
                 footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
         # Document Title
         title_para = doc.add_paragraph()
-        title_run = title_para.add_run(doc_state.get("title", "Document"))
-        title_run.font.size = Pt(26)
+        title_run = title_para.add_run(str(doc_state.get("title", "Document")))
+        title_run.font.size = Pt(24)
         title_run.font.bold = True
         title_run.font.color.rgb = RGBColor(0x1F, 0x49, 0x7D)  # Corporate Word Blue
         title_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
         doc.add_paragraph()  # Spacing
 
         # Render Sections
-        for sec in doc_state.get("sections", []):
+        sections = doc_state.get("sections") or []
+        if not isinstance(sections, list):
+            sections = []
+
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
             heading = sec.get("heading")
             if heading:
-                level = sec.get("level", 1)
-                h_para = doc.add_heading(heading, level=min(level, 3))
+                raw_level = sec.get("level", 1)
+                try:
+                    level_int = int(raw_level)
+                except (ValueError, TypeError):
+                    level_int = 1
+                level_int = max(1, min(level_int, 3))
+
+                h_para = doc.add_heading(str(heading), level=level_int)
                 h_para.paragraph_format.space_before = Pt(12)
                 h_para.paragraph_format.space_after = Pt(6)
 
             # Paragraphs / Body text
             body = sec.get("body", "")
             if body:
-                p = doc.add_paragraph()
-                p.paragraph_format.space_after = Pt(6)
-                p.paragraph_format.line_spacing = 1.15
-                
-                # Check for basic formatting tags or bullet points
-                lines = body.split("\n")
+                lines = str(body).split("\n")
                 for line in lines:
                     line_str = line.strip()
+                    if not line_str:
+                        continue
                     if line_str.startswith("•") or line_str.startswith("-"):
                         bp = doc.add_paragraph(style='List Bullet')
                         bp.add_run(line_str.lstrip("•- "))
                     else:
-                        doc.add_paragraph(line_str)
+                        p = doc.add_paragraph()
+                        p.paragraph_format.space_after = Pt(6)
+                        p.paragraph_format.line_spacing = 1.15
+                        p.add_run(line_str)
 
             # Table (if present)
             table_data = sec.get("table")
             if table_data and isinstance(table_data, dict):
-                headers = table_data.get("headers", [])
-                rows = table_data.get("rows", [])
+                headers = table_data.get("headers") if isinstance(table_data.get("headers"), list) else []
+                rows = table_data.get("rows") if isinstance(table_data.get("rows"), list) else []
                 
                 if headers or rows:
-                    t_cols = len(headers) if headers else (len(rows[0]) if rows else 1)
+                    first_row_len = len(rows[0]) if rows and isinstance(rows[0], list) else 1
+                    t_cols = len(headers) if headers else first_row_len
                     t_rows = (1 if headers else 0) + len(rows)
-                    table = doc.add_table(rows=t_rows, cols=t_cols)
-                    table.alignment = WD_TABLE_ALIGNMENT.CENTER
-                    table.style = 'Table Grid'
+                    if t_cols > 0 and t_rows > 0:
+                        table = doc.add_table(rows=t_rows, cols=t_cols)
+                        table.alignment = WD_TABLE_ALIGNMENT.CENTER
+                        try:
+                            table.style = 'Table Grid'
+                        except Exception:
+                            pass
 
-                    row_idx = 0
-                    if headers:
-                        hdr_cells = table.rows[0].cells
-                        for c_idx, h_text in enumerate(headers):
-                            cell = hdr_cells[c_idx]
-                            cell.text = str(h_text)
-                            # Header styling
-                            shading_elm = parse_xml(r'<w:shd {} w:fill="1F497D"/>'.format(nsdecls('w')))
-                            cell._tc.get_or_add_tcPr().append(shading_elm)
-                            for p in cell.paragraphs:
-                                for r in p.runs:
-                                    r.font.bold = True
-                                    r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-                        row_idx = 1
+                        row_idx = 0
+                        if headers:
+                            hdr_cells = table.rows[0].cells
+                            for c_idx, h_text in enumerate(headers):
+                                if c_idx < len(hdr_cells):
+                                    cell = hdr_cells[c_idx]
+                                    cell.text = str(h_text)
+                                    try:
+                                        shading_elm = parse_xml(r'<w:shd {} w:fill="1F497D"/>'.format(nsdecls('w')))
+                                        cell._tc.get_or_add_tcPr().append(shading_elm)
+                                        for p in cell.paragraphs:
+                                            for r in p.runs:
+                                                r.font.bold = True
+                                                r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                                    except Exception:
+                                        pass
+                            row_idx = 1
 
-                    for r_data in rows:
-                        row_cells = table.rows[row_idx].cells
-                        for c_idx, cell_value in enumerate(r_data):
-                            if c_idx < len(row_cells):
-                                row_cells[c_idx].text = str(cell_value)
-                        row_idx += 1
+                        for r_data in rows:
+                            if isinstance(r_data, list) and row_idx < len(table.rows):
+                                row_cells = table.rows[row_idx].cells
+                                for c_idx, cell_value in enumerate(r_data):
+                                    if c_idx < len(row_cells):
+                                        row_cells[c_idx].text = str(cell_value)
+                                row_idx += 1
 
             doc.add_paragraph()  # Spacing between sections
 
