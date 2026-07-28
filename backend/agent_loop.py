@@ -1059,46 +1059,70 @@ async def execute_tool_call_v2(
                     "get-user": "Retrieving workspace user details..."
                 }
                 announcement = notion_logs.get(mcp_tool_name, f"Consulting Notion ({mcp_tool_name})...")
+            elif provider in ("microsoft_word", "word"):
+                word_logs = {
+                    "create_word_document": "Creating Microsoft Word document (.docx)...",
+                    "edit_word_document": "Editing Word document section...",
+                    "get_word_document": "Fetching Word document state...",
+                    "export_word_document": "Exporting binary .docx file..."
+                }
+                announcement = word_logs.get(mcp_tool_name, f"Consulting Microsoft Word ({mcp_tool_name})...")
             else:
                 announcement = f"[{provider.title()} MCP] Executing {mcp_tool_name}..."
             await send_to_client({"type": "hud_log", "content": announcement})
             
             try:
-                from database import get_user_settings_profile
-                profile = get_user_settings_profile(user_id)
-                connections = profile.get("mcp_connections") or {}
-                conn = connections.get(provider)
-                if not conn:
-                    raise Exception(f"Connection credentials for provider '{provider}' not found.")
-                
-                from mcp_client import get_valid_token
-                access_token = await get_valid_token(user_id, provider, conn)
- 
-                async def _run_provider_tool(tok: str) -> str:
-                    if provider == "gmail":
-                        from mcp_servers.gmail.gmail_mcp import execute_google_tool
-                        return await execute_google_tool(provider, mcp_tool_name, args, tok)
-                    elif provider == "google_drive":
-                        from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
-                        return await execute_google_drive_tool(mcp_tool_name, args, tok)
-                    elif provider == "google_calendar":
-                        from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
-                        return await execute_google_calendar_tool(mcp_tool_name, args, tok)
-                    elif provider == "notion":
-                        from mcp_servers.notion.notion_mcp import execute_notion_tool
-                        return await execute_notion_tool(mcp_tool_name, args, tok)
-                    return ""
-
-                if provider in ("gmail", "google_drive", "google_calendar", "notion"):
-                    tool_output = await _run_provider_tool(access_token)
-                    # Check if returned response indicates HTTP 401 / expired token
-                    lower_out = str(tool_output).lower()
-                    if "401" in lower_out or "unauthorized" in lower_out or "invalid credentials" in lower_out or "token expired" in lower_out or "invalid_grant" in lower_out:
-                        print(f"[!] {provider} returned 401/Auth error. Performing automatic token refresh and retrying...")
-                        fresh_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
-                        tool_output = await _run_provider_tool(fresh_token)
+                if provider in ("microsoft_word", "word"):
+                    from word_mcp import execute_word_tool
+                    tool_output = await execute_word_tool(mcp_tool_name, args)
+                    try:
+                        parsed_res = json.loads(tool_output)
+                        if isinstance(parsed_res, dict) and "artifact" in parsed_res:
+                            art = parsed_res["artifact"]
+                            await send_to_client({
+                                "type": "artifact",
+                                "name": art.get("name", "document.docx"),
+                                "content": art.get("content", ""),
+                                "language": "word"
+                            })
+                    except Exception as art_err:
+                        print(f"[-] Non-fatal notice sending Word artifact event: {art_err}")
                 else:
-                    server_url = conn.get("server_url")
+                    from database import get_user_settings_profile
+                    profile = get_user_settings_profile(user_id)
+                    connections = profile.get("mcp_connections") or {}
+                    conn = connections.get(provider)
+                    if not conn:
+                        raise Exception(f"Connection credentials for provider '{provider}' not found.")
+                    
+                    from mcp_client import get_valid_token
+                    access_token = await get_valid_token(user_id, provider, conn)
+     
+                    async def _run_provider_tool(tok: str) -> str:
+                        if provider == "gmail":
+                            from mcp_servers.gmail.gmail_mcp import execute_google_tool
+                            return await execute_google_tool(provider, mcp_tool_name, args, tok)
+                        elif provider == "google_drive":
+                            from mcp_servers.google_drive.google_drive_mcp import execute_google_drive_tool
+                            return await execute_google_drive_tool(mcp_tool_name, args, tok)
+                        elif provider == "google_calendar":
+                            from mcp_servers.google_calendar.google_calendar_mcp import execute_google_calendar_tool
+                            return await execute_google_calendar_tool(mcp_tool_name, args, tok)
+                        elif provider == "notion":
+                            from mcp_servers.notion.notion_mcp import execute_notion_tool
+                            return await execute_notion_tool(mcp_tool_name, args, tok)
+                        return ""
+
+                    if provider in ("gmail", "google_drive", "google_calendar", "notion"):
+                        tool_output = await _run_provider_tool(access_token)
+                        # Check if returned response indicates HTTP 401 / expired token
+                        lower_out = str(tool_output).lower()
+                        if "401" in lower_out or "unauthorized" in lower_out or "invalid credentials" in lower_out or "token expired" in lower_out or "invalid_grant" in lower_out:
+                            print(f"[!] {provider} returned 401/Auth error. Performing automatic token refresh and retrying...")
+                            fresh_token = await get_valid_token(user_id, provider, conn, force_refresh=True)
+                            tool_output = await _run_provider_tool(fresh_token)
+                    else:
+                        server_url = conn.get("server_url")
                     if not server_url:
                         raise Exception(f"Server URL for provider '{provider}' is not configured.")
                     

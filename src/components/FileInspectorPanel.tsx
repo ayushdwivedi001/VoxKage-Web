@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Copy, Maximize2, Minimize2, Check, X, MessageSquare, Eye, Code, Terminal, RotateCw, ArrowLeft, Sliders } from "lucide-react";
+import WordDocumentViewer from "@/components/WordDocumentViewer";
 import Prism from "prismjs";
 import "prismjs/components/prism-python";
 import "prismjs/components/prism-javascript";
@@ -170,6 +171,20 @@ export default function FileInspectorPanel({
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
   };
+
+  // Check if file is a Word Document (.docx, .word, .doc or JSON with sections)
+  const isWordDoc = /\.(docx|word|doc)$/i.test(fileName) || (code.trim().startsWith("{") && code.includes('"sections"'));
+  if (isWordDoc) {
+    return (
+      <WordDocumentViewer
+        fileName={fileName}
+        code={code}
+        onClose={onClose}
+        onBack={onBack}
+        onEditRequest={(name) => onEditClick?.(name)}
+      />
+    );
+  }
 
   // Check if file is previewable (only JSX/TSX, HTML, CSS, JS)
   const canPreview = /\.(html|css|js|jsx|tsx)$/i.test(fileName);

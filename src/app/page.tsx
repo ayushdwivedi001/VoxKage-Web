@@ -627,7 +627,19 @@ export default function Home() {
     );
   }
 
-  const sessionArtifacts = computeSessionFiles(chatSessions.messages);
+  // Merge Word artifacts (real doc_state from MCP tool calls) into session artifacts
+  const codeSessionFiles = computeSessionFiles(chatSessions.messages);
+  const wordFiles = Array.from((agentCompletion.wordArtifacts || new Map()).entries()).map(([name, content]) => ({
+    name,
+    type: "Microsoft Word · DOCX",
+    versions: [{ version: 1, code: content }],
+  }));
+  // Word files take priority over stub .docx entries from computeSessionFiles
+  const wordFileNames = new Set(wordFiles.map((f) => f.name));
+  const sessionArtifacts = [
+    ...codeSessionFiles.filter((f) => !wordFileNames.has(f.name)),
+    ...wordFiles,
+  ];
 
   let displayedActiveFile = activeFile;
   if (activeFile) {

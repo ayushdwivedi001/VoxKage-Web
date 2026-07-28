@@ -7,7 +7,7 @@ load_dotenv(dotenv_path=env_path)
 
 import json
 import asyncio
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 import httpx
 import secrets
@@ -327,9 +327,17 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
                 )
                 from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
                 tools_list = GMAIL_TOOLS
+            elif provider in ("microsoft_word", "word"):
+                mcp_info += (
+                    "- Microsoft Word (VoxKage Custom MCP) is connected.\n"
+                    "  You MUST use 'microsoft_word__create_word_document', 'microsoft_word__edit_word_document', 'microsoft_word__get_word_document', and 'microsoft_word__export_word_document' tools to create, view, edit, and export formatted .docx Word documents.\n"
+                    "  Do not claim you cannot create or edit Word documents; call the Microsoft Word tools directly.\n"
+                )
+                from word_mcp import WORD_TOOLS
+                tools_list = WORD_TOOLS
             else:
                 mcp_info += f"- {provider.title()} is connected.\n"
-                tools_list = conn.get("tools") or []
+                tools_list = conn.get("tools") if isinstance(conn.get("tools"), list) and conn["tools"] and isinstance(conn["tools"][0], dict) else []
             
             for t in tools_list:
                 mcp_tools.append({
@@ -938,6 +946,88 @@ async def search_pinterest_related_endpoint(
         limit=limit
     )
 
+# --- MICROSOFT WORD CUSTOM MCP API ENDPOINTS ---
+from pydantic import BaseModel
+
+class WordDocCreateRequest(BaseModel):
+    doc_id: str
+    title: str
+    sections: List[Dict[str, Any]]
+    author: Optional[str] = "VoxKage AI"
+    header_text: Optional[str] = "VoxKage Document"
+    footer_text: Optional[str] = "Page {page} of {pages}"
+
+class WordDocEditRequest(BaseModel):
+    doc_id: str
+    target_heading_or_index: str
+    action: str  # 'replace', 'append', 'insert_after', 'delete'
+    new_content: Dict[str, Any]
+
+@app.post("/api/mcp/word/create")
+async def mcp_word_create_endpoint(req: WordDocCreateRequest):
+    from word_mcp import word_engine
+    doc_state = word_engine.create_document(
+        doc_id=req.doc_id,
+        title=req.title,
+        sections=req.sections,
+        author=req.author,
+        header_text=req.header_text,
+        footer_text=req.footer_text
+    )
+    return {"status": "success", "data": doc_state}
+
+@app.post("/api/mcp/word/edit")
+async def mcp_word_edit_endpoint(req: WordDocEditRequest):
+    from word_mcp import word_engine
+    doc_state = word_engine.edit_document(
+        doc_id=req.doc_id,
+        target_heading_or_index=req.target_heading_or_index,
+        action=req.action,
+        new_content=req.new_content
+    )
+    return {"status": "success", "data": doc_state}
+
+@app.get("/api/mcp/word/get/{doc_id}")
+async def mcp_word_get_endpoint(doc_id: str):
+    from word_mcp import word_engine
+    history = word_engine.documents.get(doc_id, [])
+    if not history:
+        raise HTTPException(status_code=404, detail="Word document not found")
+    return {"status": "success", "versions": history, "latest": history[-1]}
+
+@app.post("/api/mcp/word/export-docx")
+async def mcp_word_export_docx_endpoint(doc_state: Dict[str, Any]):
+    from word_mcp import word_engine
+    from fastapi.responses import Response
+    try:
+        docx_bytes = word_engine.export_to_docx_bytes(doc_state)
+        safe_filename = re.sub(r'[^a-zA-Z0-9_\-]', '_', doc_state.get("title", "document")) + ".docx"
+        return Response(
+            content=docx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate docx file: {str(e)}")
+
+class ConnectCustomMCPRequest(BaseModel):
+    provider: str
+    name: Optional[str] = None
+
+@app.post("/api/mcp/connect-custom")
+async def mcp_connect_custom_endpoint(req: ConnectCustomMCPRequest, user: str = Depends(get_current_user)):
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(user)
+    mcp_conns = profile.get("mcp_connections", {})
+    mcp_conns[req.provider] = {
+        "connected": True,
+        "name": req.name or req.provider.replace("_", " ").title(),
+        "connected_at": datetime.utcnow().isoformat()
+    }
+    profile["mcp_connections"] = mcp_conns
+    save_user_settings_profile(user, profile)
+    return {"status": "connected", "provider": req.provider, "connections": mcp_conns}
+
 @app.get("/api/image-proxy")
 async def image_proxy_endpoint(url: str):
     import httpx
@@ -1305,7 +1395,7 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
 async def refresh_mcp_tools(req: RefreshMCPRequest, user: str = Depends(get_current_user)):
     """Refresh the list of tools for a connected MCP provider by fetching them dynamically."""
     from database import get_user_settings_profile
-    from mcp_client import get_valid_token, introspect_server_tools, save_mcp_connection
+    from mcp_client import save_mcp_connection
     
     profile = get_user_settings_profile(user)
     connections = profile.get("mcp_connections") or {}
@@ -1314,19 +1404,23 @@ async def refresh_mcp_tools(req: RefreshMCPRequest, user: str = Depends(get_curr
         raise HTTPException(status_code=400, detail=f"Connection for provider '{req.provider}' not found.")
         
     try:
-        access_token = await get_valid_token(user, req.provider, conn)
-        server_url = conn.get("server_url")
-        if not server_url:
-            raise Exception("Server URL not found in connection data.")
+        if req.provider in ("microsoft_word", "word"):
+            from word_mcp import WORD_TOOLS
+            tools = WORD_TOOLS
+        else:
+            from mcp_client import get_valid_token, introspect_server_tools, detect_transport
+            access_token = await get_valid_token(user, req.provider, conn)
+            server_url = conn.get("server_url")
+            if not server_url:
+                raise Exception("Server URL not found in connection data.")
+                
+            transport = detect_transport(server_url)
             
-        from mcp_client import detect_transport
-        transport = detect_transport(server_url)
-        
-        tools = await introspect_server_tools(
-            server_url=server_url,
-            access_token=access_token,
-            transport=transport
-        )
+            tools = await introspect_server_tools(
+                server_url=server_url,
+                access_token=access_token,
+                transport=transport
+            )
         
         conn["tools"] = tools
         save_mcp_connection(user, req.provider, conn)
@@ -1345,7 +1439,23 @@ async def refresh_mcp_tools(req: RefreshMCPRequest, user: str = Depends(get_curr
 @app.post("/auth/disconnect")
 def disconnect_mcp_provider(req: DisconnectRequest, user: str = Depends(get_current_user)):
     from mcp_client import delete_mcp_connection
-    delete_mcp_connection(user, req.provider)
+    from database import get_user_settings_profile, save_user_settings_profile
+    try:
+        delete_mcp_connection(user, req.provider)
+    except Exception:
+        pass
+    
+    try:
+        profile = get_user_settings_profile(user)
+        mcp_conns = profile.get("mcp_connections", {})
+        if req.provider in mcp_conns:
+            delete_key = req.provider
+            del mcp_conns[delete_key]
+            profile["mcp_connections"] = mcp_conns
+            save_user_settings_profile(user, profile)
+    except Exception:
+        pass
+
     return {"status": "disconnected", "provider": req.provider}
 
 
@@ -1459,9 +1569,19 @@ async def prepare_agent_payload(
                         )
                         from mcp_servers.gmail.gmail_mcp import GMAIL_TOOLS
                         tools_list = GMAIL_TOOLS
+                    elif provider in ("microsoft_word", "word"):
+                        mcp_info += (
+                            "- Microsoft Word (VoxKage Custom MCP) is connected.\n"
+                            "  You MUST use 'microsoft_word__create_word_document', 'microsoft_word__edit_word_document', 'microsoft_word__get_word_document', and 'microsoft_word__export_word_document' tools to create, view, edit, and export formatted .docx Word documents.\n"
+                            "  Do not claim you cannot create or edit Word documents; call the Microsoft Word tools directly.\n"
+                            "  WORKFLOW: After calling create_word_document, ALWAYS call get_word_document with the same doc_id to verify all sections were properly stored, then report to the user exactly what was created.\n"
+                            "  Always mention the exact filename (doc_id + '.docx') in your response so the artifact panel can detect and display it.\n"
+                        )
+                        from word_mcp import WORD_TOOLS
+                        tools_list = WORD_TOOLS
                     else:
                         mcp_info += f"- {provider.title()} is connected.\n"
-                        tools_list = conn.get("tools") or []
+                        tools_list = conn.get("tools") if isinstance(conn.get("tools"), list) and conn["tools"] and isinstance(conn["tools"][0], dict) else []
                     
                     if not req.skip_tools:
                         for t in tools_list:

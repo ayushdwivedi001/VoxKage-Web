@@ -143,6 +143,8 @@ export default function useAgentCompletion({
   loginEmail,
 }: UseAgentCompletionProps) {
   const [isStreaming, setIsStreaming] = React.useState(false);
+  // Store real Word doc_state objects keyed by filename (e.g. "doc.docx" -> JSON string)
+  const [wordArtifacts, setWordArtifacts] = React.useState<Map<string, string>>(new Map());
 
   const modelNameToKey = (name: string): string => {
     const lower = name.toLowerCase();
@@ -571,6 +573,20 @@ export default function useAgentCompletion({
                 }
               }
             }
+
+            // Extract Word artifacts from tool results so preview shows real content
+            toolExecRes.results.forEach((r: any) => {
+              try {
+                const parsed = JSON.parse(r.content || "{}");
+                if (parsed.artifact && parsed.artifact.type === "word" && parsed.artifact.name && parsed.artifact.content) {
+                  setWordArtifacts((prev) => {
+                    const next = new Map(prev);
+                    next.set(parsed.artifact.name, parsed.artifact.content);
+                    return next;
+                  });
+                }
+              } catch (_) {}
+            });
 
             setMessages((prev) => {
               if (prev.length === 0) return prev;
@@ -1023,6 +1039,20 @@ export default function useAgentCompletion({
                 }
               }
 
+              // Extract Word artifacts from tool results in resubmit path
+              toolExecRes.results.forEach((r: any) => {
+                try {
+                  const parsed = JSON.parse(r.content || "{}");
+                  if (parsed.artifact && parsed.artifact.type === "word" && parsed.artifact.name && parsed.artifact.content) {
+                    setWordArtifacts((prev) => {
+                      const next = new Map(prev);
+                      next.set(parsed.artifact.name, parsed.artifact.content);
+                      return next;
+                    });
+                  }
+                } catch (_) {}
+              });
+
               setMessages((prev) => {
                 if (prev.length === 0) return prev;
                 const copy = [...prev];
@@ -1126,6 +1156,7 @@ export default function useAgentCompletion({
 
   return {
     isStreaming,
+    wordArtifacts,
     handleStopGeneration,
     handleSendMessage,
     resubmitUserMessage,

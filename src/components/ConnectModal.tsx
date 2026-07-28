@@ -131,6 +131,29 @@ const CONNECTORS = [
       privacy: "https://www.notion.so/privacy-policy",
     },
     iconUrl: "https://upload.wikimedia.org/wikipedia/commons/e/e9/Notion-logo.svg",
+  },
+  {
+    slug: "microsoft_word",
+    name: "Microsoft Word",
+    tagline: "Create, view, edit, & export formatted Word documents (.docx)",
+    description:
+      "Connect VoxKage's custom Microsoft Word MCP to generate professional formatted reports, create structured documents with headings, paragraphs, and tables, perform version-controlled live edits (v1, v2), and export native .docx binary files.",
+    developer: "VoxKage",
+    developerUrl: "https://voxkage.vercel.app",
+    connectorUrl: "https://voxkage-web-backend.hf.space/api/mcp/word",
+    category: "Productivity",
+    tools: [
+      "create_word_document",
+      "edit_word_document",
+      "get_word_document",
+      "export_word_document"
+    ],
+    links: {
+      documentation: "https://voxkage.vercel.app/docs/mcp/word",
+      support: "https://voxkage.vercel.app/support",
+      privacy: "https://voxkage.vercel.app/privacy",
+    },
+    iconUrl: "https://upload.wikimedia.org/wikipedia/commons/f/fd/Microsoft_Office_Word_%282019%E2%80%93present%29.svg",
   }
 ];
 
@@ -190,6 +213,29 @@ export default function ConnectModal({
     setError(null);
     try {
       const token = getToken();
+
+      // Custom built-in MCP server connection (e.g. Microsoft Word by VoxKage)
+      if (connector.developer === "VoxKage" || connector.slug === "microsoft_word") {
+        try {
+          await fetch(`${BACKEND_URL}/api/mcp/connect-custom`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ provider: connector.slug, name: connector.name }),
+          });
+        } catch {
+          /* silent fallback */
+        }
+        setConnectedDetails((prev) => ({
+          ...prev,
+          [connector.slug]: { connected: true, name: connector.name, connected_at: new Date().toISOString() }
+        }));
+        setLoading(false);
+        onConnectSuccess(connector.slug);
+        return;
+      }
 
       const profRes = await fetch(`${BACKEND_URL}/user/settings-profile`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -460,6 +506,31 @@ export default function ConnectModal({
   );
 }
 
+// ─── PROVIDER ICON COMPONENT ───────────────────────────────────────────────────
+function ProviderIcon({ connector, size = "sm" }: { connector: any; size?: "sm" | "lg" }) {
+  const [imgError, setImgError] = useState(false);
+  const dim = size === "lg" ? "w-7 h-7" : "w-5 h-5";
+
+  if (connector.slug === "microsoft_word" || connector.slug === "word" || imgError) {
+    return (
+      <svg className={dim} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M14.5 2H6C4.89543 2 4 2.89543 4 4V20C4 21.1046 4.89543 22 6 22H18C19.1046 22 20 21.1046 20 20V7.5L14.5 2Z" fill="#1B365D" />
+        <path d="M14 2V8H20L14 2Z" fill="#4B6B94" />
+        <path d="M7 11.5L8.5 17H10L11.2 13.2L12.4 17H13.9L15.4 11.5H13.9L13 15L11.8 11.5H10.6L9.4 15L8.5 11.5H7Z" fill="#FFFFFF" />
+      </svg>
+    );
+  }
+
+  return (
+    <img
+      src={connector.iconUrl}
+      alt={connector.name}
+      className={`${dim} object-contain`}
+      onError={() => setImgError(true)}
+    />
+  );
+}
+
 // ─── CONNECTOR CARD (list view) ───────────────────────────────────────────────
 function ConnectorCard({
   connector,
@@ -499,14 +570,7 @@ function ConnectorCard({
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
           style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
         >
-          <img
-            src={connector.iconUrl}
-            alt={connector.name}
-            className="w-5 h-5 object-contain"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
+          <ProviderIcon connector={connector} size="sm" />
         </div>
 
         {/* Name + verified */}
@@ -682,14 +746,7 @@ function ConnectorDetailsView({
               className="w-[52px] h-[52px] rounded-2xl flex items-center justify-center flex-shrink-0 overflow-hidden"
               style={{ background: "#1e1e1e", border: "1px solid rgba(255,255,255,0.1)" }}
             >
-              <img
-                src={connector.iconUrl}
-                alt={connector.name}
-                className="w-7 h-7 object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
+              <ProviderIcon connector={connector} size="lg" />
             </div>
             {/* Name + subtitle */}
             <div>
