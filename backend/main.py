@@ -956,6 +956,7 @@ class WordDocCreateRequest(BaseModel):
     author: Optional[str] = "VoxKage AI"
     header_text: Optional[str] = "VoxKage Document"
     footer_text: Optional[str] = "Page {page} of {pages}"
+    style: Optional[Dict[str, Any]] = None
 
 class WordDocEditRequest(BaseModel):
     doc_id: str
@@ -972,7 +973,8 @@ async def mcp_word_create_endpoint(req: WordDocCreateRequest):
         sections=req.sections,
         author=req.author,
         header_text=req.header_text,
-        footer_text=req.footer_text
+        footer_text=req.footer_text,
+        style=req.style
     )
     return {"status": "success", "data": doc_state}
 

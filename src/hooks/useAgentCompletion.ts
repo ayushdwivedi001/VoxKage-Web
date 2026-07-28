@@ -575,15 +575,30 @@ export default function useAgentCompletion({
             }
 
             // Extract Word artifacts from tool results so preview shows real content
+            // Also embed as fenced block in finalAssistantContent so it persists to Supabase (mirrors code file persistence)
             toolExecRes.results.forEach((r: any) => {
               try {
                 const parsed = JSON.parse(r.content || "{}");
                 if (parsed.artifact && parsed.artifact.type === "word" && parsed.artifact.name && parsed.artifact.content) {
+                  const artName = parsed.artifact.name as string;
+                  const artContent = parsed.artifact.content as string;
+                  // 1. Update live RAM preview
                   setWordArtifacts((prev) => {
                     const next = new Map(prev);
-                    next.set(parsed.artifact.name, parsed.artifact.content);
+                    next.set(artName, artContent);
                     return next;
                   });
+                  // 2. Embed as fenced block so logAssistantResponse saves it to Supabase
+                  const wordBlock = `\n\n\`\`\`word ${artName}\n${artContent}\n\`\`\``;
+                  if (!finalAssistantContent.includes(`\`\`\`word ${artName}`)) {
+                    finalAssistantContent += wordBlock;
+                  } else {
+                    // Replace existing block with latest content
+                    finalAssistantContent = finalAssistantContent.replace(
+                      new RegExp(`\`\`\`word ${artName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?\`\`\``, "g"),
+                      `\`\`\`word ${artName}\n${artContent}\n\`\`\``
+                    );
+                  }
                 }
               } catch (_) {}
             });
@@ -1040,15 +1055,30 @@ export default function useAgentCompletion({
               }
 
               // Extract Word artifacts from tool results in resubmit path
+              // Also embed as fenced block in finalAssistantContent so it persists to Supabase (mirrors code file persistence)
               toolExecRes.results.forEach((r: any) => {
                 try {
                   const parsed = JSON.parse(r.content || "{}");
                   if (parsed.artifact && parsed.artifact.type === "word" && parsed.artifact.name && parsed.artifact.content) {
+                    const artName = parsed.artifact.name as string;
+                    const artContent = parsed.artifact.content as string;
+                    // 1. Update live RAM preview
                     setWordArtifacts((prev) => {
                       const next = new Map(prev);
-                      next.set(parsed.artifact.name, parsed.artifact.content);
+                      next.set(artName, artContent);
                       return next;
                     });
+                    // 2. Embed as fenced block so logAssistantResponse saves it to Supabase
+                    const wordBlock = `\n\n\`\`\`word ${artName}\n${artContent}\n\`\`\``;
+                    if (!finalAssistantContent.includes(`\`\`\`word ${artName}`)) {
+                      finalAssistantContent += wordBlock;
+                    } else {
+                      // Replace existing block with latest content
+                      finalAssistantContent = finalAssistantContent.replace(
+                        new RegExp(`\`\`\`word ${artName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?\`\`\``, "g"),
+                        `\`\`\`word ${artName}\n${artContent}\n\`\`\``
+                      );
+                    }
                   }
                 } catch (_) {}
               });
