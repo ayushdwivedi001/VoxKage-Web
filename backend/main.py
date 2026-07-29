@@ -252,6 +252,7 @@ class PreparePayloadRequest(BaseModel):
     variant: Optional[str] = "High"
     client_time: Optional[str] = None
     skip_tools: Optional[bool] = False
+    plan_mode: Optional[bool] = False
 
 class ExecuteToolsRequest(BaseModel):
     tool_calls: List[dict]
@@ -1607,6 +1608,35 @@ async def prepare_agent_payload(
         f"{mcp_info}"
         f"--- USER SOUL PROFILE MEMORIES ---\n{soul_context}\n\n"
     )
+
+    if req.plan_mode:
+        system_prompt += (
+            "\n\n--- PLAN MODE ACTIVE ---\n"
+            "The user has selected PLAN MODE. Your response MUST be a clear, comprehensive implementation plan only.\n\n"
+            "STRICT RULES FOR PLAN GENERATION:\n"
+            "1. RESEARCH QUERIES: Do NOT execute web_search, web_fetch, or external search tools during plan generation. Outline what topics, search queries, and tools VoxKage will use during the execution phase instead.\n"
+            "2. EXISTING CODE QUERIES: You MAY inspect/read existing files to analyze codebase structure, but do NOT edit, write, or modify any files during plan generation.\n"
+            "3. FRESH PROJECT / FEATURE IDEAS: Outline the full architecture, file structure, component hierarchy, tech stack, and step-by-step build strategy.\n\n"
+            "MANDATORY FORMAT:\n"
+            "- Wrap your ENTIRE plan output inside <plan title=\"Display Title of the Plan\">...</plan> XML tags.\n"
+            "- Inside <plan>, use clean Markdown: ## Headings, ### Subheadings, bullet lists, numbered steps, and formatted markdown tables.\n"
+            "- Do NOT output <task_list> tags during Plan Mode. (Task lists are created when the user clicks Proceed in Work Mode).\n"
+            "Never skip the <plan title=\"...\"> tags.\n"
+        )
+    else:
+        system_prompt += (
+            "\n\n--- WORK MODE ACTIVE ---\n"
+            "You are in WORK MODE. Execute tasks directly using tool calls and clear answers.\n"
+            "Do NOT output <plan> or implementation plan tags in Work Mode.\n"
+            "If the user message begins with [PROCEED: ...] or asks to execute an approved plan:\n"
+            "1. Output a concise <task_list> block at the beginning of your text response:\n"
+            "   <task_list>\n"
+            "   - [ ] Task 1: Concise summary\n"
+            "   - [ ] Task 2: Concise summary\n"
+            "   - [ ] Task 3: Concise summary\n"
+            "   </task_list>\n"
+            "2. Immediately proceed with executing the work and calling tools.\n"
+        )
 
     messages = [{"role": "system", "content": system_prompt}]
     formatted_history = []

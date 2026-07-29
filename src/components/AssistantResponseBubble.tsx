@@ -28,6 +28,7 @@ import {
   parseMessageContent,
   renderFormattedContent
 } from "@/lib/chatHelpers";
+import PlanOutputCard from "./PlanOutputCard";
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
 import DuckDuckGoImageWidget from "./DuckDuckGoImageWidget";
@@ -400,6 +401,7 @@ interface AssistantResponseBubbleProps {
   onFeedback?: (messageId: string, feedbackType: "thumbs_up" | "thumbs_down", comments?: string) => Promise<void>;
   onRetry?: (messageId: string) => void;
   onSendPrompt?: (prompt: string) => void;
+  onProceedPlan?: (title: string, comments: string[]) => void;
 }
 
 export default function AssistantResponseBubble({
@@ -413,6 +415,7 @@ export default function AssistantResponseBubble({
   onFeedback,
   onRetry,
   onSendPrompt,
+  onProceedPlan,
 }: AssistantResponseBubbleProps) {
   const [isThoughtsExpanded, setIsThoughtsExpanded] = useState(false);
   const [scheduleState, setScheduleState] = useState<"pending" | "success" | "cancelled" | null>(null);
@@ -991,13 +994,23 @@ export default function AssistantResponseBubble({
         )}
       </div>
 
-      {/* --- Assistant Response Text content --- */}
-      {msg.status !== "thinking" && finalContent && (
-        <div className={`text-[16px] leading-relaxed font-sans font-light tracking-wide w-full max-w-full break-words [overflow-wrap:anywhere] select-text whitespace-pre-wrap animate-fadeIn ${
-          isLightMode ? "text-[#141413]" : "text-zinc-200"
-        }`}>
-          {renderFormattedContent(removeFileCodeBlocks(finalContent, extracted), allSources)}
-        </div>
+      {/* --- Plan Output Card Widget vs Regular Text Content --- */}
+      {msg.type === "plan" ? (
+        <PlanOutputCard
+          title={msg.planTitle || "Implementation Plan"}
+          content={finalContent}
+          isLightMode={isLightMode}
+          onProceed={onProceedPlan}
+          isExecuted={msg.isPlanExecuted}
+        />
+      ) : (
+        msg.status !== "thinking" && finalContent && (
+          <div className={`text-[16px] leading-relaxed font-sans font-light tracking-wide w-full max-w-full break-words [overflow-wrap:anywhere] select-text whitespace-pre-wrap animate-fadeIn ${
+            isLightMode ? "text-[#141413]" : "text-zinc-200"
+          }`}>
+            {renderFormattedContent(removeFileCodeBlocks(finalContent, extracted), allSources)}
+          </div>
+        )
       )}
 
       {/* --- Dynamic Pinterest Live Image Search Grid Widget --- */}

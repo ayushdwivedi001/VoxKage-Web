@@ -143,6 +143,8 @@ export default function useAgentCompletion({
   loginEmail,
 }: UseAgentCompletionProps) {
   const [isStreaming, setIsStreaming] = React.useState(false);
+  const [buildMode, setBuildMode] = React.useState<"Work" | "Plan">("Work");
+  const [activeTasks, setActiveTasks] = React.useState<any[]>([]);
   // Store real Word doc_state objects keyed by filename (e.g. "doc.docx" -> JSON string)
   const [wordArtifacts, setWordArtifacts] = React.useState<Map<string, string>>(new Map());
 
@@ -329,7 +331,8 @@ export default function useAgentCompletion({
           finalAtts,
           modelNameToKey(selectedModel),
           selectedVariant,
-          hasToolsCached
+          hasToolsCached,
+          buildMode === "Plan"
         );
 
         let messagesPayload = prepRes.messages;
@@ -468,7 +471,53 @@ export default function useAgentCompletion({
                       const copy = [...prev];
                       const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                       if (idx !== -1) {
-                        copy[idx].content = finalAssistantContent;
+                        // Enforce mode check: ONLY render plan card if user is in Plan mode!
+                        if (buildMode === "Plan") {
+                          const planMatch = finalAssistantContent.match(/<plan(?:\s+title=["']([^"']+)["'])?>([\s\S]*)/i);
+                          if (planMatch) {
+                            copy[idx].type = "plan";
+                            copy[idx].planTitle = planMatch[1] || "Implementation Plan";
+                            copy[idx].content = planMatch[2].replace(/<\/plan>/g, "").trim();
+                          } else {
+                            copy[idx].content = finalAssistantContent;
+                          }
+                        } else {
+                          // Work Mode: strip any accidental <plan> tags
+                          let cleanContent = finalAssistantContent
+                            .replace(/<plan(?:\s+title=["'][^"']+["'])?>/gi, "")
+                            .replace(/<\/plan>/gi, "");
+                          
+                          // Check if Work mode response contains <task_list> tags to mount TaskListWidget
+                          if (finalAssistantContent.includes("<task_list>")) {
+                            const taskMatch = finalAssistantContent.match(/<task_list>([\s\S]*?)<\/task_list>/i);
+                            if (taskMatch) {
+                              const lines = taskMatch[1].split("\n");
+                              const parsedTasks: any[] = [];
+                              lines.forEach((line, tIdx) => {
+                                const trimmed = line.trim();
+                                if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [/]")) {
+                                  const isDone = trimmed.startsWith("- [x]");
+                                  const isInProg = trimmed.startsWith("- [/]");
+                                  const taskText = trimmed.replace(/^-\s*\[[ x/\]]\s*/i, "").trim();
+                                  if (taskText) {
+                                    parsedTasks.push({
+                                      id: `task-${tIdx}-${Date.now()}`,
+                                      text: taskText,
+                                      status: isDone ? "completed" : isInProg ? "in_progress" : tIdx === 0 ? "in_progress" : "pending",
+                                    });
+                                  }
+                                }
+                              });
+                              if (parsedTasks.length > 0) {
+                                setActiveTasks(parsedTasks);
+                              }
+                              // Hide raw <task_list> XML tag from response bubble text
+                              cleanContent = cleanContent.replace(/<task_list>[\s\S]*?<\/task_list>/gi, "").trim();
+                            }
+                          }
+
+                          copy[idx].content = cleanContent;
+                        }
                         copy[idx].status = "streaming";
                       }
                       return copy;
@@ -518,6 +567,24 @@ export default function useAgentCompletion({
             });
 
             const toolExecRes = await executeBackendTools(actualSessionId, currentToolCalls);
+
+            // Advance active task list progress in real-time as tools complete
+            setActiveTasks((prevTasks) => {
+              if (!prevTasks || prevTasks.length === 0) return prevTasks;
+              const inProgIdx = prevTasks.findIndex((t) => t.status === "in_progress");
+              if (inProgIdx !== -1) {
+                const copy = [...prevTasks];
+                copy[inProgIdx] = { ...copy[inProgIdx], status: "completed" };
+                if (inProgIdx + 1 < copy.length) {
+                  copy[inProgIdx + 1] = { ...copy[inProgIdx + 1], status: "in_progress" };
+                }
+                if (copy.every((t) => t.status === "completed")) {
+                  setTimeout(() => setActiveTasks([]), 2000);
+                }
+                return copy;
+              }
+              return prevTasks;
+            });
 
             messagesPayload.push({
               role: "assistant",
@@ -1184,9 +1251,35 @@ export default function useAgentCompletion({
     }
   };
 
+  const handleProceedPlan = async (planTitle: string, comments: string[], rawTasks?: any[]) => {
+    setBuildMode("Work");
+
+    if (rawTasks && rawTasks.length > 0) {
+      const initialTasks = rawTasks.map((t, idx) => ({
+        id: `task-${idx}-${Date.now()}`,
+        text: typeof t === "string" ? t : t.text || t.title || `Task ${idx + 1}`,
+        status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
+      }));
+      setActiveTasks(initialTasks);
+    }
+
+    let proceedMsg = `[PROCEED: ${planTitle}]`;
+    if (comments && comments.length > 0) {
+      const commentBlock = comments.map((c, i) => `${i + 1}. ${c}`).join("\n");
+      proceedMsg += `\n\nUser comments on the plan:\n${commentBlock}`;
+    }
+
+    await handleSendMessage(proceedMsg);
+  };
+
   return {
     isStreaming,
     wordArtifacts,
+    buildMode,
+    setBuildMode,
+    activeTasks,
+    setActiveTasks,
+    handleProceedPlan,
     handleStopGeneration,
     handleSendMessage,
     resubmitUserMessage,

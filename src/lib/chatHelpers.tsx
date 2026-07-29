@@ -59,6 +59,9 @@ export interface Message {
   thinkingDuration?: number;
   thinkingStart?: number;
   thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed"; resultContent?: any }>;
+  type?: string;
+  planTitle?: string;
+  isPlanExecuted?: boolean;
 }
 
 export const applyDiff = (currentCode: string, diffBlock: string): string => {

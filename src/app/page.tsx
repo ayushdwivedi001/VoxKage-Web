@@ -831,6 +831,10 @@ export default function Home() {
               setShowArtifactsPanel={setShowArtifactsPanel}
               setJumpToLine={setJumpToLine}
               onToggleSidebar={() => setSidebarExpanded((prev) => !prev)}
+              buildMode={agentCompletion.buildMode}
+              setBuildMode={agentCompletion.setBuildMode}
+              activeTasks={agentCompletion.activeTasks}
+              handleProceedPlan={agentCompletion.handleProceedPlan}
             />
           )}
 

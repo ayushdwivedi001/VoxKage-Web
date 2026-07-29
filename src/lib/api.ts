@@ -423,7 +423,8 @@ export async function prepareSessionPayload(
   attachments: any[],
   model: string,
   variant: string,
-  skipTools?: boolean
+  skipTools?: boolean,
+  planMode?: boolean
 ) {
   const options: Intl.DateTimeFormatOptions = {
     weekday: 'long',
@@ -443,7 +444,8 @@ export async function prepareSessionPayload(
     model,
     variant,
     client_time: clientTime,
-    skip_tools: !!skipTools
+    skip_tools: !!skipTools,
+    plan_mode: !!planMode
   });
 }
 

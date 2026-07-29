@@ -10,6 +10,7 @@ import { Attachment } from "./MessageAttachmentsRow";
 import { Monitor, FileUp, Clock, Camera } from "lucide-react";
 import PDFHoverCard from "./PDFHoverCard";
 import PlanModeHeader from "./PlanModeHeader";
+import TaskListWidget, { TaskItem } from "./TaskListWidget";
 
 interface ModelOption {
   name: string;
@@ -43,6 +44,9 @@ interface PromptInputProps {
   onRemoveEditingFile?: () => void;
   isSession?: boolean;
   hideBoxStyling?: boolean;
+  buildMode?: "Work" | "Plan";
+  setBuildMode?: (mode: "Work" | "Plan") => void;
+  tasks?: TaskItem[];
 }
 
 export default function PromptInput({
@@ -69,10 +73,18 @@ export default function PromptInput({
   onRemoveEditingFile,
   isSession = false,
   hideBoxStyling = false,
+  buildMode: buildModeProp = "Work",
+  setBuildMode: setBuildModeProp,
+  tasks = [],
 }: PromptInputProps) {
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isLightMode, setIsLightMode] = useState(false);
+
+  // Fallback local mode state if parent didn't pass state
+  const [localBuildMode, setLocalBuildMode] = useState<"Work" | "Plan">("Work");
+  const buildMode = setBuildModeProp ? buildModeProp : localBuildMode;
+  const setBuildMode = setBuildModeProp || setLocalBuildMode;
 
   // Theme detection mutation observer
   useEffect(() => {
@@ -104,7 +116,6 @@ export default function PromptInput({
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Work / Plan mode dropdown state
-  const [buildMode, setBuildMode] = useState<"Work" | "Plan">("Work");
   const [buildDropdownOpen, setBuildDropdownOpen] = useState(false);
   const buildDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -522,6 +533,7 @@ export default function PromptInput({
 
   return (
     <PlanModeHeader isPlanMode={buildMode === "Plan"} isLightMode={isLightMode}>
+      <TaskListWidget tasks={tasks} isLightMode={isLightMode} />
       <div className={`w-full p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
         hideBoxStyling
           ? "bg-transparent border-t border-white/10"

@@ -58,6 +58,10 @@ interface ChatWorkspaceProps {
   setShowArtifactsPanel: (show: boolean) => void;
   setJumpToLine: (line: number | null) => void;
   onToggleSidebar?: () => void;
+  buildMode?: "Work" | "Plan";
+  setBuildMode?: (mode: "Work" | "Plan") => void;
+  activeTasks?: any[];
+  handleProceedPlan?: (title: string, comments: string[]) => void;
 }
 
 export default function ChatWorkspace({
@@ -103,6 +107,10 @@ export default function ChatWorkspace({
   setShowArtifactsPanel,
   setJumpToLine,
   onToggleSidebar,
+  buildMode,
+  setBuildMode,
+  activeTasks = [],
+  handleProceedPlan,
 }: ChatWorkspaceProps) {
   const [isLightMode, setIsLightMode] = React.useState(false);
 
@@ -168,6 +176,7 @@ export default function ChatWorkspace({
                     onFeedback={handleAssistantFeedback}
                     onRetry={handleAssistantRetry}
                     onSendPrompt={handleSendMessage}
+                    onProceedPlan={handleProceedPlan}
                   />
                 )}
               </div>
@@ -234,6 +243,9 @@ export default function ChatWorkspace({
                 onPreviewDocument={setZoomDocument}
                 editingFile={editingFile}
                 onRemoveEditingFile={() => setEditingFile(null)}
+                buildMode={buildMode}
+                setBuildMode={setBuildMode}
+                tasks={activeTasks}
               />
             </div>
           </div>
@@ -343,6 +355,9 @@ export default function ChatWorkspace({
                 onPreviewDocument={setZoomDocument}
                 editingFile={editingFile}
                 onRemoveEditingFile={() => setEditingFile(null)}
+                buildMode={buildMode}
+                setBuildMode={setBuildMode}
+                tasks={activeTasks}
               />
             </div>
             <span className="text-[11.5px] md:text-[12px] text-zinc-300 [.light_&]:text-[#6c6a64] font-sans tracking-wide select-none pointer-events-auto text-center px-2">
