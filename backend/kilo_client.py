@@ -15,8 +15,10 @@ async def get_kilo_model_dynamic(model_key: str, api_key: str = None) -> str:
     
     clean_key = model_key.strip()
     
-    # 1. If model_key is already a valid Kilo model ID (e.g. stepfun/step-3.7-flash:free)
-    if "/" in clean_key or clean_key.endswith(":free"):
+    # 1. Exact map for common free models
+    if clean_key.lower() in ["stepfun/step-3.7-flash", "stepfun/step-3.7-flash:free", "step 3.7 flash", "step 3.7 flash free", "stepfun"]:
+        return "stepfun/step-3.7-flash:free"
+    if clean_key.endswith(":free"):
         return clean_key
 
     # 2. Dynamically fetch models from Kilo Gateway to find exact model object by name
@@ -35,7 +37,7 @@ async def get_kilo_model_dynamic(model_key: str, api_key: str = None) -> str:
     if "stepfun" in key_lower or "step 3.7" in key_lower or "step" in key_lower:
         return "stepfun/step-3.7-flash:free"
     elif "deepseek" in key_lower:
-        return "deepseek/deepseek-v4-flash:free" if "free" in key_lower else "deepseek/deepseek-r1"
+        return "deepseek/deepseek-v4-flash:free"
     elif "gemini" in key_lower:
         return "google/gemini-2.5-flash:free"
     elif "claude" in key_lower:

@@ -230,30 +230,36 @@ async def search_pinterest_images(query: str, limit: int = 24) -> Dict[str, Any]
 
 def sanitize_5_anchor_query(raw_text: str, initial_query: str) -> str:
     """
-    Strips preambles, thinking text, conversational intros, and formats
-    a clean 5-anchor comma-separated visual search string.
+    Strips preambles, thinking text, list numbers (1., 2., 1), 2)), bullet points,
+    conversational intros, and formats a clean 5-anchor comma-separated visual search string.
     Ensures Anchor 1 (initial search term) is always leading.
     """
     clean = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
-    clean = clean.replace('"', '').replace('`', '').strip()
+    clean = clean.replace('"', '').replace('`', '').replace('*', '').replace('•', '').strip()
     
+    # Strip list prefixes like "1.", "2.", "1)", "2)", "1:", "2:" from line starts
+    clean = re.sub(r'^\d+[\.\)\:\-]\s*', '', clean)
+
     if '\n' in clean:
         lines = [
-            l.strip() for l in clean.split('\n')
-            if l.strip() and not any(w in l.lower() for w in ["got it", "let's", "wait", "first", "oh right", "task:", "image url", "system", "instruction", "fixed as", "term is"])
+            re.sub(r'^\d+[\.\)\:\-]\s*', '', l.strip()) for l in clean.split('\n')
+            if l.strip() and not any(w in l.lower() for w in ["got it", "let's", "wait", "first", "oh right", "task:", "image url", "system", "instruction", "fixed as", "term is", "secondly", "think", "see this"])
         ]
         if lines:
             comma_lines = [l for l in lines if ',' in l]
             clean = comma_lines[-1] if comma_lines else lines[-1]
 
-    clean = re.sub(r'^(the image shows|this image shows|image has a|picture of|photo of|mage has a|there is a|view of|now the image has|the first term is)\s+', '', clean, flags=re.IGNORECASE)
+    # Clean leading conversational filler
+    clean = re.sub(r'^(the image shows|this image shows|image has a|picture of|photo of|mage has a|there is a|view of|now the image has|the first term is|i see|yeah|second|secondly)\s+', '', clean, flags=re.IGNORECASE)
 
-    banned_phrases = ["got it", "let's", "wait", "task:", "image url", "fixed as", "first term", "term is", "now the image", "the image has", "no,", "no ", "wait no", "instruction"]
+    banned_phrases = ["got it", "let's", "wait", "task:", "image url", "fixed as", "first term", "term is", "now the image", "the image has", "no,", "no ", "wait no", "instruction", "secondly", "i think", "see this"]
 
-    raw_terms = [
-        t.strip() for t in clean.split(',')
-        if t.strip() and not any(b in t.lower() for b in banned_phrases) and len(t.strip()) < 40 and t.strip().lower() not in ["no", "yes", "none", "or"]
-    ]
+    raw_terms = []
+    for raw_part in clean.split(','):
+        t = re.sub(r'^\d+[\.\)\:\-]\s*', '', raw_part.strip())
+        t = re.sub(r'^(second|secondly|third|fourth|fifth|first)\s+', '', t, flags=re.IGNORECASE).strip()
+        if t and not any(b in t.lower() for b in banned_phrases) and len(t) < 45 and t.lower() not in ["no", "yes", "none", "or", "second"]:
+            raw_terms.append(t)
 
     clean_init = initial_query.strip()
     
@@ -279,73 +285,95 @@ async def curate_search_query_with_ai(
 ) -> str:
     """
     Synthesizes a targeted 5-anchor visual search query using the user's SELECTED MODEL.
-    Routes explicitly based on provider parameter ('kilo' vs 'opencode').
-    Strictly bans natural language sentences and outputs 5 comma-separated terms.
+    Enforces candidate fallback strategy: Selected Model -> Mimo 2.5 Free -> OpenRouter Free -> Step 3.7 Flash Free.
+    Strictly bans natural language sentences, numbers, and outputs 5 comma-separated terms.
     """
     clean_init = initial_query.strip()
     clean_title = image_title.replace("Pinterest", "").replace("pinterest.com", "").replace("|", "").strip()
 
-    title_words = [w for w in re.sub(r'[^\w\s]', ' ', clean_title).split() if len(w) > 2 and w.lower() not in {"pin", "pins", "image", "jpg", "png", "love", "like", "cool", "best"}]
-    fallback_query = f"{clean_init}, {' '.join(title_words[:3])}, aesthetic pin, high resolution, concept art".strip()
+    banned_buzzwords = {
+        "pin", "pins", "image", "jpg", "png", "jpeg", "photo", "pic", "hd", "4k", 
+        "high", "res", "resolution", "concept", "art", "aesthetic", "wallpapers", 
+        "wallpaper", "cool", "best", "love", "like", "download", "free"
+    }
+    clean_words = [
+        w for w in re.sub(r'[^\w\s]', ' ', clean_title).split()
+        if len(w) > 2 and w.lower() not in banned_buzzwords
+    ]
+    extracted_features = " ".join(clean_words[:4]) if clean_words else clean_title
+    fallback_query = f"{clean_init}, {extracted_features}".strip(", ")
 
     prompt = (
         f"SYSTEM INSTRUCTION: You are VoxKage's Pinterest Visual Search Synthesizer.\n"
-        f"STRICT DIRECTIVE: Generate EXACTLY 5 comma-separated visual search terms to describe the image and integrate it with the search query text.\n\n"
+        f"MANDATORY DIRECTIVE: The 5-term string you generate WILL BE PASSED DIRECTLY TO THE IMAGE SEARCH ENGINE TO FIND SIMILAR PINS.\n"
+        f"Therefore, you MUST output ONLY 5 comma-separated search prompt terms. ABSOLUTELY NO natural language, conversational sentences, or explanations.\n\n"
         f"INPUT ANCHORS:\n"
         f"• Active Search Bar Query: \"{clean_init}\"\n"
         f"• Selected Pin Title: \"{clean_title}\"\n\n"
         f"REQUIRED 5-ANCHOR STRUCTURE (comma-separated list of 5 terms ONLY):\n"
         f"1. Active Search Query (must be '{clean_init}')\n"
-        f"2. Specific Visual Subject / Creature / Character (e.g. 'flying black dragon', 'Jin Kazama')\n"
-        f"3. Setting / Environment (e.g. 'cloudy blue sky', 'bamboo forest')\n"
-        f"4. Lighting / Color Aesthetic (e.g. 'golden hour sunlight', 'neon rain')\n"
-        f"5. Art Style / Composition (e.g. 'gameplay concept art', 'cinematic poster')\n\n"
+        f"2. Specific Visual Subject / Product / Character (e.g. 'Delphinus Eau de Parfum', 'flying black dragon')\n"
+        f"3. Setting / Packaging / Environment (e.g. 'amber glass bottle', 'cloudy blue sky')\n"
+        f"4. Lighting / Color Palette (e.g. 'amber glow', 'golden hour sunlight')\n"
+        f"5. Aesthetic Category / Material (e.g. 'luxury perfume packaging', 'draped satin fabric')\n\n"
         f"STRICT NEGATIVE CONSTRAINTS:\n"
-        f"- ABSOLUTELY NO natural language sentences, preambles, or explanations (NEVER write 'image has a...', 'the sky is...', 'mage has...').\n"
-        f"- ABSOLUTELY NO verbs or conversational text.\n"
+        f"- ABSOLUTELY NO numbers (NEVER write '1.', '2.', '1)', '2)').\n"
+        f"- ABSOLUTELY NO natural language or conversational text (NEVER write 'yeah I see', 'secondly', 'I think', 'here is').\n"
+        f"- ABSOLUTELY NO generic buzzwords like 'high resolution', 'concept art', 'aesthetic pin', 'wallpaper', 'hd', '4k'.\n"
         f"- Output MUST be a single line containing EXACTLY 5 comma-separated terms.\n\n"
-        f"EXAMPLE OUTPUT for 'Crimson Desert' with dragon image:\n"
-        f"Crimson Desert, flying black dragon, cloudy blue sky, golden hour sunlight, dark fantasy concept art\n\n"
         f"Output ONLY the 5 comma-separated terms. No markdown, no quotes."
     )
 
     is_kilo = (provider or "").strip().lower() == "kilo"
 
-    # 1. Attempt Multimodal Payload (Image URL + Text Prompt)
-    try:
-        if is_kilo:
-            from kilo_client import query_kilo_ai
-            ai_res = await query_kilo_ai(prompt=prompt, model_key=selected_model, image_url=image_url)
-        else:
-            from opencode_client import query_opencode_zen
-            ai_res = await query_opencode_zen(prompt=prompt, model_key=selected_model, image_url=image_url)
+    # Build multi-provider candidate strategies for image curation
+    candidates = []
+    # 1. Primary selected model
+    candidates.append(("kilo" if is_kilo else "opencode", selected_model))
+    # 2. Mimo 2.5 Free (OpenCode)
+    if not (not is_kilo and selected_model.lower() in ["mimo 2.5 free", "mimo-v2.5-free"]):
+        candidates.append(("opencode", "mimo-v2.5-free"))
+    # 3. OpenRouter Free Models Router (Kilo)
+    candidates.append(("kilo", "openrouter/free"))
+    # 4. Step 3.7 Flash Free (Kilo)
+    candidates.append(("kilo", "stepfun/step-3.7-flash:free"))
 
-        clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+    # 1. Attempt Multimodal Payload across provider candidates
+    for p_name, m_name in candidates:
+        try:
+            if p_name == "kilo":
+                from kilo_client import query_kilo_ai
+                ai_res = await query_kilo_ai(prompt=prompt, model_key=m_name, image_url=image_url)
+            else:
+                from opencode_client import query_opencode_zen
+                ai_res = await query_opencode_zen(prompt=prompt, model_key=m_name, image_url=image_url)
 
-        if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
-            print(f"[+] VoxKage 5-Anchor Multimodal AI Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
-            return clean_ai
-    except Exception as e:
-        print(f"[-] Multimodal payload notice for {provider.upper()} model '{selected_model}': {e}. Falling back to text synthesis...")
+            clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+            if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
+                print(f"[+] VoxKage 5-Anchor Multimodal AI Curated Query via {p_name.upper()} model '{m_name}': {clean_ai}")
+                return clean_ai
+        except Exception as e:
+            print(f"[-] Multimodal query notice for {p_name.upper()} model '{m_name}': {e}. Trying next candidate...")
 
-    # 2. Fallback to Text-Only Payload
-    try:
-        text_prompt = f"Image URL: {image_url}\n{prompt}"
-        if is_kilo:
-            from kilo_client import query_kilo_ai
-            ai_res = await query_kilo_ai(prompt=text_prompt, model_key=selected_model, image_url=None)
-        else:
-            from opencode_client import query_opencode_zen
-            ai_res = await query_opencode_zen(prompt=text_prompt, model_key=selected_model, image_url=None)
+    # 2. Fallback to Text-Only Payload across candidates
+    text_prompt = f"Image URL: {image_url}\n{prompt}"
+    for p_name, m_name in candidates:
+        try:
+            if p_name == "kilo":
+                from kilo_client import query_kilo_ai
+                ai_res = await query_kilo_ai(prompt=text_prompt, model_key=m_name, image_url=None)
+            else:
+                from opencode_client import query_opencode_zen
+                ai_res = await query_opencode_zen(prompt=text_prompt, model_key=m_name, image_url=None)
 
-        clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+            clean_ai = sanitize_5_anchor_query(ai_res, clean_init)
+            if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
+                print(f"[+] VoxKage 5-Anchor Text Fallback Curated Query via {p_name.upper()} model '{m_name}': {clean_ai}")
+                return clean_ai
+        except Exception as e:
+            print(f"[-] Text fallback query notice for {p_name.upper()} model '{m_name}': {e}. Trying next candidate...")
 
-        if clean_ai and len(clean_ai) > 2 and not clean_ai.lower().startswith("error"):
-            print(f"[+] VoxKage 5-Anchor Text Fallback Curated Query via {provider.upper()} model '{selected_model}': {clean_ai}")
-            return clean_ai
-    except Exception as e:
-        print(f"[-] AI text fallback notice for {provider.upper()} model '{selected_model}': {e}")
-
+    print(f"[*] Returning clean visual feature fallback query: {fallback_query}")
     return fallback_query
 
 
