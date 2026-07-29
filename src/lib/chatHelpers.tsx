@@ -859,26 +859,57 @@ export const parseScheduleSetup = (content: string) => {
   let cleanContent = content;
   let scheduleSetup: ScheduleSetupItem | null = null;
   
-  const regex = /<ScheduleSetup\s+([^>]*?)\s*\/>/i;
-  const match = cleanContent.match(regex);
+  // Robust tag match: matches from <ScheduleSetup to closing /> or </ScheduleSetup>
+  // Uses [\s\S]*? non-greedy match so > inside instruction="..." strings does NOT break matching!
+  const tagRegex = /<ScheduleSetup\b([\s\S]*?)(?:\/>|<\/ScheduleSetup>)/i;
+  const match = cleanContent.match(tagRegex);
+  
   if (match) {
     const attrString = match[1];
+    
     const getAttr = (name: string): string => {
-      const r = new RegExp(`${name}="([^"]*)"`, 'i');
-      const m = attrString.match(r);
-      return m ? m[1] : "";
+      const knownNextAttrs = "(?:timings|interval|cron|instruction|suggested_name|suggestedName|estimated_loops|estimatedLoops)";
+
+      // Pattern 1: match name="value" up to next known attribute or tag end
+      const pattern1 = new RegExp(`${name}\\s*=\\s*"([\\s\\S]*?)"(?=\\s+${knownNextAttrs}\\s*=|\\s*$)`, 'i');
+      let m = attrString.match(pattern1);
+      if (m) return m[1];
+
+      // Pattern 2: match name='value' up to next known attribute or tag end
+      const pattern2 = new RegExp(`${name}\\s*=\\s*'([\\s\\S]*?)'(?=\\s+${knownNextAttrs}\\s*=|\\s*$)`, 'i');
+      m = attrString.match(pattern2);
+      if (m) return m[1];
+
+      // Pattern 3: Standard double quote
+      const pattern3 = new RegExp(`${name}\\s*=\\s*"([^"]*?)"`, 'i');
+      m = attrString.match(pattern3);
+      if (m) return m[1];
+
+      // Pattern 4: Standard single quote
+      const pattern4 = new RegExp(`${name}\\s*=\\s*'([^']*?)'`, 'i');
+      m = attrString.match(pattern4);
+      if (m) return m[1];
+
+      return "";
     };
     
+    const instruction = getAttr("instruction");
+    const timings = getAttr("timings") || "As scheduled";
+    const cron = getAttr("cron") || "0 0 * * *";
+    const intervalStr = getAttr("interval");
+    const suggestedName = getAttr("suggested_name") || getAttr("suggestedName") || "Schedule Job";
+    const loopsStr = getAttr("estimated_loops") || getAttr("estimatedLoops");
+
     scheduleSetup = {
-      timings: getAttr("timings"),
-      interval: parseInt(getAttr("interval")) || 24,
-      cron: getAttr("cron"),
-      instruction: getAttr("instruction"),
-      suggested_name: getAttr("suggested_name") || "Schedule Job",
-      estimated_loops: parseInt(getAttr("estimated_loops")) || 5
+      timings,
+      interval: parseInt(intervalStr) || 24,
+      cron,
+      instruction,
+      suggested_name: suggestedName,
+      estimated_loops: parseInt(loopsStr) || 7
     };
     
-    cleanContent = cleanContent.replace(regex, "").trim();
+    cleanContent = cleanContent.replace(tagRegex, "").trim();
   }
   
   return { cleanContent, scheduleSetup };
