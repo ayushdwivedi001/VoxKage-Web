@@ -285,30 +285,6 @@ export default function VoxKageCreature() {
         className="mb-6 flex flex-col justify-center items-center select-none"
         style={{ cursor: "pointer", gap: 0 }}
       >
-        {/* Night mode: flat bright yellow moon + blinking pixel stars above the creature */}
-        {isNight && !isLightMode && (
-          <svg
-            width="54"
-            height="20"
-            viewBox="0 0 100 32"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            style={{ display: "block", marginBottom: -2, pointerEvents: "none" }}
-            aria-hidden="true"
-          >
-            {/* Pixel stars — four at different positions, staggered blink timings */}
-            <rect className="vc-star-1" x="8"  y="10" width="5" height="5" fill="#faf9f5" rx="1" />
-            <rect className="vc-star-2" x="42" y="20" width="4" height="4" fill="#faf9f5" rx="1" />
-            <rect className="vc-star-3" x="72" y="8"  width="4" height="4" fill="#faf9f5" rx="1" />
-            <rect className="vc-star-4" x="22" y="5"  width="3" height="3" fill="#faf9f5" rx="0.5" />
-            {/* Crescent moon — flat #fbbf24, NO glow, NO filter, NO animation */}
-            <path
-              d="M 72 26 C 82 18, 86 10, 78 4 C 88 4, 96 12, 92 22 C 89 30, 78 32, 72 26 Z"
-              fill="#fbbf24"
-            />
-          </svg>
-        )}
-
         <svg
           ref={containerRef}
           id="voxkage-creature-svg"
@@ -327,13 +303,13 @@ export default function VoxKageCreature() {
               <path d="M 50 10 C 74 10, 90 28, 90 53 C 90 76, 72 90, 50 90 C 28 90, 10 76, 10 53 C 10 28, 26 10, 50 10 Z" />
             </clipPath>
 
-            {/* Click Wave Gradient — white bottom → cyan → deep cobalt top */}
+            {/* Click Wave Gradient — bright white base → sky blue → radiant cyan */}
             <linearGradient id="vc-wave-grad-blue" x1="0" y1="1" x2="0" y2="0">
-              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.96} />
-              <stop offset="30%" stopColor="#38bdf8" stopOpacity={0.9} />
-              <stop offset="70%" stopColor="#0438c2" stopOpacity={0.95} />
-              <stop offset="92%" stopColor="#020938" stopOpacity={0.4} />
-              <stop offset="100%" stopColor="#020938" stopOpacity={0} />
+              <stop offset="0%" stopColor="#ffffff" stopOpacity={0.98} />
+              <stop offset="25%" stopColor="#7dd3fc" stopOpacity={0.95} />
+              <stop offset="60%" stopColor="#38bdf8" stopOpacity={0.92} />
+              <stop offset="85%" stopColor="#0284c7" stopOpacity={0.6} />
+              <stop offset="100%" stopColor="#0369a1" stopOpacity={0} />
             </linearGradient>
 
             {/* Anger Gradient — white bottom → crimson red top (no glow, contained) */}
@@ -344,7 +320,7 @@ export default function VoxKageCreature() {
               <stop offset="100%" stopColor="#991b1b" />
             </linearGradient>
 
-            {/* Light Mode Body Gradient — white bottom → VoxKage blue top */}
+            {/* Body Gradient — white bottom → VoxKage blue top */}
             <linearGradient id="vc-light-body-grad" x1="0" y1="1" x2="0" y2="0">
               <stop offset="0%" stopColor="#ffffff" />
               <stop offset="12%" stopColor="#ffffff" />
@@ -353,10 +329,10 @@ export default function VoxKageCreature() {
             </linearGradient>
           </defs>
 
-          {/* Base Body — gradient blue in light mode, cream/cool-white in dark mode */}
+          {/* Base Body — gradient blue in all themes */}
           <path
             d="M 50 10 C 74 10, 90 28, 90 53 C 90 76, 72 90, 50 90 C 28 90, 10 76, 10 53 C 10 28, 26 10, 50 10 Z"
-            fill={isLightMode ? "url(#vc-light-body-grad)" : (isNight ? "#eef0f8" : "#FAF9F5")}
+            fill="url(#vc-light-body-grad)"
           />
 
           {/* Red Gradient Anger Overlay (strictly contained, NO shadow/glow) */}
@@ -390,7 +366,7 @@ export default function VoxKageCreature() {
                 cy="48"
                 rx="5.8"
                 ry="9.5"
-                fill={isLightMode ? "#FAF9F5" : "#141413"}
+                fill="#FAF9F5"
               />
             </g>
 
@@ -403,13 +379,13 @@ export default function VoxKageCreature() {
                 cy="48"
                 rx="5.8"
                 ry="9.5"
-                fill={isLightMode ? "#FAF9F5" : "#141413"}
+                fill="#FAF9F5"
               />
               {/* Hover Wink Shape '<' — hidden by default */}
               <path
                 id="vc-right-eye-wink"
                 d="M 71 43 L 60 48 L 71 53"
-                stroke={isLightMode ? "#FAF9F5" : "#141413"}
+                stroke="#FAF9F5"
                 strokeWidth="3.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"

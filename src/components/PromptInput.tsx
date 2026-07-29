@@ -9,6 +9,7 @@ import { getToken, BACKEND_URL } from "@/lib/api";
 import { Attachment } from "./MessageAttachmentsRow";
 import { Monitor, FileUp, Clock, Camera } from "lucide-react";
 import PDFHoverCard from "./PDFHoverCard";
+import PlanModeHeader from "./PlanModeHeader";
 
 interface ModelOption {
   name: string;
@@ -520,11 +521,12 @@ export default function PromptInput({
   const hasText = value.trim().length > 0;
 
   return (
-    <div className={`w-full max-w-[720px] p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
-      hideBoxStyling
-        ? "bg-transparent border-t border-white/10"
-        : "rounded-[28px] fluid-glass-box-frosty"
-    }`}>
+    <PlanModeHeader isPlanMode={buildMode === "Plan"} isLightMode={isLightMode}>
+      <div className={`w-full p-5 pb-4 flex flex-col relative transition-all duration-500 ease-out ${
+        hideBoxStyling
+          ? "bg-transparent border-t border-white/10"
+          : "rounded-[28px] fluid-glass-box-frosty"
+      }`}>
       {/* / Commands Popup */}
       {showPopup && (
         <div 
@@ -988,7 +990,7 @@ export default function PromptInput({
               onClick={handleSubmit}
               className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all duration-300 ml-0.5 sm:ml-1 flex-shrink-0 ${
                 hasText
-                  ? "bg-blue-600 border border-blue-600 hover:bg-blue-500 hover:border-blue-500 text-white shadow-md shadow-blue-500/20 active:scale-95 cursor-pointer"
+                  ? "bg-[#3A91EE] border border-[#3A91EE] hover:bg-[#3282d8] hover:border-[#3282d8] text-white shadow-md shadow-[#3A91EE]/20 active:scale-95 cursor-pointer"
                   : "bg-white/[0.04] border border-white/[0.08] text-white/30 cursor-default"
               }`}
               aria-label="Submit prompt"
@@ -1062,6 +1064,7 @@ export default function PromptInput({
         }
       `}</style>
     </div>
+    </PlanModeHeader>
   );
 }
 
