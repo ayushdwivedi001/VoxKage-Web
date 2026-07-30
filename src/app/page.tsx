@@ -211,6 +211,13 @@ export default function Home() {
         setSelectedVariant(localStorage.getItem("voxkage_selected_variant") || "Max");
       }
 
+      if (boot.build_mode && !localStorage.getItem("voxkage_build_mode")) {
+        localStorage.setItem("voxkage_build_mode", boot.build_mode);
+        if (agentCompletion?.setBuildMode) {
+          agentCompletion.setBuildMode(boot.build_mode as any);
+        }
+      }
+
       if (boot.mcp_tools) {
         sessionToolsCache["__boot_tools__"] = boot.mcp_tools;
       }

@@ -294,6 +294,9 @@ export default function ChatWorkspace({
               onPreviewDocument={setZoomDocument}
               editingFile={editingFile}
               onRemoveEditingFile={() => setEditingFile(null)}
+              buildMode={buildMode}
+              setBuildMode={setBuildMode}
+              tasks={activeTasks}
             />
           </div>
         </>

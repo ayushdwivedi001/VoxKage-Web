@@ -359,6 +359,7 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
         "custom_proxy_url": profile.get("custom_proxy_url") or profile.get("customProxyUrl") or "",
         "selected_model": profile.get("selected_model") or profile.get("selectedModel") or "DeepSeek V4 Flash",
         "selected_variant": profile.get("selected_variant") or profile.get("selectedVariant") or "Max",
+        "build_mode": profile.get("build_mode") or profile.get("buildMode") or "Work",
         "theme_mode": profile.get("theme_mode") or "",
         "soul_context": soul_context,
         "mcp_connections": list(connections.keys()),

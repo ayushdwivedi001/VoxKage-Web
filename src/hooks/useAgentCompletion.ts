@@ -3,6 +3,7 @@
 import React from "react";
 import { Message, computeSessionFiles } from "@/lib/chatHelpers";
 import { Attachment } from "@/components/MessageAttachmentsRow";
+import { getStoredBuildMode, setStoredBuildMode } from "@/lib/buildModeStore";
 import {
   createSession,
   adoptDraftFiles,
@@ -12,6 +13,7 @@ import {
   editSessionMessage,
   logMessageFeedback,
   compactSession,
+  BACKEND_URL,
 } from "@/lib/api";
 
 // Session-level tool definitions cache to avoid re-fetching on every message
@@ -143,7 +145,46 @@ export default function useAgentCompletion({
   loginEmail,
 }: UseAgentCompletionProps) {
   const [isStreaming, setIsStreaming] = React.useState(false);
-  const [buildMode, setBuildMode] = React.useState<"Work" | "Plan">("Work");
+  const [buildMode, _setBuildModeState] = React.useState<"Work" | "Plan">(getStoredBuildMode);
+  // Ref mirrors buildMode state so streaming closures always read the live value (no stale closure)
+  const buildModeRef = React.useRef<"Work" | "Plan">(buildMode);
+
+  React.useEffect(() => {
+    buildModeRef.current = buildMode;
+  }, [buildMode]);
+
+  // Listen for global build mode changes (e.g. from dropdowns across unmounted/remounted UI)
+  React.useEffect(() => {
+    const handleGlobalChange = (e: any) => {
+      const mode = e.detail || getStoredBuildMode();
+      buildModeRef.current = mode;
+      _setBuildModeState(mode);
+    };
+    window.addEventListener("voxkage_build_mode_change", handleGlobalChange);
+    return () => window.removeEventListener("voxkage_build_mode_change", handleGlobalChange);
+  }, []);
+
+  const setBuildMode = React.useCallback((mode: "Work" | "Plan") => {
+    buildModeRef.current = mode;
+    _setBuildModeState(mode);
+    setStoredBuildMode(mode);
+    try {
+      const token = localStorage.getItem("voxkage_jwt_token");
+      const apiBase = BACKEND_URL;
+      if (token) {
+        fetch(`${apiBase}/user/settings-profile`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ build_mode: mode })
+        }).catch((err) => console.error("Failed to sync build_mode:", err));
+      }
+    } catch (err) {
+      console.warn("build_mode sync error:", err);
+    }
+  }, []);
   const [activeTasks, setActiveTasks] = React.useState<any[]>([]);
   // Store real Word doc_state objects keyed by filename (e.g. "doc.docx" -> JSON string)
   const [wordArtifacts, setWordArtifacts] = React.useState<Map<string, string>>(new Map());
@@ -182,6 +223,14 @@ export default function useAgentCompletion({
     if (!text.trim()) return;
     setIsStreaming(true);
     hasVisitedRef.current = true;
+
+    // BULLETPROOF: If the PromptInput tagged this as [PLAN MODE], force-sync the ref
+    // so the streaming closure & backend payload always see the correct mode,
+    // regardless of React state batching timing.
+    if (text.startsWith("[PLAN MODE]")) {
+      buildModeRef.current = "Plan";
+      _setBuildModeState("Plan");
+    }
 
     let sessionId = currentSessionId;
     let finalAttachments = [...attachments];
@@ -332,7 +381,7 @@ export default function useAgentCompletion({
           modelNameToKey(selectedModel),
           selectedVariant,
           hasToolsCached,
-          buildMode === "Plan"
+          buildModeRef.current === "Plan"
         );
 
         let messagesPayload = prepRes.messages;
@@ -471,17 +520,25 @@ export default function useAgentCompletion({
                       const copy = [...prev];
                       const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                       if (idx !== -1) {
-                        // Enforce mode check: ONLY render plan card if user is in Plan mode!
-                        if (buildMode === "Plan") {
+                        const precedingUserMsg = copy[idx - 1];
+                        const isPlanModeMessage = buildModeRef.current === "Plan" || 
+                          (precedingUserMsg && precedingUserMsg.content && (precedingUserMsg.content.includes("[PLAN MODE]") || precedingUserMsg.content.includes("/plan")));
+
+                        // Enforce mode check: ALWAYS render plan card if user is in Plan mode!
+                        if (isPlanModeMessage) {
+                          copy[idx].type = "plan";
                           const planMatch = finalAssistantContent.match(/<plan(?:\s+title=["']([^"']+)["'])?>([\s\S]*)/i);
                           if (planMatch) {
-                            copy[idx].type = "plan";
                             copy[idx].planTitle = planMatch[1] || "Implementation Plan";
                             copy[idx].content = planMatch[2].replace(/<\/plan>/g, "").trim();
                           } else {
-                            copy[idx].content = finalAssistantContent;
+                            // LLM omitted literal <plan> tags — extract first line/heading as title
+                            const firstLine = finalAssistantContent.trim().split("\n")[0] || "";
+                            const headingMatch = firstLine.match(/^(?:#+\s*|\*\*\s*)([^\*\n#]+)/);
+                            copy[idx].planTitle = headingMatch ? headingMatch[1].trim() : "Implementation Plan";
+                            copy[idx].content = finalAssistantContent.trim();
                           }
-                        } else {
+                        } else if (buildModeRef.current === "Work") {
                           // Work Mode: strip any accidental <plan> tags
                           let cleanContent = finalAssistantContent
                             .replace(/<plan(?:\s+title=["'][^"']+["'])?>/gi, "")

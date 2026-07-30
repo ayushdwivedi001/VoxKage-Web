@@ -220,14 +220,14 @@ export default function PlanOutputCard({
             )}
 
             {/* Add new comment input */}
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-1.5 sm:gap-2 items-center w-full min-w-0">
               <input
                 type="text"
                 value={newCommentText}
                 onChange={(e) => setNewCommentText(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your feedback or requested changes..."
-                className={`flex-1 px-3.5 py-2 text-[13px] rounded-xl border outline-none transition-all font-sans ${
+                placeholder="Type your feedback..."
+                className={`flex-1 min-w-0 px-2.5 sm:px-3.5 py-2 text-[12.5px] sm:text-[13px] rounded-xl border outline-none transition-all font-sans ${
                   isLightMode
                     ? "bg-white border-[#c3c2b7] text-[#141413] placeholder:text-[#6c6a64] focus:border-[#3A91EE]"
                     : "bg-black/30 border-white/15 text-white placeholder:text-zinc-500 focus:border-blue-400"
@@ -237,9 +237,9 @@ export default function PlanOutputCard({
                 type="button"
                 onClick={handleAddComment}
                 disabled={!newCommentText.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#3A91EE] hover:bg-[#3282d8] text-white text-[12.5px] font-semibold transition-all disabled:opacity-40 cursor-pointer shadow-sm active:scale-95 shrink-0"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl bg-[#3A91EE] hover:bg-[#3282d8] text-white text-[12px] sm:text-[12.5px] font-semibold transition-all disabled:opacity-40 cursor-pointer shadow-sm active:scale-95 shrink-0"
               >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
                 <span>Add</span>
               </button>
             </div>

@@ -82,7 +82,13 @@ export default function PromptInput({
   const [isLightMode, setIsLightMode] = useState(false);
 
   // Fallback local mode state if parent didn't pass state
-  const [localBuildMode, setLocalBuildMode] = useState<"Work" | "Plan">("Work");
+  const [localBuildMode, setLocalBuildMode] = useState<"Work" | "Plan">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("voxkage_build_mode");
+      if (saved === "Plan" || saved === "Work") return saved;
+    }
+    return "Work";
+  });
   const buildMode = setBuildModeProp ? buildModeProp : localBuildMode;
   const setBuildMode = setBuildModeProp || setLocalBuildMode;
 
