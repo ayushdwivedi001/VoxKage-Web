@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     icon: "/assets/voxkage_logo.png?v=3",
   },
   verification: {
-    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "",
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "YES8Pbx4hB2j7kxgObVZJq0IQ4L1wXOrZzLChvSi5M4",
   },
 };
 
