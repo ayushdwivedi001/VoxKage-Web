@@ -69,12 +69,19 @@ export default function LoginCreature() {
             transition: transform 0.08s ease-out;
           }
         `}</style>
+        {/* Exact Homepage Creature Blue Gradient (white bottom -> VoxKage blue top) */}
+        <linearGradient id="lc-body-grad" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="12%" stopColor="#ffffff" />
+          <stop offset="68%" stopColor="#338cec" />
+          <stop offset="100%" stopColor="#338cec" />
+        </linearGradient>
       </defs>
 
-      {/* Main Egg-Shaped Creature Body — Exact Homepage Path & Cream Fill */}
+      {/* Main Egg-Shaped Creature Body — Exact Homepage Gradient Blue */}
       <path
         d="M 50 10 C 74 10, 90 28, 90 53 C 90 76, 72 90, 50 90 C 28 90, 10 76, 10 53 C 10 28, 26 10, 50 10 Z"
-        fill="#FAF9F5"
+        fill="url(#lc-body-grad)"
       />
 
       {/* Synchronized Blinking Eyes Group */}
@@ -86,7 +93,7 @@ export default function LoginCreature() {
           cy="48"
           rx="5.8"
           ry="9.5"
-          fill="#141413"
+          fill="#ffffff"
         />
 
         {/* Right Eye */}
@@ -96,7 +103,7 @@ export default function LoginCreature() {
           cy="48"
           rx="5.8"
           ry="9.5"
-          fill="#141413"
+          fill="#ffffff"
         />
       </g>
     </svg>

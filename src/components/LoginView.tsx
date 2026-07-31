@@ -52,6 +52,19 @@ export default function LoginView({
     return "dark";
   });
 
+  const [isLightMode, setIsLightMode] = useState(false);
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const isL = document.documentElement.classList.contains("light");
+      setIsLightMode(isL);
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("voxkage_theme_mode", themeMode);
     const root = document.documentElement;
@@ -408,8 +421,11 @@ export default function LoginView({
           {/* Serif VoxKage Title Header */}
           <div className="flex flex-col items-center mb-8 text-center">
             <h1
-              className="text-white text-6xl md:text-7xl lg:text-[76px] font-normal tracking-tight flex items-center justify-center gap-0.5 leading-none"
-              style={{ fontFamily: "Copernicus, Tiempos, Georgia, serif" }}
+              className="text-6xl md:text-7xl lg:text-[76px] font-normal tracking-tight flex items-center justify-center gap-0.5 leading-none transition-colors duration-300"
+              style={{
+                color: isLightMode ? "#141413" : "#ffffff",
+                fontFamily: "Copernicus, Tiempos, Georgia, serif"
+              }}
             >
               <span>V</span>
               <span className="inline-flex items-center justify-center w-10 h-10 md:w-13 md:h-13 transform translate-y-1 mx-[1px]">
@@ -706,6 +722,18 @@ export default function LoginView({
                   </svg>
                   <span>{isSignUp ? "Sign Up with Google" : "Continue with Google"}</span>
                 </button>
+
+                <div className="flex flex-wrap items-center justify-center gap-1 text-[11px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
+                  <span>By continuing, you agree to our</span>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white underline transition-colors">
+                    Terms
+                  </a>
+                  <span>and</span>
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white underline transition-colors">
+                    Privacy Policy
+                  </a>
+                  <span>.</span>
+                </div>
 
                 <div className="flex items-center justify-center text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
                   <button
