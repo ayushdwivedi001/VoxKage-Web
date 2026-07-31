@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import DesignDottedCanvas from "@/components/DesignDottedCanvas";
 import LoginCreature from "@/components/LoginCreature";
+import Link from "next/link";
 import {
   Loader2,
   ArrowRight,
@@ -19,6 +20,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Plus,
 } from "lucide-react";
 
 interface LoginViewProps {
@@ -119,6 +121,80 @@ export default function LoginView({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+
+  // Scroll tracking for background canvas opacity fade
+  const [scrollY, setScrollY] = useState(0);
+  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
+
+  const faqData: { question: string; answer: React.ReactNode }[] = [
+    {
+      question: "What is VoxKage and how does it work?",
+      answer: (
+        <span>
+          VoxKage is your living AI assistant designed to stay right at your side.<br></br> Instead of locking you into a single rigid LLM brain, VoxKage operates on a Bring-Your-Own-Key (BYOK) architecture — putting complete data privacy, model flexibility, and absolute control directly into your hands.
+        </span>
+      ),
+    },
+    {
+      question: "What purpose should I use VoxKage for?",
+      answer: (
+        <span>
+          If you can dream it, VoxKage can handle it.<br></br> Whether it's deep research, drafting complex documents, scheduling emails and calendar events, or building creative applications from scratch — VoxKage combines universal conversational intelligence with autonomous agentic power to execute whatever you need.
+        </span>
+      ),
+    },
+    {
+      question: "Is VoxKage free to use?",
+      answer: (
+        <span>
+          Yes, VoxKage is completely free and 100% open-source under the MIT License on{" "}
+          <a
+            href="https://github.com/ayushdwivedi001/VoxKage-Web"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:underline font-medium"
+          >
+            GitHub
+          </a>
+          .<br></br> It follows a Bring-Your-Own-Key (BYOK) workflow, so if you're paying for anything, it's strictly your own API key.<br></br><br></br> You can get your free high-speed models from both OpenCode and Kilo Code without rate limits at{" "}
+          <a
+            href="https://opencode.ai/auth"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:underline font-medium"
+          >
+            opencode.ai/auth
+          </a>
+          {" "}and{" "}
+          <a
+            href="https://kilo.ai"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-400 hover:underline font-medium"
+          >
+            kilo.ai
+          </a>
+          , and paste them when logging into VoxKage or add more API Providers via the Settings tab.
+        </span>
+      ),
+    },
+    {
+      question: "How does VoxKage handle my privacy and Google User Data?",
+      answer: (
+        <span>
+          VoxKage connects exclusively via official Google OAuth 2.0 protocols. Your sensitive web keys and local state are encrypted at rest on your device, never stored or sold to third-party ad brokers, and strictly excluded from public AI model training.
+        </span>
+      ),
+    },
+    {
+      question: "What is unique about VoxKage?",
+      answer: (
+        <span>
+          VoxKage features a personalized SOUL Memory system that grows and evolves with the user over time. It logs problem-solution pairs so it never repeats past technical mistakes, and indexes your uploaded images or PDFs if asked so it never forgets your preferences.<br></br> <br></br> Combined with 50+ tools for custom UI rendering, cron jobs automation, Plan/Work mode switching, task scheduling, document generations, website/app generation, you name it, VoxKage does it.
+        </span>
+      ),
+    },
+  ];
 
   // Dynamic email pre-filling
   useEffect(() => {
@@ -310,6 +386,13 @@ export default function LoginView({
     }
   };
 
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !otpDigits[index] && index > 0) {
+      const prevInput = document.getElementById(`otp-${index - 1}`);
+      prevInput?.focus();
+    }
+  };
+
   // Verify Sign Up 4-Digit OTP
   const handleVerifyOtpSubmit = async () => {
     const code = otpDigits.join("");
@@ -401,9 +484,22 @@ export default function LoginView({
     }
   };
 
+  const canvasOpacity = Math.max(0, 1 - scrollY / 320);
+
   return (
-    <div className="relative min-h-screen h-auto md:h-screen w-full flex items-center justify-center bg-[#05050a] p-4 md:p-6 lg:p-8 select-none font-sans overflow-y-auto md:overflow-hidden">
-      <DesignDottedCanvas active={true} isChatActive={false} />
+    <div
+      onScroll={(e) => setScrollY(e.currentTarget.scrollTop)}
+      className={`fixed inset-0 overflow-y-auto w-full transition-colors duration-300 select-none font-sans ${
+        isLightMode ? "bg-[#FAF9F5] text-[#141413]" : "bg-[#05050a] text-zinc-100"
+      }`}
+    >
+      {/* Dynamic Dotted Canvas Background — Fades smoothly on scroll */}
+      <div
+        className="fixed inset-0 pointer-events-none transition-opacity duration-200 z-0"
+        style={{ opacity: canvasOpacity }}
+      >
+        <DesignDottedCanvas active={true} isChatActive={false} />
+      </div>
 
       {/* Top Left Rounded Icon Box */}
       <div className="fixed top-6 left-7 z-50">
@@ -412,28 +508,29 @@ export default function LoginView({
         </div>
       </div>
 
-      {/* Main Dual-Pane Spacing Container */}
-      <div className="w-full h-full max-w-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-12 lg:gap-16 xl:gap-20 z-10 my-auto px-4 md:pl-20 lg:pl-32 md:pr-8">
-        
-        {/* === LEFT PANE: AUTHENTICATION CONTAINER === */}
-        <div className="w-full max-w-sm flex flex-col items-center justify-center flex-shrink-0 z-10 my-auto">
+      {/* HERO LOGIN VIEW CONTAINER (Above the Fold) */}
+      <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 md:p-6 lg:p-8 relative z-10">
+        <div className="w-full h-full max-w-none flex flex-col md:flex-row items-center justify-center md:justify-start gap-12 lg:gap-16 xl:gap-20 z-10 my-auto px-4 md:pl-20 lg:pl-32 md:pr-8">
           
-          {/* Serif VoxKage Title Header */}
-          <div className="flex flex-col items-center mb-8 text-center">
-            <h1
-              className="text-6xl md:text-7xl lg:text-[76px] font-normal tracking-tight flex items-center justify-center gap-0.5 leading-none transition-colors duration-300"
-              style={{
-                color: isLightMode ? "#141413" : "#ffffff",
-                fontFamily: "Copernicus, Tiempos, Georgia, serif"
-              }}
-            >
-              <span>V</span>
-              <span className="inline-flex items-center justify-center w-10 h-10 md:w-13 md:h-13 transform translate-y-1 mx-[1px]">
-                <LoginCreature />
-              </span>
-              <span>xKage</span>
-            </h1>
-          </div>
+          {/* === LEFT PANE: AUTHENTICATION CONTAINER === */}
+          <div className="w-full max-w-sm flex flex-col items-center justify-center flex-shrink-0 z-10 my-auto">
+            
+            {/* Serif VoxKage Title Header — Clean & Pristine (No Subtitle Text) */}
+            <div className="flex flex-col items-center mb-8 text-center">
+              <h1
+                className="text-6xl md:text-7xl lg:text-[76px] font-normal tracking-tight flex items-center justify-center gap-0.5 leading-none transition-colors duration-300"
+                style={{
+                  color: isLightMode ? "#141413" : "#ffffff",
+                  fontFamily: "Copernicus, Tiempos, Georgia, serif"
+                }}
+              >
+                <span>V</span>
+                <span className="inline-flex items-center justify-center w-10 h-10 md:w-13 md:h-13 transform translate-y-1 mx-[1px]">
+                  <LoginCreature />
+                </span>
+                <span>xKage</span>
+              </h1>
+            </div>
 
           <div className="w-full bg-[#0e0e11] border border-zinc-800/80 rounded-3xl p-7 shadow-2xl relative overflow-hidden backdrop-blur-xl">
             
@@ -459,280 +556,236 @@ export default function LoginView({
                         maxLength={1}
                         value={otpDigits[idx]}
                         onChange={(e) => handleOtpChange(idx, e.target.value)}
-                        className="w-12 h-12 bg-zinc-900 border border-zinc-800 rounded-xl text-center text-zinc-100 text-lg font-bold focus:border-zinc-700 outline-none transition-colors"
+                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                        className="w-12 h-13 bg-zinc-900 border border-zinc-700/80 rounded-xl text-center text-white text-lg font-semibold focus:border-blue-500 focus:outline-none transition-colors"
                       />
                     ))}
                   </div>
+                  {otpError && (
+                    <div className="flex items-center gap-1.5 text-red-400 text-[11.5px] mt-1">
+                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>{otpError}</span>
+                    </div>
+                  )}
                 </div>
-
-                {otpError && (
-                  <span className="text-red-400 text-[12px] pl-1 block text-left flex items-center gap-1.5 mt-1">
-                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>{otpError}</span>
-                  </span>
-                )}
 
                 <button
                   type="button"
                   onClick={handleVerifyOtpSubmit}
                   disabled={authLoading}
-                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.45)] text-white rounded-xl font-medium text-[13.5px] transition-all duration-200 flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:opacity-50"
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13.5px] transition-colors cursor-pointer mt-2 flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                 >
-                  {authLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying...</span>
-                    </>
-                  ) : (
-                    <span>Verify & Sign Up</span>
-                  )}
+                  {authLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Verify Code & Sign Up"}
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowOtpVerification(false)}
-                  className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors text-center mt-1 cursor-pointer"
-                >
-                  Change registration email
-                </button>
+                <div className="flex items-center justify-between text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40">
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpVerification(false)}
+                    className="hover:text-zinc-300 transition-colors cursor-pointer"
+                  >
+                    Back to Form
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFormSubmit}
+                    disabled={authLoading}
+                    className="text-blue-400 hover:underline cursor-pointer"
+                  >
+                    Resend Code
+                  </button>
+                </div>
               </div>
             ) : (
 
-              /* REGULAR SIGN IN / SIGN UP FORM */
-              <form onSubmit={handleFormSubmit} className="flex flex-col gap-4 animate-fadeIn">
+              /* LOGIN / SIGNUP FORM */
+              <form onSubmit={handleFormSubmit} className="flex flex-col gap-4 text-left">
                 <div className="flex items-center justify-between border-b border-zinc-800/60 pb-3 mb-1">
                   <h3 className="text-white text-base font-medium">
-                    {isSignUp ? "Create account" : "Sign in to VoxKage"}
+                    {isSignUp ? "Create VoxKage Account" : "Sign in to VoxKage"}
                   </h3>
                   <button
                     type="button"
                     onClick={() => {
                       setIsSignUp(!isSignUp);
+                      setAuthError("");
+                      setEmailFieldError("");
+                      setPasswordFieldError("");
+                      setConfirmPasswordFieldError("");
+                      setUserNameFieldError("");
                     }}
-                    className="text-[12px] text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                    className="text-[12px] text-blue-400 hover:underline font-medium cursor-pointer"
                   >
                     {isSignUp ? "Sign In" : "Sign Up"}
                   </button>
                 </div>
 
-                {/* Username Input (Sign Up Only) */}
-                {isSignUp && (
-                  <div className="flex flex-col gap-1 text-left animate-fadeIn">
-                    <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                      Username
-                    </label>
-                    <div className="relative flex items-center">
-                      <User className="absolute left-3 w-4 h-4 text-zinc-500" />
-                      <input
-                        type="text"
-                        value={userNameInput}
-                        onChange={(e) => {
-                          setUserNameInput(e.target.value);
-                          setUserNameFieldError("");
-                        }}
-                        required={isSignUp}
-                        className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                        placeholder="Type your username"
-                      />
-                    </div>
-                    {userNameFieldError && (
-                      <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
-                        {userNameFieldError}
-                      </span>
-                    )}
+                {externalLoginError || authError ? (
+                  <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[12px]">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span>{externalLoginError || authError}</span>
                   </div>
-                )}
+                ) : null}
 
-                {/* Email address input */}
-                <div className="flex flex-col gap-1 text-left">
-                  <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                    Email Address
-                  </label>
+                {/* Email Field */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] text-zinc-400 font-medium pl-1">Email Address</label>
                   <div className="relative flex items-center">
-                    <Mail className="absolute left-3 w-4 h-4 text-zinc-500" />
+                    <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
                     <input
                       type="email"
                       value={loginEmail}
                       onChange={(e) => {
                         setLoginEmail(e.target.value);
-                        setEmailFieldError("");
+                        if (emailFieldError) setEmailFieldError("");
                       }}
-                      required
-                      className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-3 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                      placeholder="Enter your email address"
+                      className={`w-full h-11 bg-zinc-900/90 border ${
+                        emailFieldError ? "border-red-500" : "border-zinc-800"
+                      } rounded-xl pl-10 pr-3.5 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
+                      placeholder="you@domain.com"
                     />
                   </div>
                   {emailFieldError && (
-                    <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
-                      {emailFieldError}
-                    </span>
+                    <span className="text-red-400 text-[11px] pl-1 font-medium">{emailFieldError}</span>
                   )}
                 </div>
 
-                {/* Password input */}
-                <div className="flex flex-col gap-1 text-left">
-                  <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                    Password
-                  </label>
+                {/* Optional Username for Sign Up */}
+                {isSignUp && (
+                  <div className="flex flex-col gap-1.5 animate-fadeIn">
+                    <label className="text-[12px] text-zinc-400 font-medium pl-1">Display Name (Optional)</label>
+                    <div className="relative flex items-center">
+                      <User className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={userNameInput}
+                        onChange={(e) => setUserNameInput(e.target.value)}
+                        className="w-full h-11 bg-zinc-900/90 border border-zinc-800 rounded-xl pl-10 pr-3.5 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
+                        placeholder="Type your Display name"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Password Field */}
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[12px] text-zinc-400 font-medium pl-1">Password</label>
                   <div className="relative flex items-center">
-                    <Lock className="absolute left-3 w-4 h-4 text-zinc-500" />
+                    <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
                     <input
                       type={showPassword ? "text" : "password"}
                       value={passwordInput}
                       onChange={(e) => {
                         setPasswordInput(e.target.value);
-                        setPasswordFieldError("");
+                        if (passwordFieldError) setPasswordFieldError("");
                       }}
-                      required
-                      className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
+                      className={`w-full h-11 bg-zinc-900/90 border ${
+                        passwordFieldError ? "border-red-500" : "border-zinc-800"
+                      } rounded-xl pl-10 pr-10 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
                       placeholder="Enter your password"
                     />
-                    {isSignUp && passwordInput && confirmPasswordInput && isPasswordComplex(passwordInput) && passwordInput === confirmPasswordInput && (
-                      <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
-                    )}
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                      className="absolute right-3.5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                   {passwordFieldError && (
-                    <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
-                      {passwordFieldError}
-                    </span>
+                    <span className="text-red-400 text-[11px] pl-1 font-medium">{passwordFieldError}</span>
                   )}
                 </div>
 
-                {/* Confirm password input (Sign Up Only) */}
+                {/* Confirm Password for Sign Up */}
                 {isSignUp && (
-                  <div className="flex flex-col gap-1 text-left animate-fadeIn">
-                    <label className="text-[12px] text-zinc-400 font-medium pl-1 block">
-                      Confirm Password
-                    </label>
+                  <div className="flex flex-col gap-1.5 animate-fadeIn">
+                    <label className="text-[12px] text-zinc-400 font-medium pl-1">Confirm Password</label>
                     <div className="relative flex items-center">
-                      <Lock className="absolute left-3 w-4 h-4 text-zinc-500" />
+                      <Lock className="w-4 h-4 text-zinc-500 absolute left-3.5 pointer-events-none" />
                       <input
                         type={showConfirmPassword ? "text" : "password"}
                         value={confirmPasswordInput}
                         onChange={(e) => {
                           setConfirmPasswordInput(e.target.value);
-                          setConfirmPasswordFieldError("");
+                          if (confirmPasswordFieldError) setConfirmPasswordFieldError("");
                         }}
-                        required={isSignUp}
-                        className="w-full h-10 bg-zinc-900/70 border border-zinc-800 rounded-xl pl-9 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors"
-                        placeholder="Confirm your password"
+                        className={`w-full h-11 bg-zinc-900/90 border ${
+                          confirmPasswordFieldError ? "border-red-500" : "border-zinc-800"
+                        } rounded-xl pl-10 pr-10 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
+                        placeholder="Re-enter your password"
                       />
-                      {isSignUp && passwordInput && confirmPasswordInput && isPasswordComplex(passwordInput) && passwordInput === confirmPasswordInput && (
-                        <CheckCircle2 className="absolute right-9 w-4 h-4 text-blue-500 flex-shrink-0 animate-fadeIn" />
-                      )}
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                        className="absolute right-3.5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
                       >
                         {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
                     {confirmPasswordFieldError && (
-                      <span className="text-red-400 text-[11px] pl-1 block text-left mt-0.5 font-medium">
-                        {confirmPasswordFieldError}
-                      </span>
+                      <span className="text-red-400 text-[11px] pl-1 font-medium">{confirmPasswordFieldError}</span>
                     )}
                   </div>
                 )}
 
-                {authError && (
-                  <span className="text-red-400 text-[12px] pl-1 block text-left flex items-center gap-1.5 mt-0.5">
-                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>{authError}</span>
-                  </span>
-                )}
-
-                {/* Primary Button */}
+                {/* Submit Action Button */}
                 <button
                   type="submit"
-                  disabled={authLoading}
-                  className="w-full h-10 bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.45)] text-white rounded-xl font-medium text-[13.5px] transition-all duration-200 cursor-pointer mt-1 flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={externalLoginLoading || authLoading}
+                  className="w-full h-11 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-medium text-[13.5px] transition-colors cursor-pointer mt-1 flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                 >
-                  {authLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{isSignUp ? "Creating account..." : "Signing In..."}</span>
-                    </>
+                  {externalLoginLoading || authLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <>
-                      <span>{isSignUp ? "Sign Up" : "Sign In"}</span>
+                      <span>{isSignUp ? "Send 4-Digit Code" : "Sign In"}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
 
-                <div className="text-[12px] text-zinc-400 text-center mt-0.5">
-                  {isSignUp ? (
-                    <span>
-                      Already have an account?{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSignUp(false);
-                        }}
-                        className="text-blue-400 hover:underline font-medium cursor-pointer"
-                      >
-                        Sign In
-                      </button>
-                    </span>
-                  ) : (
-                    <span>
-                      Not signed in yet?{" "}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSignUp(true);
-                        }}
-                        className="text-blue-400 hover:underline font-medium cursor-pointer"
-                      >
-                        Sign Up
-                      </button>
-                    </span>
-                  )}
-                </div>
+                {/* Google OAuth Secondary Action */}
+                <div className="flex flex-col gap-3 mt-1">
+                  <div className="flex items-center gap-3">
+                    <div className="h-[1px] flex-1 bg-zinc-800/80" />
+                    <span className="text-[11px] text-zinc-500 font-medium uppercase tracking-wider">OR</span>
+                    <div className="h-[1px] flex-1 bg-zinc-800/80" />
+                  </div>
 
-                {/* Divider */}
-                <div className="relative flex items-center justify-center my-1">
-                  <div className="border-t border-zinc-800/80 w-full" />
-                  <span className="bg-[#0e0e11] px-3 text-[10.5px] font-medium text-zinc-500 uppercase tracking-widest absolute">
-                    OR
-                  </span>
-                </div>
+                  <button
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    disabled={externalLoginLoading || authLoading}
+                    className="w-full h-11 bg-zinc-900 hover:bg-zinc-800/80 text-zinc-200 border border-zinc-800 rounded-xl font-medium text-[13px] transition-colors cursor-pointer flex items-center justify-center gap-2.5"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path
+                        fill="#4285F4"
+                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                      />
+                      <path
+                        fill="#EA4335"
+                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                      />
+                    </svg>
+                    <span>Continue with Google</span>
+                  </button>
 
-                {/* Google Login button */}
-                <button
-                  type="button"
-                  onClick={handleGoogleLogin}
-                  disabled={authLoading}
-                  className="w-full h-10 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-200 rounded-xl font-medium text-[13px] transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer shadow-sm disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                  </svg>
-                  <span>{isSignUp ? "Sign Up with Google" : "Continue with Google"}</span>
-                </button>
-
-                <div className="flex flex-wrap items-center justify-center gap-1 text-[11px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
-                  <span>By continuing, you agree to our</span>
-                  <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white underline transition-colors">
-                    Terms
-                  </a>
-                  <span>and</span>
-                  <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white underline transition-colors">
-                    Privacy Policy
-                  </a>
-                  <span>.</span>
+                  <p className="text-[11px] text-zinc-500 text-center leading-relaxed mt-1">
+                    By continuing, you agree to our{" "}
+                    <Link href="/terms" className="underline hover:text-zinc-300">Terms</Link>
+                    {" "}and{" "}
+                    <Link href="/privacy" className="underline hover:text-zinc-300">Privacy Policy</Link>.
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-center text-[11.5px] text-zinc-500 pt-2 border-t border-zinc-800/40 mt-1">
@@ -801,7 +854,7 @@ export default function LoginView({
         </div>
 
         {/* === RIGHT PANE: SHOWCASE CARD === */}
-        <div className="hidden md:flex flex-1 w-full h-full max-h-[calc(100vh-64px)] min-h-[580px] bg-[#0c0c10]/95 border border-zinc-800/80 rounded-[32px] p-8 md:p-10 lg:p-12 flex-col justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl z-10 my-auto">
+        <div className="hidden md:flex flex-1 w-full h-[80vh] min-h-[640px] max-h-[780px] bg-[#0c0c10]/95 border border-zinc-800/80 rounded-[32px] p-8 md:p-10 lg:p-12 flex-col justify-between shadow-2xl relative overflow-hidden backdrop-blur-xl z-10 my-auto">
           <div className="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
           <div className="flex flex-col gap-4 text-left relative z-10">
@@ -845,8 +898,123 @@ export default function LoginView({
             <span className="text-zinc-400">JARVIS-Grade Precision</span>
           </div>
         </div>
-
       </div>
+    </div>
+
+      {/* === FAQ ACCORDION SECTION (Anthropic/Claude Style with Smooth Dropdown) === */}
+      <section className="w-full max-w-3xl mx-auto px-6 py-24 sm:py-32 relative z-20">
+        <h2
+          className="text-3xl sm:text-4xl md:text-5xl font-normal tracking-tight text-center mb-12 sm:mb-16 transition-colors duration-300"
+          style={{
+            color: isLightMode ? "#141413" : "#ffffff",
+            fontFamily: "Copernicus, Tiempos, Georgia, serif"
+          }}
+        >
+          Frequently asked questions
+        </h2>
+
+        <div
+          className="divide-y border-t border-b transition-colors duration-300"
+          style={{ borderColor: isLightMode ? "#ebe6df" : "rgba(255, 255, 255, 0.1)" }}
+        >
+          {faqData.map((item, idx) => (
+            <div
+              key={idx}
+              onClick={() => setExpandedFaq(expandedFaq === idx ? null : idx)}
+              className="py-6 cursor-pointer group text-left transition-colors"
+            >
+              <div className="flex items-center justify-between gap-4 select-none">
+                <h3
+                  className="text-xl sm:text-2xl font-normal leading-snug tracking-tight group-hover:opacity-80 transition-opacity"
+                  style={{
+                    color: isLightMode ? "#141413" : "#ffffff",
+                    fontFamily: "Copernicus, Tiempos, Georgia, serif"
+                  }}
+                >
+                  {item.question}
+                </h3>
+                <span
+                  className={`text-xl flex-shrink-0 transition-transform duration-300 ${
+                    expandedFaq === idx ? "rotate-45" : ""
+                  }`}
+                  style={{ color: isLightMode ? "#141413" : "#ffffff" }}
+                >
+                  <Plus className="w-5 h-5" />
+                </span>
+              </div>
+
+              {/* Smooth Grid-based Dropdown Transition */}
+              <div
+                className={`grid transition-all duration-300 ease-in-out ${
+                  expandedFaq === idx
+                    ? "grid-rows-[1fr] opacity-100 mt-4"
+                    : "grid-rows-[0fr] opacity-0 mt-0"
+                }`}
+              >
+                <div className="overflow-hidden">
+                  <p
+                    className="text-sm sm:text-base leading-relaxed font-sans transition-colors pb-1"
+                    style={{ color: isLightMode ? "#6c6a64" : "#a1a1aa" }}
+                  >
+                    {item.answer}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* === FOOTER SECTION WITH TOP-LEFT LOGO & BIGGER CREATURE === */}
+      <footer
+        className="w-full border-t py-20 sm:py-28 md:py-32 flex flex-col items-center justify-between relative z-20 transition-colors min-h-[460px] sm:min-h-[520px]"
+        style={{
+          borderColor: isLightMode ? "#ebe6df" : "rgba(255, 255, 255, 0.1)",
+          backgroundColor: isLightMode ? "#FAF9F5" : "#05050a"
+        }}
+      >
+        <div className="w-full max-w-6xl px-6 md:px-12 flex flex-col items-center justify-between flex-1 gap-8">
+          
+          {/* Top-Left: Logo Icon & VoxKage Title */}
+          <div className="w-full flex justify-start items-center">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-black border border-zinc-800 flex items-center justify-center p-1.5 shadow-lg overflow-hidden">
+                <img src="/assets/voxkage_logo.png" alt="VoxKage Logo" className="w-full h-full object-cover" />
+              </div>
+              <span
+                className="text-2xl font-normal tracking-tight"
+                style={{
+                  color: isLightMode ? "#141413" : "#ffffff",
+                  fontFamily: "Copernicus, Tiempos, Georgia, serif"
+                }}
+              >
+                VoxKage
+              </span>
+            </div>
+          </div>
+
+          {/* Center: Enlarged VoxKage Creature with Preserved Aspect Ratio & Cursor Eye Tracking */}
+          <div className="w-56 h-56 sm:w-72 sm:h-72 md:w-80 md:h-80 my-4 relative flex items-center justify-center aspect-square flex-shrink-0">
+            <LoginCreature trackCursor={true} />
+          </div>
+
+          {/* Bottom: Copyright & Legal Links */}
+          <div
+            className="w-full flex flex-col sm:flex-row items-center justify-between gap-4 text-xs transition-colors pt-4"
+            style={{ color: isLightMode ? "#6c6a64" : "#71717a" }}
+          >
+            <p>© 2026 VoxKage AI. All rights reserved.</p>
+            <div className="flex flex-wrap items-center justify-center gap-6 font-medium">
+              <Link href="/privacy" className="underline hover:opacity-80 transition-opacity">Privacy Policy</Link>
+              <Link href="/terms" className="underline hover:opacity-80 transition-opacity">Terms of Service</Link>
+              <a href="https://github.com/ayushdwivedi001/VoxKage-Web" target="_blank" rel="noopener noreferrer" className="underline hover:opacity-80 transition-opacity">GitHub</a>
+              <a href="mailto:ayushdwivedi2049@gmail.com" className="underline hover:opacity-80 transition-opacity">Contact</a>
+              <a href="https://www.linkedin.com/in/ayush-dwivedi29/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#338cec] transition-colors duration-200">Developer</a>
+            </div>
+          </div>
+
+        </div>
+      </footer>
 
       {/* Forgot Password Multi-step Modal */}
       {showForgotModal && (

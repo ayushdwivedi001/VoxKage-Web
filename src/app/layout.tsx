@@ -15,9 +15,12 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "VoxKage AI",
-  description: "What should we build, sir?",
+  description: "VoxKage AI — Next-Generation Agentic Workspace for intelligent email drafting, document management, code execution, and schedule coordination.",
   icons: {
     icon: "/assets/voxkage_logo.png?v=3",
+  },
+  verification: {
+    google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || "",
   },
 };
 
