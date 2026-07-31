@@ -696,8 +696,12 @@ def send_signup_otp_endpoint(req: SendSignupOtpRequest):
         if "password_hash" in profile or "user_name" in profile:
             raise HTTPException(status_code=400, detail="An account with this email address already exists. Please Sign In.")
             
-    # Generate and send 4-digit code
-    generate_signup_otp(email)
+    # Generate OTP code and store it (instant), send email in background (non-blocking)
+    import threading
+    from auth import generate_signup_otp_code_only, send_email_otp_async
+    code = generate_signup_otp_code_only(email)
+    thread = threading.Thread(target=send_email_otp_async, args=(email, code, "signup"), daemon=True)
+    thread.start()
     return {"status": "success", "message": "Verification code sent to your email address."}
 
 @app.post("/auth/signup-verify")
@@ -755,7 +759,12 @@ def send_reset_code_endpoint(req: SendResetCodeRequest):
     if not user_exists:
         raise HTTPException(status_code=404, detail="No account found with this email address.")
         
-    generate_reset_code(email)
+    # Generate reset code instantly, send email in background thread (non-blocking)
+    import threading
+    from auth import generate_reset_code_only, send_email_otp_async
+    code = generate_reset_code_only(email)
+    thread = threading.Thread(target=send_email_otp_async, args=(email, code, "reset"), daemon=True)
+    thread.start()
     return {"status": "success", "message": "Password reset code sent to your email address."}
 
 @app.post("/auth/reset-password")

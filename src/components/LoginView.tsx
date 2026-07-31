@@ -678,12 +678,22 @@ export default function LoginView({
                       onChange={(e) => {
                         setPasswordInput(e.target.value);
                         if (passwordFieldError) setPasswordFieldError("");
+                        if (confirmPasswordInput) {
+                          if (e.target.value !== confirmPasswordInput) {
+                            setConfirmPasswordFieldError("Passwords do not match.");
+                          } else {
+                            setConfirmPasswordFieldError("");
+                          }
+                        }
                       }}
                       className={`w-full h-11 bg-zinc-900/90 border ${
                         passwordFieldError ? "border-red-500" : "border-zinc-800"
-                      } rounded-xl pl-10 pr-10 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
+                      } rounded-xl pl-10 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
                       placeholder="Enter your password"
                     />
+                    {isSignUp && passwordInput && isPasswordComplex(passwordInput) && (
+                      <CheckCircle2 className="absolute right-10 w-4 h-4 text-emerald-400 flex-shrink-0 animate-fadeIn" />
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
@@ -707,14 +717,22 @@ export default function LoginView({
                         type={showConfirmPassword ? "text" : "password"}
                         value={confirmPasswordInput}
                         onChange={(e) => {
-                          setConfirmPasswordInput(e.target.value);
-                          if (confirmPasswordFieldError) setConfirmPasswordFieldError("");
+                          const val = e.target.value;
+                          setConfirmPasswordInput(val);
+                          if (val && passwordInput && val !== passwordInput) {
+                            setConfirmPasswordFieldError("Passwords do not match.");
+                          } else {
+                            setConfirmPasswordFieldError("");
+                          }
                         }}
                         className={`w-full h-11 bg-zinc-900/90 border ${
                           confirmPasswordFieldError ? "border-red-500" : "border-zinc-800"
-                        } rounded-xl pl-10 pr-10 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
+                        } rounded-xl pl-10 pr-16 text-zinc-200 text-[13px] outline-none focus:border-zinc-700 transition-colors`}
                         placeholder="Re-enter your password"
                       />
+                      {passwordInput && confirmPasswordInput && passwordInput === confirmPasswordInput && (
+                        <CheckCircle2 className="absolute right-10 w-4 h-4 text-emerald-400 flex-shrink-0 animate-fadeIn" />
+                      )}
                       <button
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}

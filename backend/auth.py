@@ -49,71 +49,241 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
 def send_email_via_smtp(to_email: str, subject: str, body_text: str) -> bool:
     """
-    Dispatches email using standard SMTP relay TLS connection.
-    Falls back to server logs printing if credentials are not configured.
+    Dispatches OTP email using multi-layer resilient relays:
+    1. Brevo HTTP API (Port 443 — HTTPS cloud-safe, sends to ANY recipient email without domain restriction)
+    2. Resend HTTP API (Port 443 — HTTPS cloud-safe for owner/verified domains)
+    3. Gmail SMTP SSL (Port 465, works on local machines)
+    4. Gmail SMTP TLS (Port 587, STARTTLS fallback)
+    5. Legacy Gmail OAuth fallback
     """
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
 
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_username = os.getenv("SMTP_USERNAME", "")
-    smtp_password = os.getenv("SMTP_PASSWORD", "")
-    smtp_sender = os.getenv("SMTP_SENDER", smtp_username or "voxkage@gmail.com")
-
-    # Logging to stdout for local testing & container logs
+    # Logging to stdout for container & system logs
     print(f"[*] Dispatching Email to {to_email} (Subject: {subject})")
     print(f"[Body]:\n{body_text}\n")
 
-    if not smtp_username or not smtp_password:
-        print("[-] SMTP credentials not configured. Attempting master developer Gmail OAuth fallback...")
-        try:
-            import asyncio
-            async def run_fallback():
-                try:
-                    from scheduler import refresh_gmail_token, send_email_direct
-                    dev_email = "ayushdwivedi001@gmail.com"
-                    token = await refresh_gmail_token(dev_email)
-                    if token:
-                        print(f"[*] Sending email using Master Developer Gmail OAuth for {dev_email}")
-                        await send_email_direct(to_email, subject, body_text, token)
-                        print(f"[+] Email successfully sent to {to_email} via Google API fallback.")
-                        return True
-                except Exception as ex:
-                    print(f"[-] Gmail API fallback email send failed: {ex}")
-                return False
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_username = os.getenv("SMTP_USERNAME", "")
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_sender = os.getenv("SMTP_SENDER", smtp_username)
 
-            try:
-                loop = asyncio.get_running_loop()
-                # Run background task safely without blocking synchronous thread
-                loop.create_task(run_fallback())
+    # ── 1. PRIMARY HTTP RELAY: Brevo API (Port 443 — Sends to ANY recipient from cloud) ──
+    brevo_api_key = os.getenv("BREVO_API_KEY", "")
+    if brevo_api_key:
+        try:
+            import urllib.request, json as _json
+            payload = _json.dumps({
+                "sender": {"name": "VoxKage AI", "email": smtp_sender},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "textContent": body_text,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.brevo.com/v3/smtp/email",
+                data=payload,
+                headers={
+                    "api-key": brevo_api_key,
+                    "Content-Type": "application/json",
+                    "User-Agent": "VoxKage-Web/1.0"
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json.loads(resp.read().decode())
+                print(f"[+] Email successfully sent to {to_email} via Brevo HTTP API. MessageId: {result.get('messageId')}")
                 return True
-            except RuntimeError:
-                # No active running loop, run blocking
-                return asyncio.run(run_fallback())
         except Exception as e:
-            print(f"[-] Google API fallback failed: {e}")
-            print("[-] Fallback: Email logged to console logs.")
+            print(f"[-] Brevo HTTP API failed: {e}. Trying Resend API...")
+
+    # ── 2. SECONDARY HTTP RELAY: Resend HTTP API (Port 443) ───────────────────
+    resend_api_key = os.getenv("RESEND_API_KEY", "")
+    if resend_api_key:
+        try:
+            import urllib.request, json as _json
+            resend_sender = "VoxKage <onboarding@resend.dev>"
+            payload = _json.dumps({
+                "from": resend_sender,
+                "to": [to_email],
+                "subject": subject,
+                "text": body_text,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VoxKage-Web/1.0"
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json.loads(resp.read().decode())
+                print(f"[+] Email sent to {to_email} via Resend API. ID: {result.get('id')}")
+                return True
+        except Exception as e:
+            print(f"[-] Resend API failed: {e}. Trying raw SMTP SSL...")
+
+    # ── 3. TERTIARY RELAY: Gmail SMTP SSL (Port 465) ──────────────────────────
+    if smtp_username and smtp_password:
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = f"VoxKage AI <{smtp_sender}>"
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body_text, 'plain'))
+
+            print(f"[*] Attempting Gmail SMTP SSL on port 465 for {to_email}...")
+            server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=12)
+            server.login(smtp_username, smtp_password)
+            server.sendmail(smtp_sender, to_email, msg.as_string())
+            server.quit()
+            print(f"[+] Email successfully sent to {to_email} via Gmail SMTP SSL (Port 465).")
+            return True
+        except Exception as e:
+            print(f"[-] Gmail SMTP SSL (465) failed: {e}. Trying TLS (587)...")
+
+        # ── 4. QUATERNARY RELAY: Gmail SMTP TLS (Port 587) ─────────────────────
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = f"VoxKage AI <{smtp_sender}>"
+            msg['To'] = to_email
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body_text, 'plain'))
+
+            print(f"[*] Attempting Gmail SMTP TLS on port 587 for {to_email}...")
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=12)
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_username, smtp_password)
+            server.sendmail(smtp_sender, to_email, msg.as_string())
+            server.quit()
+            print(f"[+] Email successfully sent to {to_email} via Gmail SMTP TLS (Port 587).")
+            return True
+        except Exception as e:
+            print(f"[-] Gmail SMTP TLS (587) failed: {e}")
+
+    # ── 3. TERTIARY RELAY: Resend HTTP API ──────────────────────────────────
+    resend_api_key = os.getenv("RESEND_API_KEY", "")
+    if resend_api_key:
+        try:
+            import urllib.request, json as _json
+            resend_sender = "VoxKage <onboarding@resend.dev>"
+            payload = _json.dumps({
+                "from": resend_sender,
+                "to": [to_email],
+                "subject": subject,
+                "text": body_text,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                "https://api.resend.com/emails",
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {resend_api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) VoxKage-Web/1.0"
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                result = _json.loads(resp.read().decode())
+                print(f"[+] Email sent to {to_email} via Resend API. ID: {result.get('id')}")
+                return True
+        except Exception as e:
+            print(f"[-] Resend API failed: {e}")
+
+    # ── 4. QUATERNARY RELAY: Legacy Gmail OAuth Fallback ─────────────────────
+    print("[-] Primary relays failed. Attempting Master Developer OAuth fallback...")
+    try:
+        import asyncio
+        async def run_fallback():
+            try:
+                from scheduler import refresh_gmail_token, send_email_direct
+                dev_email = "ayushdwivedi001@gmail.com"
+                token = await refresh_gmail_token(dev_email)
+                if token:
+                    print(f"[*] Sending email using Master Developer Gmail OAuth for {dev_email}")
+                    await send_email_direct(to_email, subject, body_text, token)
+                    print(f"[+] Email successfully sent to {to_email} via Google API fallback.")
+                    return True
+            except Exception as ex:
+                print(f"[-] Gmail API fallback email send failed: {ex}")
             return False
 
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = smtp_sender
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body_text, 'plain'))
-
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(smtp_username, smtp_password)
-        server.sendmail(smtp_sender, to_email, msg.as_string())
-        server.quit()
-        print(f"[+] Email successfully sent to {to_email} via SMTP.")
-        return True
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(run_fallback())
+            return True
+        except RuntimeError:
+            return asyncio.run(run_fallback())
     except Exception as e:
-        print(f"[-] Failed to send SMTP email to {to_email}: {e}")
+        print(f"[-] All email dispatch methods exhausted. Email NOT sent to {to_email}. Error: {e}")
         return False
+
+def generate_signup_otp_code_only(email: str) -> str:
+    """
+    Generates and stores a 4-digit OTP code WITHOUT sending email.
+    Used with send_email_otp_async for non-blocking dispatch.
+    """
+    code = f"{random.randint(1000, 9999)}"
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    profile["_otp_signup"] = {
+        "code": code,
+        "expires_at": time.time() + 300.0  # 5 minutes
+    }
+    save_user_settings_profile(email, profile)
+    print(f"[*] OTP generated and stored for {email} (signup)")
+    return code
+
+def generate_reset_code_only(email: str) -> str:
+    """
+    Generates and stores an 8-digit reset code WITHOUT sending email.
+    Used with send_email_otp_async for non-blocking dispatch.
+    """
+    code = f"{random.randint(10000000, 99999999)}"
+    from database import get_user_settings_profile, save_user_settings_profile
+    profile = get_user_settings_profile(email)
+    profile["_otp_reset"] = {
+        "code": code,
+        "expires_at": time.time() + 600.0  # 10 minutes
+    }
+    save_user_settings_profile(email, profile)
+    print(f"[*] Reset code generated and stored for {email} (reset)")
+    return code
+
+def send_email_otp_async(email: str, code: str, mode: str) -> None:
+    """
+    Sends OTP/reset email in a background thread (non-blocking).
+    mode = 'signup' | 'reset'
+    """
+    try:
+        if mode == "signup":
+            subject = "VoxKage — Verify Your Email Address"
+            body = (
+                f"Hello,\n\n"
+                f"Thank you for signing up for VoxKage.\n"
+                f"Your 4-digit verification code is: {code}\n\n"
+                f"This code will expire in 5 minutes. Please enter it in the registration form to verify your account.\n\n"
+                f"Best regards,\n"
+                f"The VoxKage Team"
+            )
+        else:
+            subject = "VoxKage — Reset Your Password"
+            body = (
+                f"Hello,\n\n"
+                f"We received a request to reset the password for your VoxKage account.\n"
+                f"Your 8-digit secure reset code is: {code}\n\n"
+                f"This code is valid for 10 minutes. If you did not request a password reset, you can safely ignore this email.\n\n"
+                f"Best regards,\n"
+                f"The VoxKage Team"
+            )
+        send_email_via_smtp(email, subject, body)
+    except Exception as e:
+        print(f"[-] Background email dispatch error for {email}: {e}")
 
 def generate_signup_otp(email: str) -> str:
     """
