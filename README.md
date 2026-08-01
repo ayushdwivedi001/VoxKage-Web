@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/🦊%20VoxKage%20Web-v0.1.0-cc785c?style=for-the-badge&logoColor=white" alt="VoxKage Web" />
-</p>
-
 <h1 align="center">VoxKage Web</h1>
 
 <p align="center">
