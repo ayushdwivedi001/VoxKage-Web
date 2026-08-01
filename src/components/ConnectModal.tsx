@@ -12,7 +12,8 @@ import {
   CheckCheck,
   RefreshCw,
 } from "lucide-react";
-import { getToken, BACKEND_URL } from "@/lib/api";
+import { getToken, getGoogleCredentialsStatus, BACKEND_URL } from "@/lib/api";
+import GoogleOAuthConnectModal from "@/components/GoogleOAuthConnectModal";
 
 interface ConnectModalProps {
   isOpen: boolean;
@@ -171,6 +172,8 @@ export default function ConnectModal({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [connectedDetails, setConnectedDetails] = useState<Record<string, any>>({});
+  const [googleModalOpen, setGoogleModalOpen] = useState(false);
+  const [pendingGoogleConnector, setPendingGoogleConnector] = useState<any>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -208,7 +211,7 @@ export default function ConnectModal({
     return connectedServers.includes(slug) || !!connectedDetails[slug];
   };
 
-  const handleConnect = async (connector: any) => {
+  const startOAuthFlow = async (connector: any) => {
     setLoading(true);
     setError(null);
     try {
@@ -283,6 +286,28 @@ export default function ConnectModal({
       setError(err.message || "An unexpected error occurred.");
       setLoading(false);
     }
+  };
+
+  const handleConnect = async (connector: any) => {
+    // Only Google MCP servers (gmail, google_drive, google_calendar) trigger the BYO credentials check
+    if (["gmail", "google_drive", "google_calendar"].includes(connector.slug)) {
+      try {
+        const status = await getGoogleCredentialsStatus();
+        if (status.has_custom_credentials) {
+          await startOAuthFlow(connector);
+        } else {
+          setPendingGoogleConnector(connector);
+          setGoogleModalOpen(true);
+        }
+      } catch {
+        setPendingGoogleConnector(connector);
+        setGoogleModalOpen(true);
+      }
+      return;
+    }
+
+    // Notion, Word, and all other MCP servers connect directly without popup
+    await startOAuthFlow(connector);
   };
 
   const handleDisconnect = async (connector: any) => {
@@ -502,6 +527,24 @@ export default function ConnectModal({
           />
         )}
       </div>
+
+      {/* Google OAuth Choice & BYO Credentials Modal */}
+      {pendingGoogleConnector && (
+        <GoogleOAuthConnectModal
+          isOpen={googleModalOpen}
+          serviceName={pendingGoogleConnector.name}
+          serviceSlug={pendingGoogleConnector.slug}
+          onClose={() => setGoogleModalOpen(false)}
+          onProceedWithDefault={() => {
+            setGoogleModalOpen(false);
+            startOAuthFlow(pendingGoogleConnector);
+          }}
+          onProceedWithCustom={() => {
+            setGoogleModalOpen(false);
+            startOAuthFlow(pendingGoogleConnector);
+          }}
+        />
+      )}
     </div>
   );
 }

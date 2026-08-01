@@ -542,3 +542,29 @@ export async function resetPassword(email: string, resetCode: string, newPasswor
   return res.json();
 }
 
+export async function getGoogleCredentialsStatus(): Promise<{ has_custom_credentials: boolean; client_id: string | null }> {
+  const token = getToken();
+  const res = await fetch(`${BACKEND_URL}/auth/google-credentials`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return { has_custom_credentials: false, client_id: null };
+  return res.json();
+}
+
+export async function saveGoogleCredentials(clientId: string, clientSecret: string): Promise<any> {
+  const token = getToken();
+  const res = await fetch(`${BACKEND_URL}/auth/google-credentials`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "Failed to save Google OAuth credentials.");
+  }
+  return res.json();
+}
+

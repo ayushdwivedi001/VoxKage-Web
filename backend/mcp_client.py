@@ -118,14 +118,28 @@ def delete_mcp_connection(user_id: str, provider: str):
         del profile["mcp_connections"][provider]
         save_user_settings_profile(user_id, profile)
 
-async def refresh_oauth_token(provider: str, refresh_token: str, client_id: str = None) -> dict:
+async def refresh_oauth_token(provider: str, refresh_token: str, client_id: str = None, user_id: str = None) -> dict:
     """Refresh expired access token using OAuth refresh token."""
     cred = STATIC_PROVIDERS.get(provider) or STATIC_PROVIDERS.get("gmail")
+    c_id = client_id or cred["client_id"]
+    c_secret = cred["client_secret"]
+
+    if provider in ("gmail", "google_drive", "google_calendar") and user_id:
+        try:
+            from database import get_user_settings_profile
+            profile = get_user_settings_profile(user_id)
+            custom = profile.get("google_custom_credentials") or {}
+            if custom.get("client_id") and custom.get("client_secret"):
+                c_id = custom.get("client_id")
+                c_secret = custom.get("client_secret")
+        except Exception:
+            pass
+
     payload = {
         "grant_type": "refresh_token",
         "refresh_token": refresh_token,
-        "client_id": client_id or cred["client_id"],
-        "client_secret": cred["client_secret"]
+        "client_id": c_id,
+        "client_secret": c_secret
     }
     async with httpx.AsyncClient(timeout=10.0) as client:
         res = await client.post(cred["token_url"], data=payload)
@@ -156,7 +170,8 @@ async def get_valid_token(user_id: str, provider: str, connection: dict, force_r
             new_tokens = await refresh_oauth_token(
                 provider,
                 refresh_token,
-                connection.get("client_id")
+                connection.get("client_id"),
+                user_id=user_id
             )
 
             access_token = new_tokens["access_token"]
