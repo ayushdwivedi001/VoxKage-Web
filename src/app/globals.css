@@ -69,7 +69,7 @@ body {
 }
 
 .animate-thinking-glow {
-  background: linear-gradient(90deg, #71717a 20%, #e4e4e7 50%, #71717a 80%);
+  background: linear-gradient(90deg, #a1a1aa 20%, #38bdf8 50%, #a1a1aa 80%);
   background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;

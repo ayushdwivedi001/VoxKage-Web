@@ -161,7 +161,7 @@ const LoaderStyles = () => (
  * The SVG uses overflow:visible so the bulb can float above the egg body.
  */
 const VoxKageThinkingCreature = ({ className = "", isLightMode = false }: { className?: string; isLightMode?: boolean }) => {
-  const eyeFill = isLightMode ? "#ffffff" : "#141413";
+  const eyeFill = "#ffffff";
   return (
     <span
       className={`inline-flex items-end justify-center flex-shrink-0 ${className}`}
@@ -182,18 +182,24 @@ const VoxKageThinkingCreature = ({ className = "", isLightMode = false }: { clas
         xmlns="http://www.w3.org/2000/svg"
         style={{ overflow: "visible", display: "block" }}
       >
-        {/* ── DEFS: egg clip-path ── */}
+        {/* ── DEFS: egg clip-path & signature gradient blue body ── */}
         <defs>
           <clipPath id="think-body-clip">
             <path d="M 50 42 C 71 42, 86 56, 86 75 C 86 93, 70 108, 50 108 C 30 108, 14 93, 14 75 C 14 56, 29 42, 50 42 Z" />
           </clipPath>
+          <linearGradient id="think-body-grad" x1="0" y1="1" x2="0" y2="0">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="12%" stopColor="#ffffff" />
+            <stop offset="68%" stopColor="#338cec" />
+            <stop offset="100%" stopColor="#338cec" />
+          </linearGradient>
         </defs>
 
-        {/* ── BASE EGG BODY (always visible) ── */}
+        {/* ── BASE EGG BODY (always visible signature gradient blue in all themes) ── */}
         <path
           d="M 50 42 C 71 42, 86 56, 86 75 C 86 93, 70 108, 50 108 C 30 108, 14 93, 14 75 C 14 56, 29 42, 50 42 Z"
-          fill={isLightMode ? "url(#vc-light-body-grad)" : "currentColor"}
-          opacity={0.92}
+          fill="url(#think-body-grad)"
+          opacity={0.95}
         />
 
         {/* ── FRAME 1: PONDER — eyes glance upper-right (🤔 look), no bulb ── */}

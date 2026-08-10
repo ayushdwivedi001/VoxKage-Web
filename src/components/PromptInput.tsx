@@ -997,10 +997,11 @@ export default function PromptInput({
             <button
               type="button"
               onClick={onStop}
-              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full fluid-glass-pill text-white active:scale-95 cursor-pointer ml-0.5 sm:ml-1 transition-all duration-200 flex-shrink-0"
+              className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#18181b] [.light_&]:bg-[#3D3D3A] hover:bg-zinc-800 [.light_&]:hover:bg-[#252523] border border-zinc-700/60 [.light_&]:border-[#3D3D3A] text-white active:scale-95 cursor-pointer ml-0.5 sm:ml-1 transition-all duration-200 flex-shrink-0 shadow-md"
               aria-label="Stop generation"
+              title="Stop generation"
             >
-              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white stroke-none" />
+              <Square className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white [.light_&]:fill-[#faf9f5] stroke-none" />
             </button>
           ) : (
             <button
@@ -1009,7 +1010,7 @@ export default function PromptInput({
               className={`flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all duration-300 ml-0.5 sm:ml-1 flex-shrink-0 ${
                 hasText
                   ? "bg-[#3A91EE] border border-[#3A91EE] hover:bg-[#3282d8] hover:border-[#3282d8] text-white shadow-md shadow-[#3A91EE]/20 active:scale-95 cursor-pointer"
-                  : "bg-white/[0.04] border border-white/[0.08] text-white/30 cursor-default"
+                  : "bg-white/[0.04] [.light_&]:bg-[#e6dfd8] border border-white/[0.08] [.light_&]:border-[#d9d2c9] text-white/30 [.light_&]:text-[#8e8b82] cursor-default"
               }`}
               aria-label="Submit prompt"
             >
