@@ -24,7 +24,7 @@ from models_schemas import (
     SendOtpRequest, VerifyOtpRequest, GoogleAuthRequest, OAuthCallbackRequest,
     SendSignupOtpRequest, SignUpOtpVerifyRequest, SendResetCodeRequest,
     ResetPasswordRequest, SignUpRequest, LoginPasswordRequest, RefreshRequest,
-    RefreshMCPRequest, DisconnectRequest, SaveGoogleCredentialsRequest
+    RefreshMCPRequest, DisconnectRequest
 )
 
 router = APIRouter(tags=["auth"])
@@ -533,50 +533,6 @@ def refresh_token_endpoint(req: RefreshRequest):
     }
 
 
-@router.get("/auth/google-credentials")
-def get_google_credentials_status(user: str = Depends(get_current_user)):
-    """Returns custom Google OAuth credentials status for the user."""
-    profile = get_user_settings_profile(user)
-
-    dev_emails = ["ayushdwivedi2049@gmail.com", "ayushdwivedi001@gmail.com", "shinplays001@gmail.com"]
-    if user.lower().strip() in dev_emails and "google_custom_credentials" not in profile:
-        sys_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-        sys_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
-        if sys_client_id and sys_client_secret:
-            profile["google_custom_credentials"] = {
-                "client_id": sys_client_id,
-                "client_secret": sys_client_secret
-            }
-            save_user_settings_profile(user, profile)
-
-    custom = profile.get("google_custom_credentials") or {}
-    client_id = custom.get("client_id")
-    client_secret = custom.get("client_secret")
-    has_custom = bool(client_id and client_secret)
-    return {
-        "has_custom_credentials": has_custom,
-        "client_id": client_id if has_custom else None
-    }
-
-
-@router.post("/auth/google-credentials")
-def save_google_credentials(req: SaveGoogleCredentialsRequest, user: str = Depends(get_current_user)):
-    """Saves custom Google OAuth Client ID and Secret for the user."""
-    client_id = req.client_id.strip()
-    client_secret = req.client_secret.strip()
-
-    if not client_id or not client_secret:
-        raise HTTPException(status_code=400, detail="Client ID and Client Secret cannot be empty.")
-
-    profile = get_user_settings_profile(user)
-    profile["google_custom_credentials"] = {
-        "client_id": client_id,
-        "client_secret": client_secret
-    }
-    save_user_settings_profile(user, profile)
-    return {"status": "success", "message": "Google OAuth credentials saved successfully."}
-
-
 @router.get("/auth/oauth/authorize-url")
 async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
     """Build OAuth 2.0 authorization URL for Gmail, Google Drive, Google Calendar, or Notion."""
@@ -593,12 +549,6 @@ async def get_authorize_url(provider: str, user_id: str, redirect_uri: str):
     cred = STATIC_PROVIDERS[provider]
     client_id = cred["client_id"]
     auth_endpoint = cred["auth_url"]
-
-    if provider in ("gmail", "google_drive", "google_calendar"):
-        profile = get_user_settings_profile(user_id)
-        custom = profile.get("google_custom_credentials") or {}
-        if custom.get("client_id") and custom.get("client_secret"):
-            client_id = custom.get("client_id")
 
     if provider == "gmail":
         scope = "https://www.googleapis.com/auth/gmail.modify"

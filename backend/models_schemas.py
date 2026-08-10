@@ -139,11 +139,6 @@ class ConnectCustomMCPRequest(BaseModel):
     name: Optional[str] = None
 
 
-class SaveGoogleCredentialsRequest(BaseModel):
-    client_id: str
-    client_secret: str
-
-
 class DisconnectRequest(BaseModel):
     provider: str
 
