@@ -51,6 +51,8 @@ backend/uploads/
 
 # Claude personal config
 .claude/
+CLAUDE.md
+CLAUDE.md.pre_voxkage
 
 # Logs
 bridge_stdout.log
