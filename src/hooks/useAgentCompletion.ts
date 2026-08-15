@@ -189,13 +189,57 @@ export default function useAgentCompletion({
   // Store real Word doc_state objects keyed by filename (e.g. "doc.docx" -> JSON string)
   const [wordArtifacts, setWordArtifacts] = React.useState<Map<string, string>>(new Map());
 
+  const resolveModelInfo = (name: string): { modelId: string; provider: "kilo" | "opencode"; originalName: string } => {
+    const clean = (name || "").trim();
+    if (!clean) return { modelId: "deepseek-v4-flash-free", provider: "opencode", originalName: "DeepSeek V4 Flash" };
+
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("voxkage_cached_models");
+        if (cached) {
+          const list = JSON.parse(cached);
+          const match = list.find((m: any) => m.name === clean || m.api_key === clean);
+          if (match) {
+            const isK = match.provider === "kilo" || (match.api_key && match.api_key.includes("/"));
+            return {
+              modelId: match.api_key || match.name,
+              provider: isK ? "kilo" : "opencode",
+              originalName: clean,
+            };
+          }
+        }
+      } catch (e) {}
+    }
+
+    const lower = clean.toLowerCase();
+    if (clean.includes("/") || lower.includes("kilo")) {
+      return { modelId: clean, provider: "kilo", originalName: clean };
+    }
+    if (lower.includes("gemini")) return { modelId: "gemini-3.5-flash", provider: "opencode", originalName: clean };
+    if (lower.includes("claude") || lower.includes("sonnet")) return { modelId: "claude-sonnet-4", provider: "opencode", originalName: clean };
+    if (lower.includes("mimo")) return { modelId: "mimo-v2.5-free", provider: "opencode", originalName: clean };
+    if (lower.includes("deepseek")) return { modelId: "deepseek-v4-flash-free", provider: "opencode", originalName: clean };
+
+    return { modelId: clean, provider: "opencode", originalName: clean };
+  };
+
+  const getFallbackModel = (targetProvider: "kilo" | "opencode", currentModel: string): string => {
+    const lower = (currentModel || "").toLowerCase();
+    if (targetProvider === "kilo") {
+      if (lower.includes("gemini")) return "google/gemini-2.0-flash";
+      if (lower.includes("claude") || lower.includes("sonnet")) return "anthropic/claude-3.5-sonnet";
+      if (lower.includes("mimo")) return "xiaomi/mimo-v2.5";
+      return "deepseek/deepseek-chat";
+    } else {
+      if (lower.includes("gemini")) return "gemini-3.5-flash";
+      if (lower.includes("claude") || lower.includes("sonnet")) return "claude-sonnet-4";
+      if (lower.includes("mimo")) return "mimo-v2.5-free";
+      return "deepseek-v4-flash-free";
+    }
+  };
+
   const modelNameToKey = (name: string): string => {
-    const lower = name.toLowerCase();
-    if (lower.includes("deepseek")) return "deepseek-flash";
-    if (lower.includes("gemini")) return "gemini-flash";
-    if (lower.includes("claude") || lower.includes("sonnet")) return "claude-sonnet";
-    if (lower.includes("mimo")) return "mimo-free";
-    return "deepseek-flash";
+    return resolveModelInfo(name).modelId;
   };
 
   const handleStopGeneration = () => {
@@ -374,18 +418,20 @@ export default function useAgentCompletion({
 
         const hasToolsCached = !!(actualSessionId && sessionToolsCache[actualSessionId] && sessionToolsCache[actualSessionId].length > 0);
 
+        const initialInfo = resolveModelInfo(selectedModel);
+
         const prepRes = await prepareSessionPayload(
           actualSessionId,
           promptText,
           finalAtts,
-          modelNameToKey(selectedModel),
+          initialInfo.modelId,
           selectedVariant,
           hasToolsCached,
           buildModeRef.current === "Plan"
         );
 
         let messagesPayload = prepRes.messages;
-        const modelId = prepRes.model;
+        let activeModelId = prepRes.model || initialInfo.modelId;
         const variantOverrides = prepRes.variant_overrides;
 
         let tools = prepRes.tools;
@@ -396,19 +442,28 @@ export default function useAgentCompletion({
         }
 
         const { secureLoadKey } = await import("@/lib/secureStorage");
-        const isKilo = modelId.toLowerCase().includes("/") || modelId.toLowerCase().includes("kilo");
-        const keyName = isKilo
-          ? `voxkage_${loginEmail.trim().toLowerCase()}_kilo_api_key`
-          : `voxkage_${loginEmail.trim().toLowerCase()}_opencode_api_key`;
-        const activeKey = await secureLoadKey(keyName);
-        const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
+        const emailKey = loginEmail.trim().toLowerCase();
+        const opencodeKey = await secureLoadKey(`voxkage_${emailKey}_opencode_api_key`);
+        const kiloKey = await secureLoadKey(`voxkage_${emailKey}_kilo_api_key`);
+
+        let activeProvider: "kilo" | "opencode" = initialInfo.provider;
+        let activeKey = activeProvider === "kilo" ? (kiloKey || opencodeKey) : (opencodeKey || kiloKey);
 
         if (!activeKey) {
-          throw new Error(`${isKilo ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
+          throw new Error("No API Key found. Please configure your OpenCode or Kilo API key in Settings.");
         }
 
+        if (activeProvider === "kilo" && !kiloKey && opencodeKey) {
+          activeProvider = "opencode";
+          activeModelId = getFallbackModel("opencode", activeModelId);
+        } else if (activeProvider === "opencode" && !opencodeKey && kiloKey) {
+          activeProvider = "kilo";
+          activeModelId = getFallbackModel("kilo", activeModelId);
+        }
+
+        const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
         let targetUrl = "/api/completions/proxy";
-        if (customProxyUrl && customProxyUrl.trim() !== "") {
+        if (customProxyUrl && customProxyUrl.trim() !== "" && activeProvider === "opencode") {
           targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
         }
 
@@ -417,12 +472,13 @@ export default function useAgentCompletion({
         const accumulatedCreatedFiles: Record<string, string> = {};
         const controller = new AbortController();
         abortControllerRef.current = controller;
+        let hasSwitchedProviderOnRateLimit = false;
 
         while (loopCount < maxLoop) {
           loopCount++;
 
           const body: any = {
-            model: modelId,
+            model: activeModelId,
             messages: messagesPayload,
             stream: true,
             ...variantOverrides,
@@ -444,6 +500,7 @@ export default function useAgentCompletion({
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${activeKey}`,
+                  "x-provider": activeProvider,
                 },
                 body: JSON.stringify(body),
                 signal: controller.signal,
@@ -455,7 +512,32 @@ export default function useAgentCompletion({
               } else {
                 const status = res.status;
                 const errText = await res.text();
-                lastFetchError = new Error(`OpenCode API Error (HTTP ${status}): ${errText}`);
+
+                // Check for 429 rate limit to trigger seamless fallback
+                const isRateLimit = status === 429 || errText.includes("429") || errText.includes("Rate limit") || errText.includes("FreeUsageLimitError");
+                if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
+                  if (activeProvider === "opencode" && kiloKey) {
+                    console.warn(`[Fallback] OpenCode rate limit (HTTP ${status}), switching to Kilo...`);
+                    hasSwitchedProviderOnRateLimit = true;
+                    activeProvider = "kilo";
+                    activeKey = kiloKey;
+                    activeModelId = getFallbackModel("kilo", activeModelId);
+                    targetUrl = "/api/completions/proxy";
+                    body.model = activeModelId;
+                    continue;
+                  } else if (activeProvider === "kilo" && opencodeKey) {
+                    console.warn(`[Fallback] Kilo rate limit (HTTP ${status}), switching to OpenCode...`);
+                    hasSwitchedProviderOnRateLimit = true;
+                    activeProvider = "opencode";
+                    activeKey = opencodeKey;
+                    activeModelId = getFallbackModel("opencode", activeModelId);
+                    targetUrl = "/api/completions/proxy";
+                    body.model = activeModelId;
+                    continue;
+                  }
+                }
+
+                lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
                 console.warn(`Fetch attempt ${attempt} failed with status ${status}. Retrying...`);
               }
             } catch (fetchErr: any) {
@@ -469,8 +551,8 @@ export default function useAgentCompletion({
               console.warn(`Fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
             }
             if (attempt < 3) {
-              // Wait 3 seconds before next retry
-              await new Promise((resolve) => setTimeout(resolve, 3000));
+              // Wait 2 seconds before next retry
+              await new Promise((resolve) => setTimeout(resolve, 2000));
             }
           }
 
@@ -480,7 +562,7 @@ export default function useAgentCompletion({
 
           if (!res.ok) {
             const errText = await res.text();
-            throw new Error(`OpenCode API Error (HTTP ${res.status}): ${errText}`);
+            throw new Error(`Provider Error (HTTP ${res.status}): ${errText}`);
           }
 
           const reader = res.body?.getReader();
@@ -489,7 +571,9 @@ export default function useAgentCompletion({
           const decoder = new TextDecoder("utf-8");
           let buffer = "";
           let currentContent = "";
+          let currentReasoning = "";
           let currentToolCalls: any[] = [];
+          let streamRateLimitHit = false;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -506,13 +590,58 @@ export default function useAgentCompletion({
 
               if (cleanLine.startsWith("data:")) {
                 const sseData = cleanLine.substring(5).trim();
+                if (!sseData) continue;
+
+                // Detect error payloads inside 200 SSE responses from proxy
+                if (sseData.startsWith("Error") || sseData.includes('"error"')) {
+                  try {
+                    const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
+                    const isRateLimit = parsedErr.error?.status === 429 || 
+                      (parsedErr.error?.message && (parsedErr.error.message.includes("429") || parsedErr.error.message.includes("Rate limit") || parsedErr.error.message.includes("FreeUsageLimitError")));
+
+                    if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
+                      if (activeProvider === "opencode" && kiloKey) {
+                        console.warn("[Stream] OpenCode rate limit detected, switching to Kilo...");
+                        hasSwitchedProviderOnRateLimit = true;
+                        activeProvider = "kilo";
+                        activeKey = kiloKey;
+                        activeModelId = getFallbackModel("kilo", activeModelId);
+                        targetUrl = "/api/completions/proxy";
+                        streamRateLimitHit = true;
+                        break;
+                      } else if (activeProvider === "kilo" && opencodeKey) {
+                        console.warn("[Stream] Kilo rate limit detected, switching to OpenCode...");
+                        hasSwitchedProviderOnRateLimit = true;
+                        activeProvider = "opencode";
+                        activeKey = opencodeKey;
+                        activeModelId = getFallbackModel("opencode", activeModelId);
+                        targetUrl = "/api/completions/proxy";
+                        streamRateLimitHit = true;
+                        break;
+                      }
+                    }
+
+                    const errMsg = parsedErr.error?.message || parsedErr.message || sseData;
+                    throw new Error(`Provider Error: ${typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)}`);
+                  } catch (e: any) {
+                    if (e.message?.startsWith("Provider Error:")) throw e;
+                  }
+                }
+
                 try {
                   const dataJson = JSON.parse(sseData);
                   const choice = dataJson.choices?.[0];
                   if (!choice) continue;
 
                   const delta = choice.delta;
-                  if (delta.content) {
+
+                  // Capture reasoning / thinking stream tokens
+                  const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
+                  if (reasoningPiece) {
+                    currentReasoning += reasoningPiece;
+                  }
+
+                  if (delta?.content) {
                     currentContent += delta.content;
                     finalAssistantContent += delta.content;
                     setMessages((prev) => {
@@ -581,7 +710,7 @@ export default function useAgentCompletion({
                     });
                   }
 
-                  if (delta.tool_calls) {
+                  if (delta?.tool_calls) {
                     delta.tool_calls.forEach((tc: any) => {
                       const tcIdx = tc.index ?? 0;
                       while (currentToolCalls.length <= tcIdx) {
@@ -600,6 +729,26 @@ export default function useAgentCompletion({
                 } catch (jsonErr) {}
               }
             }
+            if (streamRateLimitHit) break;
+          }
+
+          if (streamRateLimitHit) {
+            // Rate limit triggered during SSE stream; retry outer loop with switched provider
+            continue;
+          }
+
+          // Fallback: If no content was streamed but model produced reasoning or stopped, ensure response is not empty
+          if (!finalAssistantContent.trim() && currentReasoning.trim() && currentToolCalls.length === 0) {
+            finalAssistantContent = currentReasoning.trim();
+            setMessages((prev) => {
+              if (prev.length === 0) return prev;
+              const copy = [...prev];
+              const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+              if (idx !== -1) {
+                copy[idx].content = finalAssistantContent;
+              }
+              return copy;
+            });
           }
 
           if (currentToolCalls.length > 0) {
@@ -893,17 +1042,19 @@ export default function useAgentCompletion({
 
           const hasToolsCached = !!(currentSessionId && sessionToolsCache[currentSessionId] && sessionToolsCache[currentSessionId].length > 0);
 
+          const initialInfo = resolveModelInfo(selectedModel);
+
           const prepRes = await prepareSessionPayload(
             currentSessionId!,
             newText,
             finalAttachments,
-            modelNameToKey(selectedModel),
+            initialInfo.modelId,
             selectedVariant,
             hasToolsCached
           );
 
           let messagesPayload = prepRes.messages;
-          const modelId = prepRes.model;
+          let activeModelId = prepRes.model || initialInfo.modelId;
           const variantOverrides = prepRes.variant_overrides;
 
           let tools = prepRes.tools;
@@ -914,22 +1065,28 @@ export default function useAgentCompletion({
           }
 
           const { secureLoadKey } = await import("@/lib/secureStorage");
-          const isKilo = modelId.toLowerCase().includes("/") || modelId.toLowerCase().includes("kilo");
-          const keyName = isKilo
-            ? `voxkage_${loginEmail.trim().toLowerCase()}_kilo_api_key`
-            : `voxkage_${loginEmail.trim().toLowerCase()}_opencode_api_key`;
-          const activeKey = await secureLoadKey(keyName);
-          const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
+          const emailKey = loginEmail.trim().toLowerCase();
+          const opencodeKey = await secureLoadKey(`voxkage_${emailKey}_opencode_api_key`);
+          const kiloKey = await secureLoadKey(`voxkage_${emailKey}_kilo_api_key`);
+
+          let activeProvider: "kilo" | "opencode" = initialInfo.provider;
+          let activeKey = activeProvider === "kilo" ? (kiloKey || opencodeKey) : (opencodeKey || kiloKey);
 
           if (!activeKey) {
-            throw new Error(`${isKilo ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
+            throw new Error("No API Key found. Please configure your OpenCode or Kilo API key in Settings.");
           }
 
+          if (activeProvider === "kilo" && !kiloKey && opencodeKey) {
+            activeProvider = "opencode";
+            activeModelId = getFallbackModel("opencode", activeModelId);
+          } else if (activeProvider === "opencode" && !opencodeKey && kiloKey) {
+            activeProvider = "kilo";
+            activeModelId = getFallbackModel("kilo", activeModelId);
+          }
+
+          const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
           let targetUrl = "/api/completions/proxy";
-          if (
-            customProxyUrl &&
-            customProxyUrl.trim() !== ""
-          ) {
+          if (customProxyUrl && customProxyUrl.trim() !== "" && activeProvider === "opencode") {
             targetUrl = `${customProxyUrl.trim()}/zen/v1/chat/completions`;
           }
 
@@ -938,12 +1095,13 @@ export default function useAgentCompletion({
           const accumulatedCreatedFiles: Record<string, string> = {};
           const controller = new AbortController();
           abortControllerRef.current = controller;
+          let hasSwitchedProviderOnRateLimit = false;
 
           while (loopCount < maxLoop) {
             loopCount++;
 
             const body: any = {
-              model: modelId,
+              model: activeModelId,
               messages: messagesPayload,
               stream: true,
               ...variantOverrides,
@@ -966,6 +1124,7 @@ export default function useAgentCompletion({
                   headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${activeKey}`,
+                    "x-provider": activeProvider,
                   },
                   body: JSON.stringify(body),
                   signal: controller.signal,
@@ -977,7 +1136,31 @@ export default function useAgentCompletion({
                 } else {
                   const status = res.status;
                   const errText = await res.text();
-                  lastFetchError = new Error(`OpenCode API Error (HTTP ${status}): ${errText}`);
+
+                  const isRateLimit = status === 429 || errText.includes("429") || errText.includes("Rate limit") || errText.includes("FreeUsageLimitError");
+                  if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
+                    if (activeProvider === "opencode" && kiloKey) {
+                      console.warn(`[Fallback] OpenCode rate limit (HTTP ${status}), switching to Kilo...`);
+                      hasSwitchedProviderOnRateLimit = true;
+                      activeProvider = "kilo";
+                      activeKey = kiloKey;
+                      activeModelId = getFallbackModel("kilo", activeModelId);
+                      targetUrl = "/api/completions/proxy";
+                      body.model = activeModelId;
+                      continue;
+                    } else if (activeProvider === "kilo" && opencodeKey) {
+                      console.warn(`[Fallback] Kilo rate limit (HTTP ${status}), switching to OpenCode...`);
+                      hasSwitchedProviderOnRateLimit = true;
+                      activeProvider = "opencode";
+                      activeKey = opencodeKey;
+                      activeModelId = getFallbackModel("opencode", activeModelId);
+                      targetUrl = "/api/completions/proxy";
+                      body.model = activeModelId;
+                      continue;
+                    }
+                  }
+
+                  lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
                   console.warn(`Completion loop fetch attempt ${attempt} failed with status ${status}. Retrying...`);
                 }
               } catch (fetchErr: any) {
@@ -991,8 +1174,8 @@ export default function useAgentCompletion({
                 console.warn(`Completion loop fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
               }
               if (attempt < 3) {
-                // Wait 3 seconds before next retry
-                await new Promise((resolve) => setTimeout(resolve, 3000));
+                // Wait 2 seconds before next retry
+                await new Promise((resolve) => setTimeout(resolve, 2000));
               }
             }
 
@@ -1002,7 +1185,7 @@ export default function useAgentCompletion({
 
             if (!res.ok) {
               const errText = await res.text();
-              throw new Error(`OpenCode API Error (HTTP ${res.status}): ${errText}`);
+              throw new Error(`Provider Error (HTTP ${res.status}): ${errText}`);
             }
 
             const reader = res.body?.getReader();
@@ -1014,6 +1197,8 @@ export default function useAgentCompletion({
             let buffer = "";
             let currentToolCalls: any[] = [];
             let currentContent = "";
+            let currentReasoning = "";
+            let streamRateLimitHit = false;
 
             setMessages((prev) => {
               if (prev.length === 0) return prev;
@@ -1042,14 +1227,52 @@ export default function useAgentCompletion({
                   const sseData = cleanLine.substring(5).trim();
                   if (!sseData) continue;
 
-                  if (sseData.startsWith("Error")) {
-                    throw new Error(sseData);
+                  // Detect error payloads inside 200 SSE responses from proxy
+                  if (sseData.startsWith("Error") || sseData.includes('"error"')) {
+                    try {
+                      const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
+                      const isRateLimit = parsedErr.error?.status === 429 || 
+                        (parsedErr.error?.message && (parsedErr.error.message.includes("429") || parsedErr.error.message.includes("Rate limit") || parsedErr.error.message.includes("FreeUsageLimitError")));
+
+                      if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
+                        if (activeProvider === "opencode" && kiloKey) {
+                          console.warn("[Stream] OpenCode rate limit detected, switching to Kilo...");
+                          hasSwitchedProviderOnRateLimit = true;
+                          activeProvider = "kilo";
+                          activeKey = kiloKey;
+                          activeModelId = getFallbackModel("kilo", activeModelId);
+                          targetUrl = "/api/completions/proxy";
+                          streamRateLimitHit = true;
+                          break;
+                        } else if (activeProvider === "kilo" && opencodeKey) {
+                          console.warn("[Stream] Kilo rate limit detected, switching to OpenCode...");
+                          hasSwitchedProviderOnRateLimit = true;
+                          activeProvider = "opencode";
+                          activeKey = opencodeKey;
+                          activeModelId = getFallbackModel("opencode", activeModelId);
+                          targetUrl = "/api/completions/proxy";
+                          streamRateLimitHit = true;
+                          break;
+                        }
+                      }
+
+                      const errMsg = parsedErr.error?.message || parsedErr.message || sseData;
+                      throw new Error(`Provider Error: ${typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)}`);
+                    } catch (e: any) {
+                      if (e.message?.startsWith("Provider Error:")) throw e;
+                    }
                   }
 
                   try {
                     const parsed = JSON.parse(sseData);
                     const delta = parsed.choices?.[0]?.delta;
                     if (!delta) continue;
+
+                    // Capture reasoning / thinking stream tokens
+                    const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
+                    if (reasoningPiece) {
+                      currentReasoning += reasoningPiece;
+                    }
 
                     if (delta.content) {
                       currentContent += delta.content;
@@ -1085,6 +1308,26 @@ export default function useAgentCompletion({
                   } catch (jsonErr) {}
                 }
               }
+              if (streamRateLimitHit) break;
+            }
+
+            if (streamRateLimitHit) {
+              // Rate limit triggered during SSE stream; retry outer loop with switched provider
+              continue;
+            }
+
+            // Fallback: If no content was streamed but model produced reasoning or stopped, ensure response is not empty
+            if (!finalAssistantContent.trim() && currentReasoning.trim() && currentToolCalls.length === 0) {
+              finalAssistantContent = currentReasoning.trim();
+              setMessages((prev) => {
+                if (prev.length === 0) return prev;
+                const copy = [...prev];
+                const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                if (idx !== -1) {
+                  copy[idx].content = finalAssistantContent;
+                }
+                return copy;
+              });
             }
 
             if (currentToolCalls.length > 0) {

@@ -307,7 +307,10 @@ async def prepare_agent_payload(
 
     messages.append({"role": "user", "content": model_query})
 
-    model_id = get_opencode_model(req.model)
+    if req.model and ("/" in req.model or "kilo" in req.model.lower()):
+        model_id = req.model.strip()
+    else:
+        model_id = get_opencode_model(req.model)
     from agent_loop import get_variant_overrides
     from tool_schemas import TOOLS_SCHEMA
 
