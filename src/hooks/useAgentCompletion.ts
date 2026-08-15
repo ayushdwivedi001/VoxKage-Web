@@ -223,21 +223,6 @@ export default function useAgentCompletion({
     return { modelId: clean, provider: "opencode", originalName: clean };
   };
 
-  const getFallbackModel = (targetProvider: "kilo" | "opencode", currentModel: string): string => {
-    const lower = (currentModel || "").toLowerCase();
-    if (targetProvider === "kilo") {
-      if (lower.includes("gemini")) return "google/gemini-2.0-flash";
-      if (lower.includes("claude") || lower.includes("sonnet")) return "anthropic/claude-3.5-sonnet";
-      if (lower.includes("mimo")) return "xiaomi/mimo-v2.5";
-      return "deepseek/deepseek-chat";
-    } else {
-      if (lower.includes("gemini")) return "gemini-3.5-flash";
-      if (lower.includes("claude") || lower.includes("sonnet")) return "claude-sonnet-4";
-      if (lower.includes("mimo")) return "mimo-v2.5-free";
-      return "deepseek-v4-flash-free";
-    }
-  };
-
   const modelNameToKey = (name: string): string => {
     return resolveModelInfo(name).modelId;
   };
@@ -431,7 +416,7 @@ export default function useAgentCompletion({
         );
 
         let messagesPayload = prepRes.messages;
-        let activeModelId = prepRes.model || initialInfo.modelId;
+        const activeModelId = prepRes.model || initialInfo.modelId;
         const variantOverrides = prepRes.variant_overrides;
 
         let tools = prepRes.tools;
@@ -446,19 +431,11 @@ export default function useAgentCompletion({
         const opencodeKey = await secureLoadKey(`voxkage_${emailKey}_opencode_api_key`);
         const kiloKey = await secureLoadKey(`voxkage_${emailKey}_kilo_api_key`);
 
-        let activeProvider: "kilo" | "opencode" = initialInfo.provider;
-        let activeKey = activeProvider === "kilo" ? (kiloKey || opencodeKey) : (opencodeKey || kiloKey);
+        const activeProvider: "kilo" | "opencode" = initialInfo.provider;
+        const activeKey = activeProvider === "kilo" ? kiloKey : opencodeKey;
 
         if (!activeKey) {
-          throw new Error("No API Key found. Please configure your OpenCode or Kilo API key in Settings.");
-        }
-
-        if (activeProvider === "kilo" && !kiloKey && opencodeKey) {
-          activeProvider = "opencode";
-          activeModelId = getFallbackModel("opencode", activeModelId);
-        } else if (activeProvider === "opencode" && !opencodeKey && kiloKey) {
-          activeProvider = "kilo";
-          activeModelId = getFallbackModel("kilo", activeModelId);
+          throw new Error(`${activeProvider === "kilo" ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
         }
 
         const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
@@ -472,7 +449,6 @@ export default function useAgentCompletion({
         const accumulatedCreatedFiles: Record<string, string> = {};
         const controller = new AbortController();
         abortControllerRef.current = controller;
-        let hasSwitchedProviderOnRateLimit = false;
 
         while (loopCount < maxLoop) {
           loopCount++;
@@ -492,8 +468,15 @@ export default function useAgentCompletion({
 
           let res: Response | null = null;
           let lastFetchError: any = null;
+          let currentContent = "";
+          let currentReasoning = "";
+          let currentToolCalls: any[] = [];
+          const maxAttempts = 10;
+          const retryDelayMs = 3000;
 
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (controller.signal.aborted) break;
+
             try {
               res = await fetch(targetUrl, {
                 method: "POST",
@@ -506,235 +489,195 @@ export default function useAgentCompletion({
                 signal: controller.signal,
               });
 
-              if (res.ok) {
-                lastFetchError = null;
-                break;
-              } else {
+              if (!res.ok) {
                 const status = res.status;
                 const errText = await res.text();
+                lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
+                console.warn(`[Completion] Attempt ${attempt}/${maxAttempts} failed with status ${status}. Retrying same model in 3s...`);
+                if (attempt < maxAttempts) {
+                  await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                  continue;
+                }
+                break;
+              }
 
-                // Check for 429 rate limit to trigger seamless fallback
-                const isRateLimit = status === 429 || errText.includes("429") || errText.includes("Rate limit") || errText.includes("FreeUsageLimitError");
-                if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
-                  if (activeProvider === "opencode" && kiloKey) {
-                    console.warn(`[Fallback] OpenCode rate limit (HTTP ${status}), switching to Kilo...`);
-                    hasSwitchedProviderOnRateLimit = true;
-                    activeProvider = "kilo";
-                    activeKey = kiloKey;
-                    activeModelId = getFallbackModel("kilo", activeModelId);
-                    targetUrl = "/api/completions/proxy";
-                    body.model = activeModelId;
-                    continue;
-                  } else if (activeProvider === "kilo" && opencodeKey) {
-                    console.warn(`[Fallback] Kilo rate limit (HTTP ${status}), switching to OpenCode...`);
-                    hasSwitchedProviderOnRateLimit = true;
-                    activeProvider = "opencode";
-                    activeKey = opencodeKey;
-                    activeModelId = getFallbackModel("opencode", activeModelId);
-                    targetUrl = "/api/completions/proxy";
-                    body.model = activeModelId;
-                    continue;
+              const reader = res.body?.getReader();
+              if (!reader) {
+                lastFetchError = new Error("Response body is not readable.");
+                if (attempt < maxAttempts) {
+                  await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                  continue;
+                }
+                break;
+              }
+
+              const decoder = new TextDecoder("utf-8");
+              let buffer = "";
+              let streamHadError = false;
+              let sseErrorMsg = "";
+              currentContent = "";
+              currentToolCalls = [];
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  const cleanLine = line.trim();
+                  if (!cleanLine) continue;
+                  if (cleanLine === "data: [DONE]") break;
+
+                  if (cleanLine.startsWith("data:")) {
+                    const sseData = cleanLine.substring(5).trim();
+                    if (!sseData) continue;
+
+                    // Detect error payloads inside 200 SSE responses from proxy
+                    if (sseData.startsWith("Error") || sseData.includes('"error"')) {
+                      try {
+                        const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
+                        sseErrorMsg = parsedErr.error?.message || parsedErr.message || sseData;
+                      } catch (_) {
+                        sseErrorMsg = sseData;
+                      }
+                      streamHadError = true;
+                      break;
+                    }
+
+                    try {
+                      const dataJson = JSON.parse(sseData);
+                      const choice = dataJson.choices?.[0];
+                      if (!choice) continue;
+
+                      const delta = choice.delta;
+
+                      // Capture reasoning / thinking stream tokens
+                      const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
+                      if (reasoningPiece) {
+                        currentReasoning += reasoningPiece;
+                      }
+
+                      if (delta?.content) {
+                        currentContent += delta.content;
+                        finalAssistantContent += delta.content;
+                        setMessages((prev) => {
+                          if (prev.length === 0) return prev;
+                          const copy = [...prev];
+                          const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                          if (idx !== -1) {
+                            const precedingUserMsg = copy[idx - 1];
+                            const isPlanModeMessage = buildModeRef.current === "Plan" || 
+                              (precedingUserMsg && precedingUserMsg.content && (precedingUserMsg.content.includes("[PLAN MODE]") || precedingUserMsg.content.includes("/plan")));
+
+                            // Enforce mode check: ALWAYS render plan card if user is in Plan mode!
+                            if (isPlanModeMessage) {
+                              copy[idx].type = "plan";
+                              const planMatch = finalAssistantContent.match(/<plan(?:\s+title=["']([^"']+)["'])?>([\s\S]*)/i);
+                              if (planMatch) {
+                                copy[idx].planTitle = planMatch[1] || "Implementation Plan";
+                                copy[idx].content = planMatch[2].replace(/<\/plan>/g, "").trim();
+                              } else {
+                                const firstLine = finalAssistantContent.trim().split("\n")[0] || "";
+                                const headingMatch = firstLine.match(/^(?:#+\s*|\*\*\s*)([^\*\n#]+)/);
+                                copy[idx].planTitle = headingMatch ? headingMatch[1].trim() : "Implementation Plan";
+                                copy[idx].content = finalAssistantContent.trim();
+                              }
+                            } else if (buildModeRef.current === "Work") {
+                              let cleanContent = finalAssistantContent
+                                .replace(/<plan(?:\s+title=["'][^"']+["'])?>/gi, "")
+                                .replace(/<\/plan>/gi, "");
+                              
+                              if (finalAssistantContent.includes("<task_list>")) {
+                                const taskMatch = finalAssistantContent.match(/<task_list>([\s\S]*?)<\/task_list>/i);
+                                if (taskMatch) {
+                                  const lines = taskMatch[1].split("\n");
+                                  const parsedTasks: any[] = [];
+                                  lines.forEach((line, tIdx) => {
+                                    const trimmed = line.trim();
+                                    if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [/]")) {
+                                      const isDone = trimmed.startsWith("- [x]");
+                                      const isInProg = trimmed.startsWith("- [/]");
+                                      const taskText = trimmed.replace(/^-\s*\[[ x/\]]\s*/i, "").trim();
+                                      if (taskText) {
+                                        parsedTasks.push({
+                                          id: `task-${tIdx}-${Date.now()}`,
+                                          text: taskText,
+                                          status: isDone ? "completed" : isInProg ? "in_progress" : tIdx === 0 ? "in_progress" : "pending",
+                                        });
+                                      }
+                                    }
+                                  });
+                                  if (parsedTasks.length > 0) {
+                                    setActiveTasks(parsedTasks);
+                                  }
+                                  cleanContent = cleanContent.replace(/<task_list>[\s\S]*?<\/task_list>/gi, "").trim();
+                                }
+                              }
+
+                              copy[idx].content = cleanContent;
+                            }
+                            copy[idx].status = "streaming";
+                          }
+                          return copy;
+                        });
+                      }
+
+                      if (delta?.tool_calls) {
+                        delta.tool_calls.forEach((tc: any) => {
+                          const tcIdx = tc.index ?? 0;
+                          while (currentToolCalls.length <= tcIdx) {
+                            currentToolCalls.push({
+                              id: "",
+                              type: "function",
+                              function: { name: "", arguments: "" },
+                            });
+                          }
+                          if (tc.id) currentToolCalls[tcIdx].id = tc.id;
+                          if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
+                          if (tc.function?.arguments)
+                            currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
+                        });
+                      }
+                    } catch (jsonErr) {}
                   }
                 }
-
-                lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
-                console.warn(`Fetch attempt ${attempt} failed with status ${status}. Retrying...`);
+                if (streamHadError) break;
               }
+
+              if (streamHadError) {
+                lastFetchError = new Error(`Provider Stream Error: ${sseErrorMsg}`);
+                console.warn(`[Completion] Stream error on attempt ${attempt}/${maxAttempts} (${sseErrorMsg}). Retrying same model in 3s...`);
+                if (attempt < maxAttempts) {
+                  await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                  continue;
+                }
+                break;
+              }
+
+              // Successfully read stream
+              lastFetchError = null;
+              break;
+
             } catch (fetchErr: any) {
               if (targetUrl !== "/api/completions/proxy") {
                 console.warn("Custom proxy failed to fetch, trying local proxy fallback...");
                 targetUrl = "/api/completions/proxy";
-                attempt--; // retry fallback immediately
+                attempt--;
                 continue;
               }
               lastFetchError = fetchErr;
-              console.warn(`Fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
-            }
-            if (attempt < 3) {
-              // Wait 2 seconds before next retry
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-            }
-          }
-
-          if (lastFetchError || !res) {
-            throw lastFetchError || new Error("Failed to get response after 3 attempts.");
-          }
-
-          if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Provider Error (HTTP ${res.status}): ${errText}`);
-          }
-
-          const reader = res.body?.getReader();
-          if (!reader) throw new Error("Response body is not readable.");
-
-          const decoder = new TextDecoder("utf-8");
-          let buffer = "";
-          let currentContent = "";
-          let currentReasoning = "";
-          let currentToolCalls: any[] = [];
-          let streamRateLimitHit = false;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              const cleanLine = line.trim();
-              if (!cleanLine) continue;
-              if (cleanLine === "data: [DONE]") break;
-
-              if (cleanLine.startsWith("data:")) {
-                const sseData = cleanLine.substring(5).trim();
-                if (!sseData) continue;
-
-                // Detect error payloads inside 200 SSE responses from proxy
-                if (sseData.startsWith("Error") || sseData.includes('"error"')) {
-                  try {
-                    const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
-                    const isRateLimit = parsedErr.error?.status === 429 || 
-                      (parsedErr.error?.message && (parsedErr.error.message.includes("429") || parsedErr.error.message.includes("Rate limit") || parsedErr.error.message.includes("FreeUsageLimitError")));
-
-                    if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
-                      if (activeProvider === "opencode" && kiloKey) {
-                        console.warn("[Stream] OpenCode rate limit detected, switching to Kilo...");
-                        hasSwitchedProviderOnRateLimit = true;
-                        activeProvider = "kilo";
-                        activeKey = kiloKey;
-                        activeModelId = getFallbackModel("kilo", activeModelId);
-                        targetUrl = "/api/completions/proxy";
-                        streamRateLimitHit = true;
-                        break;
-                      } else if (activeProvider === "kilo" && opencodeKey) {
-                        console.warn("[Stream] Kilo rate limit detected, switching to OpenCode...");
-                        hasSwitchedProviderOnRateLimit = true;
-                        activeProvider = "opencode";
-                        activeKey = opencodeKey;
-                        activeModelId = getFallbackModel("opencode", activeModelId);
-                        targetUrl = "/api/completions/proxy";
-                        streamRateLimitHit = true;
-                        break;
-                      }
-                    }
-
-                    const errMsg = parsedErr.error?.message || parsedErr.message || sseData;
-                    throw new Error(`Provider Error: ${typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)}`);
-                  } catch (e: any) {
-                    if (e.message?.startsWith("Provider Error:")) throw e;
-                  }
-                }
-
-                try {
-                  const dataJson = JSON.parse(sseData);
-                  const choice = dataJson.choices?.[0];
-                  if (!choice) continue;
-
-                  const delta = choice.delta;
-
-                  // Capture reasoning / thinking stream tokens
-                  const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
-                  if (reasoningPiece) {
-                    currentReasoning += reasoningPiece;
-                  }
-
-                  if (delta?.content) {
-                    currentContent += delta.content;
-                    finalAssistantContent += delta.content;
-                    setMessages((prev) => {
-                      if (prev.length === 0) return prev;
-                      const copy = [...prev];
-                      const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
-                      if (idx !== -1) {
-                        const precedingUserMsg = copy[idx - 1];
-                        const isPlanModeMessage = buildModeRef.current === "Plan" || 
-                          (precedingUserMsg && precedingUserMsg.content && (precedingUserMsg.content.includes("[PLAN MODE]") || precedingUserMsg.content.includes("/plan")));
-
-                        // Enforce mode check: ALWAYS render plan card if user is in Plan mode!
-                        if (isPlanModeMessage) {
-                          copy[idx].type = "plan";
-                          const planMatch = finalAssistantContent.match(/<plan(?:\s+title=["']([^"']+)["'])?>([\s\S]*)/i);
-                          if (planMatch) {
-                            copy[idx].planTitle = planMatch[1] || "Implementation Plan";
-                            copy[idx].content = planMatch[2].replace(/<\/plan>/g, "").trim();
-                          } else {
-                            // LLM omitted literal <plan> tags — extract first line/heading as title
-                            const firstLine = finalAssistantContent.trim().split("\n")[0] || "";
-                            const headingMatch = firstLine.match(/^(?:#+\s*|\*\*\s*)([^\*\n#]+)/);
-                            copy[idx].planTitle = headingMatch ? headingMatch[1].trim() : "Implementation Plan";
-                            copy[idx].content = finalAssistantContent.trim();
-                          }
-                        } else if (buildModeRef.current === "Work") {
-                          // Work Mode: strip any accidental <plan> tags
-                          let cleanContent = finalAssistantContent
-                            .replace(/<plan(?:\s+title=["'][^"']+["'])?>/gi, "")
-                            .replace(/<\/plan>/gi, "");
-                          
-                          // Check if Work mode response contains <task_list> tags to mount TaskListWidget
-                          if (finalAssistantContent.includes("<task_list>")) {
-                            const taskMatch = finalAssistantContent.match(/<task_list>([\s\S]*?)<\/task_list>/i);
-                            if (taskMatch) {
-                              const lines = taskMatch[1].split("\n");
-                              const parsedTasks: any[] = [];
-                              lines.forEach((line, tIdx) => {
-                                const trimmed = line.trim();
-                                if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [/]")) {
-                                  const isDone = trimmed.startsWith("- [x]");
-                                  const isInProg = trimmed.startsWith("- [/]");
-                                  const taskText = trimmed.replace(/^-\s*\[[ x/\]]\s*/i, "").trim();
-                                  if (taskText) {
-                                    parsedTasks.push({
-                                      id: `task-${tIdx}-${Date.now()}`,
-                                      text: taskText,
-                                      status: isDone ? "completed" : isInProg ? "in_progress" : tIdx === 0 ? "in_progress" : "pending",
-                                    });
-                                  }
-                                }
-                              });
-                              if (parsedTasks.length > 0) {
-                                setActiveTasks(parsedTasks);
-                              }
-                              // Hide raw <task_list> XML tag from response bubble text
-                              cleanContent = cleanContent.replace(/<task_list>[\s\S]*?<\/task_list>/gi, "").trim();
-                            }
-                          }
-
-                          copy[idx].content = cleanContent;
-                        }
-                        copy[idx].status = "streaming";
-                      }
-                      return copy;
-                    });
-                  }
-
-                  if (delta?.tool_calls) {
-                    delta.tool_calls.forEach((tc: any) => {
-                      const tcIdx = tc.index ?? 0;
-                      while (currentToolCalls.length <= tcIdx) {
-                        currentToolCalls.push({
-                          id: "",
-                          type: "function",
-                          function: { name: "", arguments: "" },
-                        });
-                      }
-                      if (tc.id) currentToolCalls[tcIdx].id = tc.id;
-                      if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
-                      if (tc.function?.arguments)
-                        currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
-                    });
-                  }
-                } catch (jsonErr) {}
+              console.warn(`[Completion] Attempt ${attempt}/${maxAttempts} exception: ${fetchErr.message}. Retrying in 3s...`, fetchErr);
+              if (attempt < maxAttempts) {
+                await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
               }
             }
-            if (streamRateLimitHit) break;
           }
 
-          if (streamRateLimitHit) {
-            // Rate limit triggered during SSE stream; retry outer loop with switched provider
-            continue;
+          if (lastFetchError) {
+            throw lastFetchError;
           }
 
           // Fallback: If no content was streamed but model produced reasoning or stopped, ensure response is not empty
@@ -1054,7 +997,7 @@ export default function useAgentCompletion({
           );
 
           let messagesPayload = prepRes.messages;
-          let activeModelId = prepRes.model || initialInfo.modelId;
+          const activeModelId = prepRes.model || initialInfo.modelId;
           const variantOverrides = prepRes.variant_overrides;
 
           let tools = prepRes.tools;
@@ -1069,19 +1012,11 @@ export default function useAgentCompletion({
           const opencodeKey = await secureLoadKey(`voxkage_${emailKey}_opencode_api_key`);
           const kiloKey = await secureLoadKey(`voxkage_${emailKey}_kilo_api_key`);
 
-          let activeProvider: "kilo" | "opencode" = initialInfo.provider;
-          let activeKey = activeProvider === "kilo" ? (kiloKey || opencodeKey) : (opencodeKey || kiloKey);
+          const activeProvider: "kilo" | "opencode" = initialInfo.provider;
+          const activeKey = activeProvider === "kilo" ? kiloKey : opencodeKey;
 
           if (!activeKey) {
-            throw new Error("No API Key found. Please configure your OpenCode or Kilo API key in Settings.");
-          }
-
-          if (activeProvider === "kilo" && !kiloKey && opencodeKey) {
-            activeProvider = "opencode";
-            activeModelId = getFallbackModel("opencode", activeModelId);
-          } else if (activeProvider === "opencode" && !opencodeKey && kiloKey) {
-            activeProvider = "kilo";
-            activeModelId = getFallbackModel("kilo", activeModelId);
+            throw new Error(`${activeProvider === "kilo" ? "Kilo" : "OpenCode"} API Key is missing. Please set it in Settings.`);
           }
 
           const customProxyUrl = localStorage.getItem("voxkage_custom_proxy_url") || "";
@@ -1095,7 +1030,6 @@ export default function useAgentCompletion({
           const accumulatedCreatedFiles: Record<string, string> = {};
           const controller = new AbortController();
           abortControllerRef.current = controller;
-          let hasSwitchedProviderOnRateLimit = false;
 
           while (loopCount < maxLoop) {
             loopCount++;
@@ -1116,8 +1050,15 @@ export default function useAgentCompletion({
 
             let res: Response | null = null;
             let lastFetchError: any = null;
+            let currentContent = "";
+            let currentReasoning = "";
+            let currentToolCalls: any[] = [];
+            const maxAttempts = 10;
+            const retryDelayMs = 3000;
 
-            for (let attempt = 1; attempt <= 3; attempt++) {
+            for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+              if (controller.signal.aborted) break;
+
               try {
                 res = await fetch(targetUrl, {
                   method: "POST",
@@ -1130,39 +1071,136 @@ export default function useAgentCompletion({
                   signal: controller.signal,
                 });
 
-                if (res.ok) {
-                  lastFetchError = null;
-                  break;
-                } else {
+                if (!res.ok) {
                   const status = res.status;
                   const errText = await res.text();
+                  lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
+                  console.warn(`[Completion] Attempt ${attempt}/${maxAttempts} failed with status ${status}. Retrying same model in 3s...`);
+                  if (attempt < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                  }
+                  break;
+                }
 
-                  const isRateLimit = status === 429 || errText.includes("429") || errText.includes("Rate limit") || errText.includes("FreeUsageLimitError");
-                  if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
-                    if (activeProvider === "opencode" && kiloKey) {
-                      console.warn(`[Fallback] OpenCode rate limit (HTTP ${status}), switching to Kilo...`);
-                      hasSwitchedProviderOnRateLimit = true;
-                      activeProvider = "kilo";
-                      activeKey = kiloKey;
-                      activeModelId = getFallbackModel("kilo", activeModelId);
-                      targetUrl = "/api/completions/proxy";
-                      body.model = activeModelId;
-                      continue;
-                    } else if (activeProvider === "kilo" && opencodeKey) {
-                      console.warn(`[Fallback] Kilo rate limit (HTTP ${status}), switching to OpenCode...`);
-                      hasSwitchedProviderOnRateLimit = true;
-                      activeProvider = "opencode";
-                      activeKey = opencodeKey;
-                      activeModelId = getFallbackModel("opencode", activeModelId);
-                      targetUrl = "/api/completions/proxy";
-                      body.model = activeModelId;
-                      continue;
+                const reader = res.body?.getReader();
+                if (!reader) {
+                  lastFetchError = new Error("Response body is not readable.");
+                  if (attempt < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                  }
+                  break;
+                }
+
+                const decoder = new TextDecoder("utf-8");
+                let buffer = "";
+                let streamHadError = false;
+                let sseErrorMsg = "";
+                currentContent = "";
+                currentToolCalls = [];
+
+                setMessages((prev) => {
+                  if (prev.length === 0) return prev;
+                  const copy = [...prev];
+                  const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                  if (idx !== -1) {
+                    copy[idx].status = "streaming";
+                  }
+                  return copy;
+                });
+
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  buffer += decoder.decode(value, { stream: true });
+                  const lines = buffer.split("\n");
+                  buffer = lines.pop() || "";
+
+                  for (const line of lines) {
+                    const cleanLine = line.trim();
+                    if (!cleanLine) continue;
+                    if (cleanLine === "data: [DONE]") break;
+
+                    if (cleanLine.startsWith("data:")) {
+                      const sseData = cleanLine.substring(5).trim();
+                      if (!sseData) continue;
+
+                      // Detect error payloads inside 200 SSE responses from proxy
+                      if (sseData.startsWith("Error") || sseData.includes('"error"')) {
+                        try {
+                          const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
+                          sseErrorMsg = parsedErr.error?.message || parsedErr.message || sseData;
+                        } catch (_) {
+                          sseErrorMsg = sseData;
+                        }
+                        streamHadError = true;
+                        break;
+                      }
+
+                      try {
+                        const dataJson = JSON.parse(sseData);
+                        const delta = dataJson.choices?.[0]?.delta;
+                        if (!delta) continue;
+
+                        // Capture reasoning / thinking stream tokens
+                        const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
+                        if (reasoningPiece) {
+                          currentReasoning += reasoningPiece;
+                        }
+
+                        if (delta.content) {
+                          currentContent += delta.content;
+                          finalAssistantContent += delta.content;
+
+                          setMessages((prev) => {
+                            if (prev.length === 0) return prev;
+                            const copy = [...prev];
+                            const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                            if (idx !== -1) {
+                              copy[idx].content = finalAssistantContent;
+                            }
+                            return copy;
+                          });
+                        }
+
+                        if (delta.tool_calls) {
+                          delta.tool_calls.forEach((tc: any) => {
+                            const tcIdx = tc.index ?? 0;
+                            while (currentToolCalls.length <= tcIdx) {
+                              currentToolCalls.push({
+                                id: "",
+                                type: "function",
+                                function: { name: "", arguments: "" },
+                              });
+                            }
+                            if (tc.id) currentToolCalls[tcIdx].id = tc.id;
+                            if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
+                            if (tc.function?.arguments)
+                              currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
+                          });
+                        }
+                      } catch (jsonErr) {}
                     }
                   }
-
-                  lastFetchError = new Error(`Provider Error (HTTP ${status}): ${errText}`);
-                  console.warn(`Completion loop fetch attempt ${attempt} failed with status ${status}. Retrying...`);
+                  if (streamHadError) break;
                 }
+
+                if (streamHadError) {
+                  lastFetchError = new Error(`Provider Stream Error: ${sseErrorMsg}`);
+                  console.warn(`[Completion] Stream error on attempt ${attempt}/${maxAttempts} (${sseErrorMsg}). Retrying same model in 3s...`);
+                  if (attempt < maxAttempts) {
+                    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+                    continue;
+                  }
+                  break;
+                }
+
+                // Successfully read stream
+                lastFetchError = null;
+                break;
+
               } catch (fetchErr: any) {
                 if (targetUrl !== "/api/completions/proxy") {
                   console.warn("Custom proxy failed to fetch, trying local proxy fallback...");
@@ -1171,149 +1209,15 @@ export default function useAgentCompletion({
                   continue;
                 }
                 lastFetchError = fetchErr;
-                console.warn(`Completion loop fetch attempt ${attempt} threw exception. Retrying...`, fetchErr);
-              }
-              if (attempt < 3) {
-                // Wait 2 seconds before next retry
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-              }
-            }
-
-            if (lastFetchError || !res) {
-              throw lastFetchError || new Error("Failed to get response after 3 attempts.");
-            }
-
-            if (!res.ok) {
-              const errText = await res.text();
-              throw new Error(`Provider Error (HTTP ${res.status}): ${errText}`);
-            }
-
-            const reader = res.body?.getReader();
-            if (!reader) {
-              throw new Error("Failed to get response stream reader.");
-            }
-
-            const decoder = new TextDecoder("utf-8");
-            let buffer = "";
-            let currentToolCalls: any[] = [];
-            let currentContent = "";
-            let currentReasoning = "";
-            let streamRateLimitHit = false;
-
-            setMessages((prev) => {
-              if (prev.length === 0) return prev;
-              const copy = [...prev];
-              const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
-              if (idx !== -1) {
-                copy[idx].status = "streaming";
-              }
-              return copy;
-            });
-
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split("\n");
-              buffer = lines.pop() || "";
-
-              for (const line of lines) {
-                const cleanLine = line.trim();
-                if (!cleanLine) continue;
-                if (cleanLine === "data: [DONE]") break;
-
-                if (cleanLine.startsWith("data:")) {
-                  const sseData = cleanLine.substring(5).trim();
-                  if (!sseData) continue;
-
-                  // Detect error payloads inside 200 SSE responses from proxy
-                  if (sseData.startsWith("Error") || sseData.includes('"error"')) {
-                    try {
-                      const parsedErr = JSON.parse(sseData.startsWith("Error") ? sseData.substring(sseData.indexOf("{")) : sseData);
-                      const isRateLimit = parsedErr.error?.status === 429 || 
-                        (parsedErr.error?.message && (parsedErr.error.message.includes("429") || parsedErr.error.message.includes("Rate limit") || parsedErr.error.message.includes("FreeUsageLimitError")));
-
-                      if (isRateLimit && !hasSwitchedProviderOnRateLimit) {
-                        if (activeProvider === "opencode" && kiloKey) {
-                          console.warn("[Stream] OpenCode rate limit detected, switching to Kilo...");
-                          hasSwitchedProviderOnRateLimit = true;
-                          activeProvider = "kilo";
-                          activeKey = kiloKey;
-                          activeModelId = getFallbackModel("kilo", activeModelId);
-                          targetUrl = "/api/completions/proxy";
-                          streamRateLimitHit = true;
-                          break;
-                        } else if (activeProvider === "kilo" && opencodeKey) {
-                          console.warn("[Stream] Kilo rate limit detected, switching to OpenCode...");
-                          hasSwitchedProviderOnRateLimit = true;
-                          activeProvider = "opencode";
-                          activeKey = opencodeKey;
-                          activeModelId = getFallbackModel("opencode", activeModelId);
-                          targetUrl = "/api/completions/proxy";
-                          streamRateLimitHit = true;
-                          break;
-                        }
-                      }
-
-                      const errMsg = parsedErr.error?.message || parsedErr.message || sseData;
-                      throw new Error(`Provider Error: ${typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg)}`);
-                    } catch (e: any) {
-                      if (e.message?.startsWith("Provider Error:")) throw e;
-                    }
-                  }
-
-                  try {
-                    const parsed = JSON.parse(sseData);
-                    const delta = parsed.choices?.[0]?.delta;
-                    if (!delta) continue;
-
-                    // Capture reasoning / thinking stream tokens
-                    const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
-                    if (reasoningPiece) {
-                      currentReasoning += reasoningPiece;
-                    }
-
-                    if (delta.content) {
-                      currentContent += delta.content;
-                      finalAssistantContent += delta.content;
-
-                      setMessages((prev) => {
-                        if (prev.length === 0) return prev;
-                        const copy = [...prev];
-                        const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
-                        if (idx !== -1) {
-                          copy[idx].content = finalAssistantContent;
-                        }
-                        return copy;
-                      });
-                    }
-
-                    if (delta.tool_calls) {
-                      delta.tool_calls.forEach((tc: any) => {
-                        const tcIdx = tc.index ?? 0;
-                        while (currentToolCalls.length <= tcIdx) {
-                          currentToolCalls.push({
-                            id: "",
-                            type: "function",
-                            function: { name: "", arguments: "" },
-                          });
-                        }
-                        if (tc.id) currentToolCalls[tcIdx].id = tc.id;
-                        if (tc.function?.name) currentToolCalls[tcIdx].function.name = tc.function.name;
-                        if (tc.function?.arguments)
-                          currentToolCalls[tcIdx].function.arguments += tc.function.arguments;
-                      });
-                    }
-                  } catch (jsonErr) {}
+                console.warn(`[Completion] Attempt ${attempt}/${maxAttempts} exception: ${fetchErr.message}. Retrying in 3s...`, fetchErr);
+                if (attempt < maxAttempts) {
+                  await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
                 }
               }
-              if (streamRateLimitHit) break;
             }
 
-            if (streamRateLimitHit) {
-              // Rate limit triggered during SSE stream; retry outer loop with switched provider
-              continue;
+            if (lastFetchError) {
+              throw lastFetchError;
             }
 
             // Fallback: If no content was streamed but model produced reasoning or stopped, ensure response is not empty
