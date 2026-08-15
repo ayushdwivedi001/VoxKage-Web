@@ -381,35 +381,40 @@ export default function PromptInput({
   const handleMouseEnterVariantPopup = () => setIsHoveringVariantPopup(true);
   const handleMouseLeaveVariantPopup = () => setIsHoveringVariantPopup(false);
 
-  // Auto-resize height based on value
+  // Auto-resize height based on value without synchronous layout thrashing
+  const resizeRafRef = useRef<number | null>(null);
   const adjustHeight = () => {
-    const textarea = textareaRef.current;
-    const overlay = overlayRef.current;
-    if (textarea) {
-      textarea.style.height = "28px";
-      const scrollHeight = textarea.scrollHeight;
-      const maxHeight = 220; // Maximum height in pixels before showing scrollbar
-      
-      if (scrollHeight > maxHeight) {
-        textarea.style.height = `${maxHeight}px`;
-        textarea.style.overflowY = "auto";
-      } else {
-        textarea.style.height = `${Math.max(28, scrollHeight)}px`;
-        textarea.style.overflowY = "hidden";
-      }
-
-      if (overlay) {
-        overlay.style.height = textarea.style.height;
-        overlay.style.overflowY = textarea.style.overflowY;
-        overlay.scrollTop = textarea.scrollTop;
-        overlay.scrollLeft = textarea.scrollLeft;
-      }
+    if (resizeRafRef.current) {
+      cancelAnimationFrame(resizeRafRef.current);
     }
+    resizeRafRef.current = requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      const overlay = overlayRef.current;
+      if (textarea) {
+        textarea.style.height = "auto";
+        const scrollHeight = textarea.scrollHeight;
+        const maxHeight = 220; // Maximum height in pixels before showing scrollbar
+        const newHeight = scrollHeight > maxHeight ? maxHeight : Math.max(28, scrollHeight);
+        
+        textarea.style.height = `${newHeight}px`;
+        textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+
+        if (overlay && window.innerWidth >= 768) {
+          overlay.style.height = `${newHeight}px`;
+          overlay.style.overflowY = textarea.style.overflowY;
+          overlay.scrollTop = textarea.scrollTop;
+          overlay.scrollLeft = textarea.scrollLeft;
+        }
+      }
+    });
   };
 
   // Adjust height on text change
   useEffect(() => {
     adjustHeight();
+    return () => {
+      if (resizeRafRef.current) cancelAnimationFrame(resizeRafRef.current);
+    };
   }, [value]);
 
   // Adjust height on window resize to ensure responsiveness
@@ -706,10 +711,10 @@ export default function PromptInput({
 
       {/* Input Field */}
       <div className="relative w-full min-h-[28px]">
-        {/* Background highlight overlay */}
+        {/* Background highlight overlay (desktop only to prevent mobile IME typing lag) */}
         <div
           ref={overlayRef}
-          className="absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-[1.55] p-0 m-0 border-0 prompt-overlay prompt-overlay-invisible-scrollbar"
+          className="hidden md:block absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-[1.55] p-0 m-0 border-0 prompt-overlay prompt-overlay-invisible-scrollbar"
           style={{
             minHeight: "28px",
             wordBreak: "break-word",
@@ -728,19 +733,20 @@ export default function PromptInput({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onScroll={handleScroll}
-          onFocus={() => {
-            setIsFocused(true);
-            if (typeof window !== "undefined" && window.innerWidth < 768) {
-              window.scrollTo(0, 0);
-              document.body.scrollTop = 0;
-            }
-          }}
+          onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           onPaste={handlePaste}
+          inputMode="text"
+          autoCapitalize="sentences"
+          autoComplete="off"
+          autoCorrect="on"
+          spellCheck="true"
           rows={1}
           className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
-            value ? "text-transparent" : "text-white"
-          } caret-white placeholder-white/35 font-sans text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea`}
+            value 
+              ? "text-zinc-100 [.light_&]:text-[#141413] md:text-transparent" 
+              : "text-zinc-100 [.light_&]:text-[#141413]"
+          } caret-blue-400 [.light_&]:caret-[#141413] placeholder-zinc-400/60 [.light_&]:placeholder-[#8e8b82] font-sans text-[16px] md:text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea`}
           placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
             minHeight: "28px",
@@ -748,6 +754,7 @@ export default function PromptInput({
             overflowWrap: "break-word",
             letterSpacing: "normal",
             boxSizing: "border-box",
+            touchAction: "manipulation",
           }}
         />
 

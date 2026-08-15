@@ -304,7 +304,7 @@ export default function ChatWorkspace({
 
       {/* Active Normal Chat Session Container */}
       {isChatActive && (
-        <div className={`fixed md:absolute bottom-0 left-0 right-0 z-30 pt-4 md:pt-10 px-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-5 flex flex-col items-center gap-1.5 md:gap-2.5 pointer-events-none bg-gradient-to-t ${
+        <div className={`fixed md:absolute bottom-0 left-0 right-0 z-30 pt-2 md:pt-10 px-3 md:px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-5 flex flex-col items-center gap-1.5 md:gap-2.5 pointer-events-none transform-gpu will-change-transform bg-gradient-to-t ${
           isLightMode 
             ? "from-[#DBDAD4] via-[#DBDAD4]/95 to-transparent" 
             : "from-[#05050a] via-[#05050a]/95 to-transparent"

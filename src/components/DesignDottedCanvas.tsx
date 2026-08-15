@@ -48,6 +48,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
 
   useEffect(() => {
     if (!active) return;
+    if (typeof window !== "undefined" && window.innerWidth < 768) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -59,6 +60,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
     let startTime: number | null = null;
 
     const resize = () => {
+      if (window.innerWidth < 768) return;
       const dpr = window.devicePixelRatio || 1;
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
@@ -68,11 +70,13 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
     window.addEventListener("resize", resize);
     resize();
 
-    const isMobile = window.innerWidth < 768;
-    const dotSpacing = isMobile ? 28 : 22;
-    const baseDotRadius = isMobile ? 1.0 : 1.35;
+    const dotSpacing = 22;
+    const baseDotRadius = 1.35;
 
     const render = (timestamp: number) => {
+      if (window.innerWidth < 768) {
+        return;
+      }
       if (!startTime) startTime = timestamp;
       const elapsed = (timestamp - startTime) / 1000;
       const isLight = typeof document !== "undefined" && document.documentElement.classList.contains("light");
@@ -98,8 +102,8 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
       ctx.fillStyle = isLight ? "#DBDAD4" : "#040406";
       ctx.fillRect(0, 0, width, height);
 
-      // In light theme OR on mobile (<768px): plain flat background only, no dots or ocean waves
-      if (isLight || isMobile) {
+      // In light theme: plain flat background only, no dots or ocean waves
+      if (isLight) {
         animFrameId = requestAnimationFrame(render);
         return;
       }
@@ -280,7 +284,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
         zIndex: 2,
         pointerEvents: "none",
       }}
-      className={`transition-opacity duration-700 ease-out ${
+      className={`hidden md:block transition-opacity duration-700 ease-out ${
         active ? "opacity-100" : "opacity-0"
       }`}
     />
