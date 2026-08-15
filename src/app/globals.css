@@ -22,11 +22,11 @@ html, body {
   background-color: #05050a;
 }
 
-html.light, html.light body {
+html.light, html.light body, .light, html.light #__next, html.light div[class*="min-h-screen"] {
   background-color: #DBDAD4 !important;
 }
 
-html.dark, html.dark body {
+html.dark, html.dark body, .dark, html.dark #__next {
   background-color: #05050a !important;
 }
 
@@ -78,14 +78,12 @@ body {
     border: 1px solid #C3C2B7 !important;
   }
 
-  .fluid-glass-popup {
+  .fluid-glass-popup,
+  .light .fluid-glass-popup {
     background: #141418 !important;
     border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  }
-
-  .light .fluid-glass-popup {
-    background: #FAF9F5 !important;
-    border: 1px solid #E6DFD8 !important;
+    box-shadow: none !important;
+    color: #f4f4f5 !important;
   }
 
   .fluid-glass-pill {
@@ -225,18 +223,18 @@ body {
   transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.fluid-glass-popup {
+.fluid-glass-popup,
+.light .fluid-glass-popup {
   background: linear-gradient(
     145deg,
     rgba(22, 23, 30, 0.98) 0%,
     rgba(14, 15, 20, 0.98) 100%
-  );
+  ) !important;
   backdrop-filter: blur(28px) saturate(200%);
   -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.2),
-    0 20px 45px rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: none !important;
+  color: #f4f4f5 !important;
 }
 
 .fluid-glass-pill {

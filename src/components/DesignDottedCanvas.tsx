@@ -98,8 +98,8 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
       const width = window.innerWidth;
       const height = window.innerHeight;
 
-      // Fill canvas background based on theme mode
-      ctx.fillStyle = isLight ? "#DBDAD4" : "#040406";
+      // Fill canvas background based on theme mode (#DBDAD4 for light, #05050a for dark)
+      ctx.fillStyle = isLight ? "#DBDAD4" : "#05050a";
       ctx.fillRect(0, 0, width, height);
 
       // In light theme: plain flat background only, no dots or ocean waves
@@ -107,17 +107,6 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
         animFrameId = requestAnimationFrame(render);
         return;
       }
-      const ambientAlpha = (isLight ? 0.04 : 0.07) * (1 - dim * 0.35);
-      const bgGrad = ctx.createLinearGradient(0, height, 0, height * 0.35);
-      if (isLight) {
-        bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
-        bgGrad.addColorStop(1, "rgba(219, 218, 212, 0)");
-      } else {
-        bgGrad.addColorStop(0, `rgba(4, 56, 194, ${ambientAlpha})`);
-        bgGrad.addColorStop(1, "rgba(4, 4, 6, 0)");
-      }
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
 
       const cols = Math.ceil(width / dotSpacing) + 1;
       const rows = Math.ceil(height / dotSpacing) + 1;

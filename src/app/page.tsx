@@ -4,7 +4,6 @@ import React, { useEffect, useState, useRef } from "react";
 import { Info } from "lucide-react";
 
 // Existing Components
-import GradientBackground from "@/components/GradientBackground";
 import Sidebar from "@/components/Sidebar";
 
 // Extracted Components
@@ -119,30 +118,36 @@ export default function Home() {
 
       const boot = await fetchBootPayload();
 
-      // Cross-device theme sync — restore Supabase-stored preference on login
-      if (boot.theme_mode && ["light", "dark", "system"].includes(boot.theme_mode)) {
-        const localTheme = localStorage.getItem("voxkage_theme_mode");
-        // Only override local if Supabase has a preference and local doesn't, or they differ
-        if (!localTheme || localTheme !== boot.theme_mode) {
-          localStorage.setItem("voxkage_theme_mode", boot.theme_mode);
-          const root = document.documentElement;
-          if (boot.theme_mode === "light") {
-            root.classList.add("light");
-            root.classList.remove("dark");
-          } else if (boot.theme_mode === "dark") {
+      // Cross-device theme sync — preserve user local preference over stale backend defaults
+      const localTheme = localStorage.getItem("voxkage_theme_mode");
+      if (localTheme && ["light", "dark", "system"].includes(localTheme)) {
+        const root = document.documentElement;
+        if (localTheme === "light") {
+          root.classList.add("light");
+          root.classList.remove("dark");
+        } else if (localTheme === "dark") {
+          root.classList.add("dark");
+          root.classList.remove("light");
+        } else {
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (prefersDark) {
             root.classList.add("dark");
             root.classList.remove("light");
           } else {
-            // system
-            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            if (prefersDark) {
-              root.classList.add("dark");
-              root.classList.remove("light");
-            } else {
-              root.classList.add("light");
-              root.classList.remove("dark");
-            }
+            root.classList.add("light");
+            root.classList.remove("dark");
           }
+        }
+        window.dispatchEvent(new CustomEvent("voxkage_theme_updated", { detail: localTheme }));
+      } else if (boot.theme_mode && ["light", "dark", "system"].includes(boot.theme_mode)) {
+        localStorage.setItem("voxkage_theme_mode", boot.theme_mode);
+        const root = document.documentElement;
+        if (boot.theme_mode === "light") {
+          root.classList.add("light");
+          root.classList.remove("dark");
+        } else if (boot.theme_mode === "dark") {
+          root.classList.add("dark");
+          root.classList.remove("light");
         }
         window.dispatchEvent(new CustomEvent("voxkage_theme_updated", { detail: boot.theme_mode }));
       }
@@ -581,8 +586,7 @@ export default function Home() {
   // Prevent flash of login screen while checking auth
   if (auth.isAuthChecking) {
     return (
-      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a]">
-        <GradientBackground isChatActive={false} />
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a] [.light_&]:bg-[#DBDAD4]">
       </div>
     );
   }
@@ -613,8 +617,7 @@ export default function Home() {
   // Prevent flash of onboarding screen while loading keys
   if (auth.isLoggedIn && !hasLoadedKeys) {
     return (
-      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a]">
-        <GradientBackground isChatActive={false} />
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-[#05050a] [.light_&]:bg-[#DBDAD4]">
       </div>
     );
   }
@@ -666,7 +669,7 @@ export default function Home() {
   }
 
   return (
-    <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a] light-root-bg">
+    <div className="relative flex min-h-screen w-full overflow-hidden bg-[#05050a] [.light_&]:bg-[#DBDAD4]">
       <svg style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }} aria-hidden="true">
         <defs>
           <clipPath id="vc-body-clip">
@@ -693,8 +696,6 @@ export default function Home() {
           </linearGradient>
         </defs>
       </svg>
-
-      <GradientBackground isChatActive={isChatActive} />
 
       <Sidebar
         isExpanded={sidebarExpanded}
@@ -743,7 +744,6 @@ export default function Home() {
       />
 
       {/* === BACKGROUND LAYERS === */}
-      <GradientBackground isChatActive={false} isDesignMode={true} />
       <DesignDottedCanvas active={true} isChatActive={isChatActive} />
 
       <main className="relative flex flex-col flex-grow items-center justify-between w-full h-full max-w-full overflow-hidden bg-transparent transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] z-10">

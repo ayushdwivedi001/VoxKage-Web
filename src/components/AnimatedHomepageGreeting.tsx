@@ -58,7 +58,7 @@ export default function AnimatedHomepageGreeting({ greeting }: AnimatedHomepageG
   let globalCharIndex = 0;
 
   return (
-    <h1 className={`${isLightMode ? "text-black" : "text-white"} text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2 flex flex-wrap justify-center gap-x-[0.25em] gap-y-1 px-4`}>
+    <h1 className={`${isLightMode ? "text-[#141413]" : "text-white"} text-2xl sm:text-[34px] md:text-[38px] font-normal tracking-[-0.015em] select-none leading-tight text-center font-serif mt-2 flex flex-wrap justify-center gap-x-[0.25em] gap-y-1 px-4`}>
       {words.map((word, wordIdx) => {
         const charSpans = word.split("").map((char) => {
           const index = globalCharIndex++;
@@ -78,7 +78,7 @@ export default function AnimatedHomepageGreeting({ greeting }: AnimatedHomepageG
                 !isRevealed
                   ? "opacity-0"
                   : isFinished
-                  ? (isLightMode ? "text-black" : "text-white")
+                  ? (isLightMode ? "text-[#141413]" : "text-white")
                   : "bg-gradient-to-b from-[#38bdf8] via-[#0438c2] to-[#020938] bg-clip-text text-transparent font-medium"
               }`}
             >

@@ -2,7 +2,6 @@
 
 import React, { useState } from "react";
 import DesignDottedCanvas from "@/components/DesignDottedCanvas";
-import GradientBackground from "@/components/GradientBackground";
 import { Eye, EyeOff, Key, ChevronDown, Check, LogOut, Info, ExternalLink } from "lucide-react";
 import { secureSaveKey } from "@/lib/secureStorage";
 
@@ -60,9 +59,8 @@ export default function OnboardingView({ userEmail, onComplete, onLogout }: Onbo
   };
 
   return (
-    <div className="relative flex min-h-screen w-full items-center justify-center p-4 bg-[#05050a] overflow-hidden font-sans select-none z-10">
+    <div className="relative flex min-h-screen w-full items-center justify-center p-4 bg-[#05050a] [.light_&]:bg-[#DBDAD4] overflow-hidden font-sans select-none z-10">
       {/* Background elements */}
-      <GradientBackground isChatActive={false} />
       <DesignDottedCanvas active={true} isChatActive={false} />
 
       {/* Main card */}
