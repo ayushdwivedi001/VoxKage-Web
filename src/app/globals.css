@@ -337,20 +337,12 @@ body {
 
 /* Text Input & Caret controls */
 .light .prompt-textarea {
+  color: #141413 !important;
   caret-color: #000000 !important;
 }
 
 .light .prompt-textarea::placeholder {
   color: rgba(0, 0, 0, 0.5) !important;
-}
-
-/* Highlighted Text Overlay */
-.light .prompt-overlay span.text-zinc-100 {
-  color: #141413 !important;
-}
-
-.light .prompt-overlay span.text-blue-400 {
-  color: #1d4ed8 !important; /* Rich contrast blue-750 */
 }
 
 /* Send & Stop Buttons styling in light mode */

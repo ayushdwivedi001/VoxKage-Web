@@ -104,7 +104,6 @@ export default function PromptInput({
     return () => observer.disconnect();
   }, []);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
@@ -389,7 +388,6 @@ export default function PromptInput({
     }
     resizeRafRef.current = requestAnimationFrame(() => {
       const textarea = textareaRef.current;
-      const overlay = overlayRef.current;
       if (textarea) {
         textarea.style.height = "auto";
         const scrollHeight = textarea.scrollHeight;
@@ -398,13 +396,6 @@ export default function PromptInput({
         
         textarea.style.height = `${newHeight}px`;
         textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
-
-        if (overlay && window.innerWidth >= 768) {
-          overlay.style.height = `${newHeight}px`;
-          overlay.style.overflowY = textarea.style.overflowY;
-          overlay.scrollTop = textarea.scrollTop;
-          overlay.scrollLeft = textarea.scrollLeft;
-        }
       }
     });
   };
@@ -505,39 +496,6 @@ export default function PromptInput({
       e.preventDefault();
       handleSubmit();
     }
-  };
-
-  const handleScroll = () => {
-    if (textareaRef.current && overlayRef.current) {
-      overlayRef.current.scrollTop = textareaRef.current.scrollTop;
-      overlayRef.current.scrollLeft = textareaRef.current.scrollLeft;
-    }
-  };
-
-  const renderHighlightedText = (text: string) => {
-    if (!text) return null;
-    const cmdList = ["/agents", "/drill", "/schedule"];
-    const parts = text.split(/(\/(?:agents|drill|schedule))\b/g);
-    
-    const rendered = parts.map((part, index) => {
-      if (cmdList.includes(part)) {
-        return (
-          <span
-            key={index}
-            className="text-blue-400 font-normal"
-          >
-            {part}
-          </span>
-        );
-      }
-      return <span key={index} className="text-zinc-100 font-normal">{part}</span>;
-    });
-
-    if (text.endsWith("\n")) {
-      rendered.push(<span key="trailing-newline">\u200b</span>);
-    }
-
-    return rendered;
   };
 
   const hasText = value.trim().length > 0;
@@ -711,28 +669,11 @@ export default function PromptInput({
 
       {/* Input Field */}
       <div className="relative w-full min-h-[28px]">
-        {/* Background highlight overlay (desktop only to prevent mobile IME typing lag) */}
-        <div
-          ref={overlayRef}
-          className="hidden md:block absolute inset-0 pointer-events-none select-none text-transparent whitespace-pre-wrap break-words font-sans text-[17px] leading-[1.55] p-0 m-0 border-0 prompt-overlay prompt-overlay-invisible-scrollbar"
-          style={{
-            minHeight: "28px",
-            wordBreak: "break-word",
-            overflowWrap: "break-word",
-            letterSpacing: "normal",
-            boxSizing: "border-box",
-          }}
-        >
-          {renderHighlightedText(value)}
-        </div>
-
-        {/* Front textarea */}
         <textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          onScroll={handleScroll}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           onPaste={handlePaste}
@@ -742,11 +683,7 @@ export default function PromptInput({
           autoCorrect="on"
           spellCheck="true"
           rows={1}
-          className={`w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 ${
-            value 
-              ? "text-zinc-100 [.light_&]:text-[#141413] md:text-transparent" 
-              : "text-zinc-100 [.light_&]:text-[#141413]"
-          } caret-blue-400 [.light_&]:caret-[#141413] placeholder-zinc-400/60 [.light_&]:placeholder-[#8e8b82] font-sans text-[16px] md:text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea`}
+          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-zinc-100 [.light_&]:text-[#141413] caret-blue-400 [.light_&]:caret-[#141413] placeholder-zinc-400/60 [.light_&]:placeholder-[#8e8b82] font-sans text-[16px] md:text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea"
           placeholder={value ? "" : "Ask VoxKage, type / for commands"}
           style={{
             minHeight: "28px",
@@ -757,24 +694,6 @@ export default function PromptInput({
             touchAction: "manipulation",
           }}
         />
-
-        <style jsx>{`
-          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-          }
-          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar-track {
-            background: transparent;
-          }
-          .prompt-overlay-invisible-scrollbar::-webkit-scrollbar-thumb {
-            background: transparent;
-            border: none;
-          }
-          .prompt-overlay-invisible-scrollbar {
-            scrollbar-width: thin;
-            scrollbar-color: transparent transparent;
-          }
-        `}</style>
       </div>
 
       {/* Bottom Actions Bar */}
@@ -1055,24 +974,7 @@ export default function PromptInput({
         .custom-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.16);
         }
-        .custom-scrollbar-overlay::-webkit-scrollbar {
-          width: 5px;
-        }
-        .custom-scrollbar-overlay::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar-overlay::-webkit-scrollbar-thumb {
-          background: transparent;
-        }
-        textarea::selection {
-          background: rgba(37, 99, 235, 0.4);
-          color: transparent;
-        }
-        textarea::-moz-selection {
-          background: rgba(37, 99, 235, 0.4);
-          color: transparent;
-        }
-        .prompt-textarea, .prompt-overlay {
+        .prompt-textarea {
           font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
           font-size: 17px !important;
           line-height: 27.625px !important;
@@ -1084,9 +986,6 @@ export default function PromptInput({
           white-space: pre-wrap !important;
           overflow-wrap: break-word !important;
           box-sizing: border-box !important;
-        }
-        .prompt-overlay {
-          transform: translateY(-2px);
         }
       `}</style>
     </div>

@@ -24,7 +24,7 @@ export default function DesignDottedCanvas({ active = false, isChatActive = fals
 
       // Check if user clicked on interactive elements (buttons, prompt box, input, links, etc.)
       const isInteractive = target.closest(
-        'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="option"], .prompt-textarea, .prompt-overlay, .fluid-glass-box-frosty, .fluid-glass-pill, .fluid-glass-popup, header, sidebar, nav, [data-interactive="true"]'
+        'button, a, input, textarea, select, [role="button"], [role="menuitem"], [role="option"], .prompt-textarea, .fluid-glass-box-frosty, .fluid-glass-pill, .fluid-glass-popup, header, sidebar, nav, [data-interactive="true"]'
       );
 
       if (window.innerWidth < 768) return;
