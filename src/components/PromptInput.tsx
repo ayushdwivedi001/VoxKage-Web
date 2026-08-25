@@ -814,20 +814,46 @@ export default function PromptInput({
             <button 
               type="button"
               onClick={() => setContextHudOpen((prev) => !prev)}
-              className={`flex items-center justify-center px-2 sm:px-2.5 py-1 rounded-lg text-[11.5px] sm:text-[12.5px] font-mono select-none cursor-pointer transition-all duration-200 ${
-                contextPercent >= 85 
-                  ? "text-red-400 border-red-500/40 bg-red-950/30 font-bold" 
-                  : isLightMode
-                  ? "prompt-btn-dark-gray"
-                  : "fluid-glass-pill text-zinc-300 hover:text-white"
-              }`}
+              className="flex items-center justify-center w-[32px] h-[32px] sm:w-[34px] sm:h-[34px] rounded-full hover:bg-white/10 [.light_&]:hover:bg-black/5 select-none cursor-pointer transition-all duration-200 active:scale-95 group/hud"
+              aria-label={`Context Window: ${contextPercent}% used`}
+              title={`Context Window: ${contextPercent}% used`}
             >
-              <span>{contextPercent}%</span>
+              <svg className="w-[24px] h-[24px] sm:w-[26px] sm:h-[26px] transform -rotate-90" viewBox="0 0 28 28">
+                {/* Background Track Ring */}
+                <circle
+                  cx="14"
+                  cy="14"
+                  r="11"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.8"
+                  className="text-white/20 [.light_&]:text-[#252523]/20 transition-colors"
+                />
+                {/* Foreground Dynamic Progress Ring */}
+                <circle
+                  cx="14"
+                  cy="14"
+                  r="11"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.8"
+                  strokeLinecap="round"
+                  strokeDasharray={2 * Math.PI * 11}
+                  strokeDashoffset={(2 * Math.PI * 11) - (Math.min(100, Math.max(0, contextPercent)) / 100) * (2 * Math.PI * 11)}
+                  className={`transition-all duration-500 ease-out ${
+                    contextPercent >= 95
+                      ? "text-red-500 [.light_&]:text-red-600 drop-shadow-[0_0_6px_rgba(239,68,68,0.4)]"
+                      : contextPercent >= 85
+                      ? "text-amber-400 [.light_&]:text-amber-600 drop-shadow-[0_0_5px_rgba(245,158,11,0.3)]"
+                      : "text-zinc-300 group-hover/hud:text-white [.light_&]:text-[#3d3d3a] [.light_&]:group-hover/hud:text-[#141413]"
+                  }`}
+                />
+              </svg>
             </button>
             
             {/* Click/Tap Toggleable Popup */}
             {contextHudOpen && (
-              <div className="absolute bottom-full mb-2 right-0 w-[230px] fluid-glass-popup text-zinc-200 text-[11.5px] font-sans p-3 rounded-2xl shadow-2xl z-50 select-none flex flex-col gap-2.5 animate-fadeIn border border-white/10">
+              <div className="absolute bottom-full mb-2.5 left-1/2 -translate-x-1/2 w-[230px] fluid-glass-popup text-zinc-200 text-[11.5px] font-sans p-3 rounded-2xl shadow-2xl z-50 select-none flex flex-col gap-2.5 animate-fadeIn border border-white/10">
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[12px] font-medium text-white font-sans">Context Window</span>
                   <span className="text-[11px] text-zinc-400 leading-snug">
