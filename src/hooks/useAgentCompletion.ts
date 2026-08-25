@@ -30,60 +30,7 @@ export function clearToolsCache() {
   console.log("[Tools Cache] Cleared all session cached tools.");
 }
 
-function formatToolCallLabel(tc: any): string {
-  const name = tc.function?.name || "";
-  const argsStr = tc.function?.arguments || "{}";
-  let args: any = {};
-  try {
-    args = JSON.parse(argsStr);
-  } catch (e) {}
-
-  if (name === "web_search" || name === "web_search_deep") {
-    return `Search: '${args.query || ""}'`;
-  } else if (name === "web_fetch") {
-    return `Fetch URL: ${args.url || ""}`;
-  } else if (name === "web_search_parallel") {
-    return `Parallel Search: ${args.queries && args.queries.length > 0 ? args.queries.join(", ") : ""}`;
-  } else if (name === "web_fetch_parallel") {
-    return `Parallel Fetch: ${args.urls && args.urls.length > 0 ? args.urls.length + " resources" : ""}`;
-  } else if (name === "show_map") {
-    return `Show Map: '${args.label || "Coordinate Location"}'`;
-  } else if (name === "get_weather") {
-    const loc = args.latitude !== undefined ? `${args.latitude}, ${args.longitude}` : "Current Geolocation";
-    return `Get Weather: '${loc}'`;
-  } else if (name === "get_images") {
-    return `Search Images: '${args.query || ""}'`;
-  } else if (name === "laptop_command") {
-    return `Laptop Cmd: ${args.command || ""}`;
-  } else if (name === "open_application") {
-    return `Open App: ${args.app_name || ""}`;
-  } else if (name === "close_application") {
-    return `Close App: ${args.app_name || ""}`;
-  } else if (name === "remember_user") {
-    return `Remember Fact: ${args.key || ""}`;
-  } else if (name === "recall_user") {
-    return "Recall Fact";
-  } else if (name === "forget_user") {
-    return `Forget Fact: ${args.key || ""}`;
-  } else if (name === "query_rag") {
-    return `RAG Query: '${args.query || ""}'`;
-  } else if (name === "list_indexed_documents") {
-    return "List RAG Docs";
-  } else if (name === "delete_indexed_document") {
-    return "Delete RAG Doc";
-  } else if (name === "index_document") {
-    return `Indexing ${args.original_name || args.filename || ""}...`;
-  } else if (name.includes("__")) {
-    const parts = name.split("__");
-    const provider = parts[0];
-    const mcpTool = parts.slice(1).join("__");
-    const formattedProvider = provider.charAt(0).toUpperCase() + provider.slice(1);
-    const formattedTool = mcpTool.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-    return `[${formattedProvider} MCP] ${formattedTool}`;
-  } else {
-    return name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
-  }
-}
+import { formatToolStep, extractDomain } from "@/lib/toolFormatters";
 
 interface UseAgentCompletionProps {
   currentSessionId: string | null;
@@ -558,6 +505,49 @@ export default function useAgentCompletion({
                       const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
                       if (reasoningPiece) {
                         currentReasoning += reasoningPiece;
+                        setMessages((prev) => {
+                          if (prev.length === 0) return prev;
+                          const copy = [...prev];
+                          const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                          if (idx !== -1) {
+                            copy[idx].thinkingContent = currentReasoning;
+                            copy[idx].status = "thinking";
+
+                            const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                            const turnThoughtId = `thought-turn-${loopCount}-${activeAssistantMsgId}`;
+                            const tIdx = steps.findIndex((s) => s.id === turnThoughtId);
+                            
+                            const thoughtLabel = loopCount === 1 
+                              ? "Initial Analysis & Strategy" 
+                              : loopCount === 2 
+                                ? "Evaluating findings & planning next step"
+                                : `Synthesizing findings & formulating response (Turn ${loopCount})`;
+                            const thoughtShortLabel = loopCount === 1 
+                              ? "Analyzing query..." 
+                              : loopCount === 2
+                                ? "Evaluating findings..."
+                                : "Synthesizing response...";
+
+                            if (tIdx === -1) {
+                              steps.push({
+                                id: turnThoughtId,
+                                label: thoughtLabel,
+                                shortLabel: thoughtShortLabel,
+                                status: "pending",
+                                type: "thought",
+                                thoughtText: currentReasoning,
+                              });
+                            } else {
+                              steps[tIdx] = {
+                                ...steps[tIdx],
+                                thoughtText: currentReasoning,
+                                status: "pending",
+                              };
+                            }
+                            copy[idx].thinkingSteps = steps;
+                          }
+                          return copy;
+                        });
                       }
 
                       if (delta?.content) {
@@ -568,6 +558,12 @@ export default function useAgentCompletion({
                           const copy = [...prev];
                           const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                           if (idx !== -1) {
+                            // If any synthesis or reasoning step is pending, mark it success on first content arrival
+                            if (copy[idx].thinkingSteps) {
+                              copy[idx].thinkingSteps = copy[idx].thinkingSteps.map((s) =>
+                                s.status === "pending" ? { ...s, status: "success" } : s
+                              );
+                            }
                             const precedingUserMsg = copy[idx - 1];
                             const isPlanModeMessage = buildModeRef.current === "Plan" || 
                               (precedingUserMsg && precedingUserMsg.content && (precedingUserMsg.content.includes("[PLAN MODE]") || precedingUserMsg.content.includes("/plan")));
@@ -700,16 +696,22 @@ export default function useAgentCompletion({
               const copy = [...prev];
               const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
               if (idx !== -1) {
-                const steps = copy[idx].thinkingSteps || [];
-                const newSteps = [...steps];
+                const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                // Mark the current turn's thought step as completed (success)
+                const turnThoughtId = `thought-turn-${loopCount}-${activeAssistantMsgId}`;
+                const tIdx = steps.findIndex((s) => s.id === turnThoughtId);
+                if (tIdx !== -1) {
+                  steps[tIdx] = { ...steps[tIdx], status: "success" };
+                }
+
                 currentToolCalls.forEach((tc) => {
-                  newSteps.push({
-                    id: tc.id,
-                    label: formatToolCallLabel(tc),
-                    status: "pending",
-                  });
+                  const formatted = formatToolStep(tc);
+                  const existing = steps.some((s) => s.id === formatted.id || (s.toolName === formatted.toolName && s.label === formatted.label));
+                  if (!existing) {
+                    steps.push(formatted);
+                  }
                 });
-                copy[idx].thinkingSteps = newSteps;
+                copy[idx].thinkingSteps = steps;
                 copy[idx].status = "thinking";
               }
               return copy;
@@ -750,15 +752,40 @@ export default function useAgentCompletion({
               const copy = [...prev];
               const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
               if (idx !== -1) {
-                const steps = copy[idx].thinkingSteps || [];
-                copy[idx].thinkingSteps = steps.map((s) => {
+                const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                const updatedSteps = steps.map((s) => {
                   const match = toolExecRes.results.find((r: any) => r.tool_call_id === s.id);
                   if (match) {
-                    const isError = match.content.startsWith("Error");
-                    return { ...s, status: isError ? "failed" : "success" };
+                    const isError = match.content && match.content.startsWith("Error");
+                    let parsedResults = null;
+                    let items = s.items ? [...s.items] : [];
+                    try {
+                      if (!isError && match.content) {
+                        parsedResults = JSON.parse(match.content);
+                        if (Array.isArray(parsedResults)) {
+                          const resultItems = parsedResults.map((r: any) => ({
+                            title: r.title || r.url || "",
+                            url: r.url || "",
+                            domain: extractDomain(r.url),
+                            snippet: r.snippet || "",
+                          }));
+                          // Preserve queries and append discovered links
+                          items = [...items, ...resultItems];
+                        }
+                      }
+                    } catch (_) {}
+
+                    return {
+                      ...s,
+                      status: isError ? ("failed" as const) : ("success" as const),
+                      resultContent: parsedResults || match.content,
+                      items,
+                    };
                   }
                   return s;
                 });
+
+                copy[idx].thinkingSteps = updatedSteps;
               }
               return copy;
             });
@@ -1148,6 +1175,49 @@ export default function useAgentCompletion({
                         const reasoningPiece = delta?.reasoning_content || delta?.reasoning || delta?.thought || "";
                         if (reasoningPiece) {
                           currentReasoning += reasoningPiece;
+                          setMessages((prev) => {
+                            if (prev.length === 0) return prev;
+                            const copy = [...prev];
+                            const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
+                            if (idx !== -1) {
+                              copy[idx].thinkingContent = currentReasoning;
+                              copy[idx].status = "thinking";
+
+                              const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                              const turnThoughtId = `thought-turn-${loopCount}-${activeAssistantMsgId}`;
+                              const tIdx = steps.findIndex((s) => s.id === turnThoughtId);
+                              
+                              const thoughtLabel = loopCount === 1 
+                                ? "Initial Analysis & Strategy" 
+                                : loopCount === 2 
+                                  ? "Evaluating findings & planning next step"
+                                  : `Synthesizing findings & formulating response (Turn ${loopCount})`;
+                              const thoughtShortLabel = loopCount === 1 
+                                ? "Analyzing query..." 
+                                : loopCount === 2
+                                  ? "Evaluating findings..."
+                                  : "Synthesizing response...";
+
+                              if (tIdx === -1) {
+                                steps.push({
+                                  id: turnThoughtId,
+                                  label: thoughtLabel,
+                                  shortLabel: thoughtShortLabel,
+                                  status: "pending",
+                                  type: "thought",
+                                  thoughtText: currentReasoning,
+                                });
+                              } else {
+                                steps[tIdx] = {
+                                  ...steps[tIdx],
+                                  thoughtText: currentReasoning,
+                                  status: "pending",
+                                };
+                              }
+                              copy[idx].thinkingSteps = steps;
+                            }
+                            return copy;
+                          });
                         }
 
                         if (delta.content) {
@@ -1159,13 +1229,68 @@ export default function useAgentCompletion({
                             const copy = [...prev];
                             const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                             if (idx !== -1) {
-                              copy[idx].content = finalAssistantContent;
+                              if (copy[idx].thinkingSteps) {
+                                copy[idx].thinkingSteps = copy[idx].thinkingSteps.map((s) =>
+                                  s.status === "pending" ? { ...s, status: "success" } : s
+                                );
+                              }
+                              const precedingUserMsg = copy[idx - 1];
+                              const isPlanModeMessage = buildModeRef.current === "Plan" || 
+                                (precedingUserMsg && precedingUserMsg.content && (precedingUserMsg.content.includes("[PLAN MODE]") || precedingUserMsg.content.includes("/plan")));
+
+                              if (isPlanModeMessage) {
+                                copy[idx].type = "plan";
+                                const planMatch = finalAssistantContent.match(/<plan(?:\s+title=["']([^"']+)["'])?>([\s\S]*)/i);
+                                if (planMatch) {
+                                  copy[idx].planTitle = planMatch[1] || "Implementation Plan";
+                                  copy[idx].content = planMatch[2].replace(/<\/plan>/g, "").trim();
+                                } else {
+                                  const firstLine = finalAssistantContent.trim().split("\n")[0] || "";
+                                  const headingMatch = firstLine.match(/^(?:#+\s*|\*\*\s*)([^\*\n#]+)/);
+                                  copy[idx].planTitle = headingMatch ? headingMatch[1].trim() : "Implementation Plan";
+                                  copy[idx].content = finalAssistantContent.trim();
+                                }
+                              } else if (buildModeRef.current === "Work") {
+                                let cleanContent = finalAssistantContent
+                                  .replace(/<plan(?:\s+title=["'][^"']+["'])?>/gi, "")
+                                  .replace(/<\/plan>/gi, "");
+                                
+                                if (finalAssistantContent.includes("<task_list>")) {
+                                  const taskMatch = finalAssistantContent.match(/<task_list>([\s\S]*?)<\/task_list>/i);
+                                  if (taskMatch) {
+                                    const lines = taskMatch[1].split("\n");
+                                    const parsedTasks: any[] = [];
+                                    lines.forEach((line, tIdx) => {
+                                      const trimmed = line.trim();
+                                      if (trimmed.startsWith("- [ ]") || trimmed.startsWith("- [x]") || trimmed.startsWith("- [/]")) {
+                                        const isDone = trimmed.startsWith("- [x]");
+                                        const isInProg = trimmed.startsWith("- [/]");
+                                        const taskText = trimmed.replace(/^-\s*\[[ x/\]]\s*/i, "").trim();
+                                        if (taskText) {
+                                          parsedTasks.push({
+                                            id: `task-${tIdx}-${Date.now()}`,
+                                            text: taskText,
+                                            status: isDone ? "completed" : isInProg ? "in_progress" : tIdx === 0 ? "in_progress" : "pending",
+                                          });
+                                        }
+                                      }
+                                    });
+                                    if (parsedTasks.length > 0) {
+                                      setActiveTasks(parsedTasks);
+                                    }
+                                    cleanContent = cleanContent.replace(/<task_list>[\s\S]*?<\/task_list>/gi, "").trim();
+                                  }
+                                }
+
+                                copy[idx].content = cleanContent;
+                              }
+                              copy[idx].status = "streaming";
                             }
                             return copy;
                           });
                         }
 
-                        if (delta.tool_calls) {
+                        if (delta?.tool_calls) {
                           delta.tool_calls.forEach((tc: any) => {
                             const tcIdx = tc.index ?? 0;
                             while (currentToolCalls.length <= tcIdx) {
@@ -1197,7 +1322,6 @@ export default function useAgentCompletion({
                   break;
                 }
 
-                // Successfully read stream
                 lastFetchError = null;
                 break;
 
@@ -1205,7 +1329,7 @@ export default function useAgentCompletion({
                 if (targetUrl !== "/api/completions/proxy") {
                   console.warn("Custom proxy failed to fetch, trying local proxy fallback...");
                   targetUrl = "/api/completions/proxy";
-                  attempt--; // retry fallback immediately
+                  attempt--;
                   continue;
                 }
                 lastFetchError = fetchErr;
@@ -1220,7 +1344,6 @@ export default function useAgentCompletion({
               throw lastFetchError;
             }
 
-            // Fallback: If no content was streamed but model produced reasoning or stopped, ensure response is not empty
             if (!finalAssistantContent.trim() && currentReasoning.trim() && currentToolCalls.length === 0) {
               finalAssistantContent = currentReasoning.trim();
               setMessages((prev) => {
@@ -1240,22 +1363,45 @@ export default function useAgentCompletion({
                 const copy = [...prev];
                 const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                 if (idx !== -1) {
-                  const steps = copy[idx].thinkingSteps || [];
-                  const newSteps = [...steps];
-                   currentToolCalls.forEach((tc) => {
-                     newSteps.push({
-                       id: tc.id,
-                       label: formatToolCallLabel(tc),
-                       status: "pending",
-                     });
-                   });
-                  copy[idx].thinkingSteps = newSteps;
+                  const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                  const turnThoughtId = `thought-turn-${loopCount}-${activeAssistantMsgId}`;
+                  const tIdx = steps.findIndex((s) => s.id === turnThoughtId);
+                  if (tIdx !== -1) {
+                    steps[tIdx] = { ...steps[tIdx], status: "success" };
+                  }
+
+                  currentToolCalls.forEach((tc) => {
+                    const formatted = formatToolStep(tc);
+                    const existing = steps.some((s) => s.id === formatted.id || (s.toolName === formatted.toolName && s.label === formatted.label));
+                    if (!existing) {
+                      steps.push(formatted);
+                    }
+                  });
+                  copy[idx].thinkingSteps = steps;
                   copy[idx].status = "thinking";
                 }
                 return copy;
               });
 
-              const toolExecRes = await executeBackendTools(currentSessionId!, currentToolCalls);
+              const actualSessionId = currentSessionId!;
+              const toolExecRes = await executeBackendTools(actualSessionId, currentToolCalls);
+
+              setActiveTasks((prevTasks) => {
+                if (!prevTasks || prevTasks.length === 0) return prevTasks;
+                const inProgIdx = prevTasks.findIndex((t) => t.status === "in_progress");
+                if (inProgIdx !== -1) {
+                  const copy = [...prevTasks];
+                  copy[inProgIdx] = { ...copy[inProgIdx], status: "completed" };
+                  if (inProgIdx + 1 < copy.length) {
+                    copy[inProgIdx + 1] = { ...copy[inProgIdx + 1], status: "in_progress" };
+                  }
+                  if (copy.every((t) => t.status === "completed")) {
+                    setTimeout(() => setActiveTasks([]), 2000);
+                  }
+                  return copy;
+                }
+                return prevTasks;
+              });
 
               messagesPayload.push({
                 role: "assistant",
@@ -1272,25 +1418,38 @@ export default function useAgentCompletion({
                 const copy = [...prev];
                 const idx = copy.findIndex((m) => m.id === activeAssistantMsgId);
                 if (idx !== -1) {
-                  const steps = copy[idx].thinkingSteps || [];
-                  copy[idx].thinkingSteps = steps.map((s) => {
+                  const steps = copy[idx].thinkingSteps ? [...copy[idx].thinkingSteps] : [];
+                  const updatedSteps = steps.map((s) => {
                     const match = toolExecRes.results.find((r: any) => r.tool_call_id === s.id);
                     if (match) {
-                      const isError = match.content.startsWith("Error");
+                      const isError = match.content && match.content.startsWith("Error");
                       let parsedResults = null;
+                      let items = s.items ? [...s.items] : [];
                       try {
-                        if (!isError) {
+                        if (!isError && match.content) {
                           parsedResults = JSON.parse(match.content);
+                          if (Array.isArray(parsedResults)) {
+                            const resultItems = parsedResults.map((r: any) => ({
+                              title: r.title || r.url || "",
+                              url: r.url || "",
+                              domain: extractDomain(r.url),
+                              snippet: r.snippet || "",
+                            }));
+                            items = [...items, ...resultItems];
+                          }
                         }
                       } catch (e) {}
                       return {
                         ...s,
                         status: isError ? ("failed" as const) : ("success" as const),
-                        resultContent: parsedResults,
+                        resultContent: parsedResults || match.content,
+                        items,
                       };
                     }
                     return s;
                   });
+
+                  copy[idx].thinkingSteps = updatedSteps;
                 }
                 return copy;
               });

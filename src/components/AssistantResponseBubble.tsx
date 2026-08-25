@@ -18,16 +18,21 @@ import {
   Image as ImageIcon,
   Navigation,
   Sun,
-  Search
+  Search,
+  Brain,
+  Terminal,
+  FileText
 } from "lucide-react";
 import {
   Message,
+  ThinkingStep,
   extractFilesFromContent,
   removeFileCodeBlocks,
   computeSessionFiles,
   parseMessageContent,
   renderFormattedContent
 } from "@/lib/chatHelpers";
+import { extractDomain, getFaviconUrl } from "@/lib/toolFormatters";
 import PlanOutputCard from "./PlanOutputCard";
 import FileListItem from "./FileListItem";
 import ImageCarousel from "./ImageCarousel";
@@ -396,6 +401,185 @@ function AnimatedSourcesButton({ sourcesCount, sources, onOpen }: AnimatedSource
   );
 }
 
+interface StepTimelineItemProps {
+  step: ThinkingStep;
+  isLast: boolean;
+  isLightMode: boolean;
+  renderIcon: (status: "pending" | "success" | "failed", label: string, type?: string) => React.ReactNode;
+}
+
+function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelineItemProps) {
+  const queryItems = (step.items || []).filter((i) => i && i.query);
+  const urlItems = (step.items || []).filter((i) => i && i.url);
+
+  let resultItems: any[] = [];
+  if (step.resultContent) {
+    const flat = Array.isArray(step.resultContent)
+      ? step.resultContent
+      : (Array.isArray(step.resultContent?.[0]) ? (step.resultContent as any[]).flat() : []);
+    resultItems = flat.filter((r: any) => r && (r.title || r.url));
+  }
+  const allUrls = resultItems.length > 0 ? resultItems : urlItems;
+  const hasArgs = step.args && Object.keys(step.args).length > 0 && step.type === "mcp";
+  const hasThought = !!step.thoughtText && step.thoughtText.trim().length > 0;
+
+  const hasExpandableContent = queryItems.length > 0 || allUrls.length > 0 || hasArgs || hasThought;
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className="relative flex flex-col items-start pb-3.5 last:pb-1 w-full group/step">
+      <div
+        onClick={() => hasExpandableContent && setIsOpen(!isOpen)}
+        className={`flex items-center gap-3 w-full ${hasExpandableContent ? "cursor-pointer select-none" : ""}`}
+      >
+        {!isLast && (
+          <div className={`absolute left-[11px] top-6 bottom-0 w-[1px] ${isLightMode ? "bg-[#c3c2b7]" : "bg-zinc-800"}`} />
+        )}
+
+        <div
+          className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 transition-colors duration-200 ${
+            isLightMode 
+              ? "bg-[#efe9de] border-[#c3c2b7]" 
+              : "bg-zinc-950/60 border-zinc-800"
+          }`}
+        >
+          {renderIcon(step.status, step.label, step.type)}
+        </div>
+
+        <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate flex-grow ${
+          step.status === "pending" 
+            ? (isLightMode ? "text-blue-600 font-medium animate-pulse" : "text-sky-400 font-medium animate-pulse") 
+            : (isLightMode ? "text-[#3d3d3a]" : "text-zinc-400")
+        }`}>
+          {step.label}
+        </span>
+
+        {hasExpandableContent && (
+          <button
+            type="button"
+            className={`p-1 rounded-md transition-colors text-zinc-500 hover:text-zinc-300 [.light_&]:hover:text-black flex-shrink-0`}
+            aria-label="Toggle step details"
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isOpen ? "rotate-0" : "-rotate-90"}`} />
+          </button>
+        )}
+      </div>
+
+      {/* Expanded Content Drawer */}
+      {hasExpandableContent && isOpen && (
+        <div className={`ml-8 mt-2 mb-2 w-full max-w-full rounded-xl border p-3 flex flex-col gap-2.5 transition-all select-text animate-fadeIn ${
+          isLightMode
+            ? "bg-[#efe9de]/70 border-[#c3c2b7]"
+            : "bg-[#0c0c0e] border-zinc-850"
+        }`}>
+          {/* 1. Full Thought Process text */}
+          {hasThought && (
+            <div className={`text-[12.5px] leading-relaxed font-sans whitespace-pre-wrap select-text ${
+              isLightMode ? "text-[#3d3d3a]" : "text-zinc-300"
+            }`}>
+              {step.thoughtText}
+            </div>
+          )}
+
+          {/* 2. Search queries list */}
+          {queryItems.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
+                <Search className="w-3 h-3 text-zinc-400" />
+                <span>Search Queries ({queryItems.length})</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {queryItems.map((item, qIdx) => (
+                  <span
+                    key={qIdx}
+                    className={`text-[11.5px] px-2 py-0.5 rounded-lg border font-sans select-text ${
+                      isLightMode
+                        ? "bg-[#faf9f5] border-[#d9d2c9] text-[#3d3d3a]"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-300"
+                    }`}
+                  >
+                    {item.query}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 3. Discovered or Fetched URLs list with favicons */}
+          {allUrls.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
+                <div className="flex items-center gap-1.5">
+                  <Globe className="w-3 h-3 text-zinc-400" />
+                  <span>{step.type === "fetch" ? "Target Resources" : "Discovered Sources"}</span>
+                </div>
+                <span>{allUrls.length} links</span>
+              </div>
+              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
+                {allUrls.map((res: any, rIdx: number) => {
+                  const url = res.url || "";
+                  const domain = res.domain || extractDomain(url);
+                  const title = res.title || url;
+                  const faviconUrl = getFaviconUrl(domain);
+
+                  return (
+                    <a
+                      key={rIdx}
+                      href={url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex items-center justify-between gap-3 p-1.5 rounded-lg transition-colors duration-150 text-[12px] group ${
+                        isLightMode ? "hover:bg-black/5" : "hover:bg-zinc-900/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-grow">
+                        <img
+                          src={faviconUrl}
+                          alt=""
+                          className="w-4 h-4 rounded-full flex-shrink-0 bg-white shadow-xs"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M2 12h20'/%3E%3C/svg%3E";
+                          }}
+                        />
+                        <span className="truncate text-sky-500 group-hover:text-sky-400 [.light_&]:text-blue-600 [.light_&]:group-hover:text-blue-700 underline underline-offset-2 font-normal text-left">
+                          {title}
+                        </span>
+                      </div>
+                      <span className={`font-mono text-[10.5px] flex-shrink-0 ${
+                        isLightMode ? "text-[#6c6a64]" : "text-zinc-500"
+                      }`}>
+                        {domain}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 4. MCP Tool Parameter Details */}
+          {hasArgs && (
+            <div className="flex flex-col gap-1 text-[11px] font-mono">
+              {Object.entries(step.args!).map(([k, v], aIdx) => {
+                if (v === undefined || v === null || v === "") return null;
+                const displayVal = typeof v === "object" ? JSON.stringify(v) : String(v);
+                return (
+                  <div key={aIdx} className="flex items-start gap-2 truncate">
+                    <span className={isLightMode ? "text-[#6c6a64]" : "text-zinc-500"}>{k}:</span>
+                    <span className={isLightMode ? "text-[#141413] font-medium" : "text-zinc-300 font-medium"}>
+                      {displayVal.length > 80 ? displayVal.substring(0, 77) + "..." : displayVal}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AssistantResponseBubbleProps {
   sessionId: string | null;
   msg: Message;
@@ -608,7 +792,8 @@ export default function AssistantResponseBubble({
     }
   }
 
-  const hasActualThoughts = !!thinkingContent || (msg.thinkingSteps && msg.thinkingSteps.length > 0);
+  const effectiveThinking = thinkingContent || msg.thinkingContent || "";
+  const hasActualThoughts = !!effectiveThinking || (msg.thinkingSteps && msg.thinkingSteps.length > 0);
 
   // If currently running, run a local timer
   useEffect(() => {
@@ -633,7 +818,7 @@ export default function AssistantResponseBubble({
     };
   }, [msg.status, msg.thinkingDuration, msg.thinkingStart]);
 
-  // Rotate initial interactive status words randomly
+  // Rotate initial interactive status words randomly ONLY before model begins thinking or streaming tools
   useEffect(() => {
     if (msg.status === "thinking" && !hasActualThoughts) {
       const pickRandom = () => {
@@ -660,29 +845,21 @@ export default function AssistantResponseBubble({
     }
   }
 
-  // Split deep thoughts to keep them clean (not paragraphs worth of lines)
-  let thoughts: any[] = [];
-  if (thinkingContent) {
-    const rawLines = thinkingContent
-      .split("\n")
-      .map(line => line.replace(/^-\s*/, "").trim())
-      .filter(line => line.length > 0);
-      
-    const sliced = rawLines.slice(0, 4);
-    thoughts = sliced.map((line, idx) => ({
-      id: `think-${idx}`,
-      label: line.length > 65 ? line.substring(0, 62) + "..." : line,
-      status: "success" as const
-    }));
-    if (rawLines.length > 4) {
-      thoughts.push({
-        id: "think-more",
-        label: "Analyzing remaining response path...",
-        status: "success" as const
-      });
-    }
-  } else if (msg.thinkingSteps && msg.thinkingSteps.length > 0) {
+  // Thoughts and tool steps timeline
+  let thoughts: ThinkingStep[] = [];
+  if (msg.thinkingSteps && msg.thinkingSteps.length > 0) {
     thoughts = msg.thinkingSteps;
+  } else if (effectiveThinking) {
+    thoughts = [
+      {
+        id: `thought-raw-${msg.id}`,
+        label: "Thought Process",
+        shortLabel: "VoxKage is thinking...",
+        status: msg.status === "thinking" ? "pending" : "success",
+        type: "thought",
+        thoughtText: effectiveThinking,
+      }
+    ];
   } else if (msg.status === "thinking") {
     thoughts = [
       { id: "init-step", label: activeWord, status: "pending" as const }
@@ -738,16 +915,27 @@ export default function AssistantResponseBubble({
     });
   }
 
-  const renderStepIcon = (status: "pending" | "success" | "failed", label: string) => {
+  const renderStepIcon = (status: "pending" | "success" | "failed", label: string, type?: string) => {
     const isPending = status === "pending";
     const lowerLabel = label.toLowerCase();
     
-    // Check if it's searching tools
-    if (lowerLabel.includes("searching tools")) {
+    // Check if it's thought / reasoning / synthesis -> ALWAYS VOXKAGE BLUE
+    if (type === "thought" || lowerLabel.includes("synthesiz") || lowerLabel.includes("thought") || lowerLabel.includes("reasoning") || lowerLabel.includes("analysis") || lowerLabel.includes("evaluat") || lowerLabel.includes("strategy")) {
       return (
-        <Search 
+        <Brain 
           className={`w-3.5 h-3.5 ${
-            isPending ? "text-zinc-300 animate-pulse animate-duration-1000" : "text-zinc-500"
+            isPending ? "text-sky-400 animate-pulse animate-duration-1000" : "text-sky-500 [.light_&]:text-blue-600"
+          }`} 
+        />
+      );
+    }
+
+    // Check if it's Word / Document
+    if (lowerLabel.includes("word") || lowerLabel.includes("docx") || lowerLabel.includes("document")) {
+      return (
+        <FileText 
+          className={`w-3.5 h-3.5 ${
+            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-blue-500"
           }`} 
         />
       );
@@ -765,7 +953,7 @@ export default function AssistantResponseBubble({
     }
 
     // Check if it's Gmail
-    if (lowerLabel.includes("gmail")) {
+    if (lowerLabel.includes("gmail") || lowerLabel.includes("email")) {
       return (
         <img
           src="https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg"
@@ -774,6 +962,7 @@ export default function AssistantResponseBubble({
         />
       );
     }
+
     // Check if it's Google Calendar
     if (lowerLabel.includes("google_calendar") || lowerLabel.includes("calendar")) {
       return (
@@ -784,6 +973,7 @@ export default function AssistantResponseBubble({
         />
       );
     }
+
     // Check if it's Notion
     if (lowerLabel.includes("notion")) {
       return (
@@ -794,6 +984,7 @@ export default function AssistantResponseBubble({
         />
       );
     }
+
     // Check if it's an image search
     if (lowerLabel.includes("search images") || lowerLabel.includes("image")) {
       return (
@@ -805,34 +996,23 @@ export default function AssistantResponseBubble({
       );
     }
     
-    // Check if it's map layout rendering
-    if (lowerLabel.includes("map:") || lowerLabel.includes("render map") || lowerLabel.includes("show map")) {
+    // Check if it's system shell / command
+    if (type === "system" || lowerLabel.includes("system shell") || lowerLabel.includes("telemetry") || lowerLabel.includes("command")) {
       return (
-        <Navigation 
+        <Terminal 
           className={`w-3.5 h-3.5 ${
-            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
-          }`} 
-        />
-      );
-    }
-
-    // Check if it's weather query
-    if (lowerLabel.includes("weather") || lowerLabel.includes("get_weather")) {
-      return (
-        <Sun 
-          className={`w-3.5 h-3.5 ${
-            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+            isPending ? "text-emerald-400 animate-pulse animate-duration-1000" : "text-zinc-400 [.light_&]:text-[#525250]"
           }`} 
         />
       );
     }
     
     // Check if it's general web search/deep search/fetch
-    if (lowerLabel.includes("search:") || lowerLabel.includes("fetch") || lowerLabel.includes("deep search") || lowerLabel.includes("parallel search")) {
+    if (type === "search" || type === "fetch" || lowerLabel.includes("search:") || lowerLabel.includes("fetch") || lowerLabel.includes("reading page") || lowerLabel.includes("deep search") || lowerLabel.includes("parallel search")) {
       return (
         <Globe 
           className={`w-3.5 h-3.5 ${
-            isPending ? "text-blue-400 animate-pulse animate-duration-1000" : "text-zinc-400"
+            isPending ? "text-sky-400 animate-pulse animate-duration-1000" : "text-sky-500 [.light_&]:text-blue-600"
           }`} 
         />
       );
@@ -847,7 +1027,6 @@ export default function AssistantResponseBubble({
     }
   };
 
-  
   const activeStep = processedThoughts.find(t => t.status === "pending") || (isMsgRunning ? processedThoughts[processedThoughts.length - 1] : null);
   
   const formatDuration = (sec: number) => {
@@ -856,9 +1035,18 @@ export default function AssistantResponseBubble({
   };
 
   const isThinkingActive = msg.status === "thinking" || msg.status === "streaming";
-  const displayLabel = isThinkingActive
-    ? (activeStep ? activeStep.label : `Thinking${dots}`)
-    : `Thought for ${formatDuration(msg.thinkingDuration || elapsedSeconds || 1)}`;
+  let displayLabel = "";
+  if (isThinkingActive) {
+    if (activeStep && activeStep.status === "pending") {
+      displayLabel = activeStep.shortLabel || activeStep.label;
+    } else if (hasActualThoughts || effectiveThinking) {
+      displayLabel = `VoxKage is thinking${dots}`;
+    } else {
+      displayLabel = activeWord;
+    }
+  } else {
+    displayLabel = `Thought for ${formatDuration(msg.thinkingDuration || elapsedSeconds || 1)}`;
+  }
 
   const showGlow = isThinkingActive;
   const shouldShowAccordion = isMsgRunning || hasActualThoughts || processedThoughts.length > 0;
@@ -884,7 +1072,7 @@ export default function AssistantResponseBubble({
             {isThinkingActive && (
               <VoxKageThinkingCreature className="flex-shrink-0 text-zinc-100" isLightMode={isLightMode} />
             )}
-            <span className={`text-[13px] font-medium tracking-wide font-sans ${
+            <span className={`text-[13px] font-medium tracking-wide font-sans truncate max-w-[85vw] sm:max-w-xl ${
               showGlow 
                 ? "animate-thinking-glow" 
                 : (isLightMode ? "text-[#141413]" : "text-zinc-400")
@@ -892,110 +1080,23 @@ export default function AssistantResponseBubble({
               {displayLabel}
             </span>
             {isThinkingActive && (
-              <span className={`text-[11.5px] font-mono ${isLightMode ? "text-[#525250]" : "text-zinc-600"}`}>({elapsedSeconds}s)</span>
+              <span className={`text-[11.5px] font-mono flex-shrink-0 ${isLightMode ? "text-[#525250]" : "text-zinc-600"}`}>({elapsedSeconds}s)</span>
             )}
           </div>
         )}
 
-        {/* Expanded Step Timeline */}
-        {isThoughtsExpanded && processedThoughts.length > 0 && (
+        {/* Expanded Step Timeline & Chronological Thought Process */}
+        {isThoughtsExpanded && (hasActualThoughts || processedThoughts.length > 0) && (
           <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn w-full max-w-full">
-            {processedThoughts.map((step, idx) => {
-              const isLast = idx === processedThoughts.length - 1;
-              return (
-                <div key={idx} className="relative flex flex-col items-start pb-4 last:pb-1 w-full">
-                  <div className="flex items-start gap-3.5 w-full">
-                    {!isLast && (
-                      <div className={`absolute left-[10px] top-6 bottom-0 w-[1px] ${isLightMode ? "bg-[#c3c2b7]" : "bg-zinc-800"}`} />
-                    )}
-
-                    <div
-                      className={`w-[22px] h-[22px] rounded-full border flex items-center justify-center z-10 flex-shrink-0 transition-colors duration-200 ${
-                        isLightMode 
-                          ? "bg-[#efe9de] border-[#c3c2b7]" 
-                          : "bg-zinc-950/60 border-zinc-800"
-                      }`}
-                    >
-                      {renderStepIcon(step.status, step.label)}
-                    </div>
-
-                    <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate ${
-                      step.status === "pending" 
-                        ? (isLightMode ? "text-[#1d4ed8] font-medium animate-pulse" : "text-zinc-300 font-medium animate-pulse") 
-                        : (isLightMode ? "text-[#3d3d3a]" : "text-zinc-500")
-                    }`}>
-                      {step.label}
-                    </span>
-                  </div>
-
-                  {/* Render Search Results Box if resultContent exists */}
-                  {step.resultContent && (() => {
-                    const flatResults = Array.isArray(step.resultContent)
-                      ? step.resultContent
-                      : (Array.isArray(step.resultContent[0]) ? (step.resultContent as any[]).flat() : []);
-                    
-                    const validResults = Array.isArray(flatResults) ? flatResults.filter(r => r && (r.title || r.url)) : [];
-                    if (validResults.length === 0) return null;
-
-                    return (
-                      <div className={`ml-9 mt-2 w-full max-w-full border rounded-xl p-2.5 flex flex-col gap-2 select-text ${
-                        isLightMode 
-                          ? "bg-[#efe9de] border-[#c3c2b7]" 
-                          : "bg-[#0c0c0e] border-zinc-850"
-                      }`}>
-                        <div className={`flex items-center justify-between text-[11px] font-sans border-b pb-1.5 mb-1 px-1 ${
-                          isLightMode 
-                            ? "text-[#525250] border-[#c3c2b7]" 
-                            : "text-zinc-500 border-zinc-900"
-                        }`}>
-                          <span>Search Results</span>
-                          <span>{validResults.length} results</span>
-                        </div>
-                        <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
-                          {validResults.slice(0, 8).map((res: any, rIdx: number) => {
-                            let domain = "";
-                            try {
-                              const matchDomain = res.url?.match(/^(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
-                              domain = matchDomain ? matchDomain[1] : res.url || "";
-                            } catch {
-                              domain = res.url || "";
-                            }
-                            return (
-                              <a
-                                key={rIdx}
-                                href={res.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`flex items-center justify-between gap-4 p-1.5 rounded-lg transition-colors duration-150 text-[12.5px] group ${
-                                  isLightMode 
-                                    ? "hover:bg-black/5" 
-                                    : "hover:bg-zinc-900/50"
-                                }`}
-                              >
-                                <span className={`transition-colors truncate flex-grow text-left ${
-                                  isLightMode 
-                                    ? "text-[#141413] group-hover:text-black" 
-                                    : "text-zinc-300 group-hover:text-white"
-                                }`}>
-                                  {res.title || res.url}
-                                </span>
-                                <span className={`font-mono text-[11px] flex-shrink-0 ${
-                                  isLightMode 
-                                    ? "text-[#525250] group-hover:text-[#141413]" 
-                                    : "text-zinc-600 group-hover:text-zinc-400"
-                                }`}>
-                                  {domain}
-                                </span>
-                              </a>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })}
+            {processedThoughts.map((step, idx) => (
+              <StepTimelineItem
+                key={step.id || idx}
+                step={step}
+                isLast={idx === processedThoughts.length - 1}
+                isLightMode={isLightMode}
+                renderIcon={renderStepIcon}
+              />
+            ))}
           </div>
         )}
       </div>

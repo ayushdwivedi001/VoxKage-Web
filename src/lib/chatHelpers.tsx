@@ -50,6 +50,26 @@ const CitationPill = ({ source, index }: { source: any; index: number }) => {
   );
 };
 
+export interface ThinkingStep {
+  id: string;
+  label: string;
+  shortLabel?: string;
+  status: "pending" | "success" | "failed";
+  type?: "thought" | "search" | "fetch" | "mcp" | "code" | "system" | "tool";
+  provider?: string;
+  toolName?: string;
+  args?: Record<string, any>;
+  resultContent?: any;
+  items?: Array<{
+    title?: string;
+    url?: string;
+    query?: string;
+    domain?: string;
+    snippet?: string;
+  }>;
+  thoughtText?: string;
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant";
@@ -58,7 +78,8 @@ export interface Message {
   status?: "thinking" | "streaming" | "completed";
   thinkingDuration?: number;
   thinkingStart?: number;
-  thinkingSteps?: Array<{ id: string; label: string; status: "pending" | "success" | "failed"; resultContent?: any }>;
+  thinkingContent?: string;
+  thinkingSteps?: ThinkingStep[];
   type?: string;
   planTitle?: string;
   isPlanExecuted?: boolean;
@@ -928,15 +949,18 @@ export const parseMessageContent = (content: string) => {
   let thinkingContent = "";
   let finalContent = finalCleanContent;
 
-  const thinkStartIndex = finalCleanContent.indexOf("<think>");
-  const thinkEndIndex = finalCleanContent.indexOf("</think>");
+  const thinkTag = finalCleanContent.includes("<thinking>") ? "thinking" : "think";
+  const thinkStartIndex = finalCleanContent.indexOf(`<${thinkTag}>`);
+  const thinkEndIndex = finalCleanContent.indexOf(`</${thinkTag}>`);
+  const tagLen = thinkTag === "thinking" ? 10 : 7;
+  const closeTagLen = thinkTag === "thinking" ? 11 : 8;
 
   if (thinkStartIndex !== -1) {
     if (thinkEndIndex !== -1) {
-      thinkingContent = cleanTextContent.substring(thinkStartIndex + 7, thinkEndIndex).trim();
-      finalContent = (cleanTextContent.substring(0, thinkStartIndex) + cleanTextContent.substring(thinkEndIndex + 8)).trim();
+      thinkingContent = cleanTextContent.substring(thinkStartIndex + tagLen, thinkEndIndex).trim();
+      finalContent = (cleanTextContent.substring(0, thinkStartIndex) + cleanTextContent.substring(thinkEndIndex + closeTagLen)).trim();
     } else {
-      thinkingContent = cleanTextContent.substring(thinkStartIndex + 7).trim();
+      thinkingContent = cleanTextContent.substring(thinkStartIndex + tagLen).trim();
       finalContent = cleanTextContent.substring(0, thinkStartIndex).trim();
     }
   }

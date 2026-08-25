@@ -181,13 +181,12 @@ export default function useChatSessions({
             const last = copy[lastIdx];
             if (last && last.role === "assistant") {
               const steps = last.thinkingSteps || [];
-              const exists = steps.some((s) => s.label === data.content);
-              if (!exists) {
-                const stepId = `step-${steps.length + 1}`;
+              // Only insert hud_log if no formatted steps exist (e.g. CLI remote session)
+              if (steps.length === 0) {
+                const stepId = `step-hud-1`;
                 copy[lastIdx] = {
                   ...last,
                   thinkingSteps: [
-                    ...steps,
                     { id: stepId, label: data.content, status: "pending" },
                   ],
                 };
