@@ -465,9 +465,9 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
         )}
       </div>
 
-      {/* Expanded Content Drawer - Aligned directly under header on mobile, indented on desktop */}
+      {/* Expanded Content Drawer - Aligned directly under header, fitting 100% width cleanly */}
       {hasExpandableContent && isOpen && (
-        <div className={`w-full sm:w-[calc(100%-1.75rem)] ml-0 sm:ml-7 mt-2 mb-2 max-w-full box-border rounded-xl border p-2.5 sm:p-3 flex flex-col gap-2.5 transition-all select-text animate-fadeIn overflow-hidden ${
+        <div className={`w-full max-w-full box-border mt-2 mb-2 rounded-xl border p-2.5 sm:p-3 flex flex-col gap-2.5 transition-all select-text animate-fadeIn overflow-hidden ${
           isLightMode
             ? "bg-[#efe9de]/70 border-[#c3c2b7]"
             : "bg-[#0c0c0e] border-zinc-850"
@@ -1087,7 +1087,7 @@ export default function AssistantResponseBubble({
 
         {/* Expanded Step Timeline & Chronological Thought Process */}
         {isThoughtsExpanded && (hasActualThoughts || processedThoughts.length > 0) && (
-          <div className="flex flex-col pl-0 sm:pl-3.5 mt-2 mb-3.5 select-none animate-fadeIn w-full max-w-full min-w-0 overflow-hidden">
+          <div className="flex flex-col mt-2 mb-3.5 select-none animate-fadeIn w-full max-w-full min-w-0 overflow-hidden box-border">
             {processedThoughts.map((step, idx) => (
               <StepTimelineItem
                 key={step.id || idx}
