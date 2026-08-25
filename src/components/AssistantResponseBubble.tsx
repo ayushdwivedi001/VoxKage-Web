@@ -427,10 +427,10 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
   const [isOpen, setIsOpen] = useState(true);
 
   return (
-    <div className="relative flex flex-col items-start pb-3.5 last:pb-1 w-full group/step">
+    <div className="relative flex flex-col items-start pb-3 last:pb-1 w-full max-w-full min-w-0 group/step">
       <div
         onClick={() => hasExpandableContent && setIsOpen(!isOpen)}
-        className={`flex items-center gap-3 w-full ${hasExpandableContent ? "cursor-pointer select-none" : ""}`}
+        className={`flex items-center gap-2.5 sm:gap-3 w-full min-w-0 ${hasExpandableContent ? "cursor-pointer select-none" : ""}`}
       >
         {!isLast && (
           <div className={`absolute left-[11px] top-6 bottom-0 w-[1px] ${isLightMode ? "bg-[#c3c2b7]" : "bg-zinc-800"}`} />
@@ -446,7 +446,7 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
           {renderIcon(step.status, step.label, step.type)}
         </div>
 
-        <span className={`text-[13px] leading-[22px] font-sans block pr-2 truncate flex-grow ${
+        <span className={`text-[13px] leading-[22px] font-sans block pr-1 truncate flex-grow min-w-0 ${
           step.status === "pending" 
             ? (isLightMode ? "text-blue-600 font-medium animate-pulse" : "text-sky-400 font-medium animate-pulse") 
             : (isLightMode ? "text-[#3d3d3a]" : "text-zinc-400")
@@ -465,16 +465,16 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
         )}
       </div>
 
-      {/* Expanded Content Drawer */}
+      {/* Expanded Content Drawer - Aligned directly under header on mobile, indented on desktop */}
       {hasExpandableContent && isOpen && (
-        <div className={`ml-8 mt-2 mb-2 w-full max-w-full rounded-xl border p-3 flex flex-col gap-2.5 transition-all select-text animate-fadeIn ${
+        <div className={`w-full sm:w-[calc(100%-1.75rem)] ml-0 sm:ml-7 mt-2 mb-2 max-w-full box-border rounded-xl border p-2.5 sm:p-3 flex flex-col gap-2.5 transition-all select-text animate-fadeIn overflow-hidden ${
           isLightMode
             ? "bg-[#efe9de]/70 border-[#c3c2b7]"
             : "bg-[#0c0c0e] border-zinc-850"
         }`}>
           {/* 1. Full Thought Process text */}
           {hasThought && (
-            <div className={`text-[12.5px] leading-relaxed font-sans whitespace-pre-wrap select-text ${
+            <div className={`text-[12.5px] leading-relaxed font-sans whitespace-pre-wrap break-words min-w-0 max-w-full overflow-hidden select-text ${
               isLightMode ? "text-[#3d3d3a]" : "text-zinc-300"
             }`}>
               {step.thoughtText}
@@ -483,16 +483,16 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
 
           {/* 2. Search queries list */}
           {queryItems.length > 0 && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 min-w-0 max-w-full">
               <div className="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
                 <Search className="w-3 h-3 text-zinc-400" />
                 <span>Search Queries ({queryItems.length})</span>
               </div>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5 min-w-0 max-w-full">
                 {queryItems.map((item, qIdx) => (
                   <span
                     key={qIdx}
-                    className={`text-[11.5px] px-2 py-0.5 rounded-lg border font-sans select-text ${
+                    className={`text-[11.5px] px-2 py-0.5 rounded-lg border font-sans select-text break-words max-w-full ${
                       isLightMode
                         ? "bg-[#faf9f5] border-[#d9d2c9] text-[#3d3d3a]"
                         : "bg-zinc-900 border-zinc-800 text-zinc-300"
@@ -507,7 +507,7 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
 
           {/* 3. Discovered or Fetched URLs list with favicons */}
           {allUrls.length > 0 && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 min-w-0 max-w-full">
               <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500 uppercase tracking-wider">
                 <div className="flex items-center gap-1.5">
                   <Globe className="w-3 h-3 text-zinc-400" />
@@ -515,7 +515,7 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
                 </div>
                 <span>{allUrls.length} links</span>
               </div>
-              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto overflow-x-hidden custom-scrollbar min-w-0 max-w-full">
                 {allUrls.map((res: any, rIdx: number) => {
                   const url = res.url || "";
                   const domain = res.domain || extractDomain(url);
@@ -528,11 +528,11 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
                       href={url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`flex items-center justify-between gap-3 p-1.5 rounded-lg transition-colors duration-150 text-[12px] group ${
+                      className={`flex items-center justify-between gap-2 p-1.5 rounded-lg transition-colors duration-150 text-[12px] group min-w-0 max-w-full overflow-hidden ${
                         isLightMode ? "hover:bg-black/5" : "hover:bg-zinc-900/60"
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-grow">
+                      <div className="flex items-center gap-2 min-w-0 flex-grow overflow-hidden">
                         <img
                           src={faviconUrl}
                           alt=""
@@ -541,11 +541,11 @@ function StepTimelineItem({ step, isLast, isLightMode, renderIcon }: StepTimelin
                             (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%234b5563' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 2a14.5 14.5 0 0 0 0 20M2 12h20'/%3E%3C/svg%3E";
                           }}
                         />
-                        <span className="truncate text-sky-500 group-hover:text-sky-400 [.light_&]:text-blue-600 [.light_&]:group-hover:text-blue-700 underline underline-offset-2 font-normal text-left">
+                        <span className="truncate text-sky-500 group-hover:text-sky-400 [.light_&]:text-blue-600 [.light_&]:group-hover:text-blue-700 underline underline-offset-2 font-normal text-left min-w-0">
                           {title}
                         </span>
                       </div>
-                      <span className={`font-mono text-[10.5px] flex-shrink-0 ${
+                      <span className={`font-mono text-[10.5px] flex-shrink-0 max-w-[90px] sm:max-w-[140px] truncate text-right ${
                         isLightMode ? "text-[#6c6a64]" : "text-zinc-500"
                       }`}>
                         {domain}
@@ -1087,7 +1087,7 @@ export default function AssistantResponseBubble({
 
         {/* Expanded Step Timeline & Chronological Thought Process */}
         {isThoughtsExpanded && (hasActualThoughts || processedThoughts.length > 0) && (
-          <div className="flex flex-col pl-4 mt-2 mb-3.5 select-none animate-fadeIn w-full max-w-full">
+          <div className="flex flex-col pl-0 sm:pl-3.5 mt-2 mb-3.5 select-none animate-fadeIn w-full max-w-full min-w-0 overflow-hidden">
             {processedThoughts.map((step, idx) => (
               <StepTimelineItem
                 key={step.id || idx}
