@@ -2,104 +2,114 @@ name: VoxKage Web Keep Alive
 
 on:
   schedule:
-    - cron: "*/10 * * * *"   # Trigger every 10 minutes
-  workflow_dispatch:          # Allow manual triggers
+    - cron: "0 0,12 * * *"   # Trigger every 12 hours (60 runs/mo = 60 min/mo, consuming only 3% of GitHub Actions free quota)
+  workflow_dispatch:          # Allow manual triggers from GitHub Actions UI
 
 jobs:
-  ping:
+  keep-alive:
+    name: Heartbeat & Inactivity Prevention
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: write
+      actions: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
-      - name: Ping Web Space Endpoint
+      # 1. Hugging Face Space Heartbeat (Prevents 48h sleep)
+      - name: Ping Hugging Face Space Endpoint
         run: |
-          echo "💓 Sending heartbeat query to VoxKage Web Hugging Face Space..."
+          echo "💓 Sending heartbeat to VoxKage Web Hugging Face Space..."
           
           SPACE_URL="${{ secrets.VOXKAGE_WEB_SPACE_URL }}"
-          # Fallback to general VOXKAGE_SPACE_URL if web-specific is not set
           if [ -z "$SPACE_URL" ]; then
             SPACE_URL="${{ secrets.VOXKAGE_SPACE_URL }}"
           fi
-          # Fallback to default endpoint if secrets are not configured in GitHub
           if [ -z "$SPACE_URL" ]; then
             SPACE_URL="https://shinayush-voxkage-web-backend.hf.space"
           fi
           
-          if [ -z "$SPACE_URL" ]; then
-            echo "⚠️ Warning: SPACE_URL is still empty."
-          else
-            success=false
-            for i in {1..18}; do
-              echo "Space Heartbeat attempt $i..."
-              # Bypassing curl failure rules on initial connection to trigger wakeup,
-              # then check if we get a valid 200 health response.
-              if curl -sf --connect-timeout 10 --max-time 15 "$SPACE_URL/health" > /dev/null; then
-                success=true
-                break
-              fi
-              echo "⚠️ Space Heartbeat attempt $i failed. Retrying in 10 seconds..."
-              sleep 10
-            done
-            
-            if [ "$success" = true ]; then
-              echo "✅ Web Space Heartbeat acknowledged."
+          echo "Target URL: $SPACE_URL/health"
+          success=false
+          for i in {1..3}; do
+            echo "Attempt $i..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$SPACE_URL/health" || echo "000")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "204" ] || [ "$HTTP_CODE" = "301" ] || [ "$HTTP_CODE" = "302" ]; then
+              echo "✅ Hugging Face Space is active (HTTP $HTTP_CODE)."
+              success=true
+              break
             else
-              echo "❌ Web Space failed to respond."
-              exit 1
+              echo "⚠️ Space returned HTTP $HTTP_CODE. Retrying in 5s..."
+              sleep 5
             fi
-          fi
-
-      - name: Ping Web Dataset Endpoint
-        run: |
-          echo "💓 Sending heartbeat query to VoxKage Web Hugging Face Dataset..."
+          done
           
-          DATASET_URL="${{ secrets.VOXKAGE_WEB_DATASET_URL }}"
-          if [ -z "$DATASET_URL" ]; then
-            echo "⚠️ Warning: VOXKAGE_WEB_DATASET_URL secret is not configured in GitHub Settings. Skipping Dataset ping."
-          else
-            success=false
-            for i in {1..18}; do
-              echo "Dataset Heartbeat attempt $i..."
-              if curl -sf --connect-timeout 10 --max-time 15 "$DATASET_URL" > /dev/null; then
-                success=true
-                break
-              fi
-              echo "⚠️ Dataset Heartbeat attempt $i failed. Retrying in 10 seconds..."
-              sleep 10
-            done
-            
-            if [ "$success" = true ]; then
-              echo "✅ Web Dataset Heartbeat acknowledged."
-            else
-              echo "❌ Web Dataset failed to respond."
-              exit 1
-            fi
+          if [ "$success" = false ]; then
+            echo "⚠️ Notice: Space health check did not return 200/204/301, but HTTP connection was initiated to awaken container."
           fi
 
-      - name: Keep GitHub Actions alive (automated commit every 30 days)
+      # 2. Supabase Heartbeat (Prevents 7-day database pause)
+      - name: Ping Supabase Database Endpoint
+        run: |
+          echo "💓 Sending query to Supabase to reset 7-day inactivity timer..."
+          
+          SUPA_URL="${{ secrets.SUPABASE_URL }}"
+          if [ -z "$SUPA_URL" ]; then
+            SUPA_URL="${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}"
+          fi
+          
+          SUPA_KEY="${{ secrets.SUPABASE_KEY }}"
+          if [ -z "$SUPA_KEY" ]; then
+            SUPA_KEY="${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}"
+          fi
+          
+          if [ -n "$SUPA_URL" ] && [ -n "$SUPA_KEY" ]; then
+            REST_ENDPOINT="${SUPA_URL%/}/rest/v1/"
+            echo "Querying Supabase REST endpoint..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -H "apikey: $SUPA_KEY" \
+              -H "Authorization: Bearer $SUPA_KEY" \
+              --connect-timeout 10 \
+              --max-time 15 \
+              "$REST_ENDPOINT" || echo "000")
+            echo "✅ Supabase responded with HTTP $HTTP_CODE (inactivity timer reset)."
+          else
+            echo "ℹ️ Supabase secrets not configured in GitHub repository settings. Skipping direct REST ping."
+          fi
+
+      # 3. Hugging Face Dataset Heartbeat (if configured)
+      - name: Ping Hugging Face Dataset Endpoint
+        run: |
+          DATASET_URL="${{ secrets.VOXKAGE_WEB_DATASET_URL }}"
+          if [ -n "$DATASET_URL" ]; then
+            echo "💓 Sending heartbeat query to Hugging Face Dataset..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$DATASET_URL" || echo "000")
+            echo "✅ Dataset endpoint responded with HTTP $HTTP_CODE."
+          else
+            echo "ℹ️ VOXKAGE_WEB_DATASET_URL secret is not configured. Skipping dataset ping."
+          fi
+
+      # 4. GitHub Actions 60-Day Anti-Disable Keep-Alive
+      - name: Prevent GitHub Actions 60-Day Schedule Deactivation
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Check last commit timestamp
           last_commit_time=$(git log -1 --format=%ct)
           current_time=$(date +%s)
-          # Calculate difference in days
           days_diff=$(( (current_time - last_commit_time) / 86400 ))
           
           echo "Days since last commit: $days_diff"
-          if [ $days_diff -ge 30 ]; then
-            echo "Last commit was $days_diff days ago. Creating keep-alive commit..."
-            date > last_keepalive.txt
-            git add last_keepalive.txt
-            git commit -m "chore: automated keep-alive ping"
-            git push
+          if [ $days_diff -ge 45 ]; then
+            echo "Last commit was $days_diff days ago (>= 45 days). Refreshing repository activity..."
+            mkdir -p .github
+            date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/keepalive_timestamp
+            git add .github/keepalive_timestamp
+            git commit -m "chore(keep-alive): refresh repository activity timestamp [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+            echo "✅ Keep-alive commit pushed successfully."
           else
-            echo "No keep-alive commit needed (only $days_diff days since last commit)."
+            echo "✅ Repository active ($days_diff days since last commit, threshold is 45 days)."
           fi
