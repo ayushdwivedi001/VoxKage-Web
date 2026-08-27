@@ -48,6 +48,7 @@ async def get_boot_payload(user: str = Depends(get_current_user)):
                     "- Microsoft Word (VoxKage Custom MCP) is connected.\n"
                     "  You MUST use 'microsoft_word__create_word_document', 'microsoft_word__edit_word_document', 'microsoft_word__get_word_document', and 'microsoft_word__export_word_document' tools to create, view, edit, and export formatted .docx Word documents.\n"
                     "  Do not claim you cannot create or edit Word documents; call the Microsoft Word tools directly.\n"
+                    "  DOCUMENT DESIGN: You have full creative freedom over typography (e.g. 'Georgia', 'Calibri', 'Arial', 'Garamond', 'Times New Roman'), color schemes, structure, and layout. Tables are optional (only include when tabular data is needed). Format math formulas in standard LaTeX notation ($$ equation $$ for display equations, $ equation $ for inline math).\n"
                 )
                 from word_mcp import WORD_TOOLS
                 tools_list = WORD_TOOLS

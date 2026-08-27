@@ -121,8 +121,8 @@ class WordDocCreateRequest(BaseModel):
     doc_id: str
     title: str
     sections: List[Dict[str, Any]]
-    author: Optional[str] = "VoxKage AI"
-    header_text: Optional[str] = "VoxKage Document"
+    author: Optional[str] = None
+    header_text: Optional[str] = None
     footer_text: Optional[str] = "Page {page} of {pages}"
     style: Optional[Dict[str, Any]] = None
 

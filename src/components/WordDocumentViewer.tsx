@@ -1,8 +1,20 @@
 "use client";
 
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import { Download, ChevronDown, Check, History, ZoomIn, ZoomOut, ArrowLeft, X, Sliders } from "lucide-react";
+import "katex/dist/katex.min.css";
 import { BACKEND_URL } from "@/lib/api";
+
+const InlineMath = dynamic(() => import("react-katex").then((m) => m.InlineMath), {
+  ssr: false,
+  loading: () => <span className="text-zinc-500 font-mono text-xs">...</span>,
+});
+
+const BlockMath = dynamic(() => import("react-katex").then((m) => m.BlockMath), {
+  ssr: false,
+  loading: () => <div className="text-zinc-500 font-mono text-xs my-2">...</div>,
+});
 
 interface WordSection {
   heading?: string;
@@ -46,6 +58,154 @@ interface WordDocumentViewerProps {
 // A4 canonical dimensions (px at 96dpi)
 const A4_W = 794;
 const A4_H = 1123;
+
+interface WordBodyRendererProps {
+  body: string;
+  fontFamily: string;
+  primaryColor: string;
+  secondaryColor: string;
+}
+
+function WordBodyRenderer({ body, secondaryColor }: WordBodyRendererProps) {
+  if (!body) return null;
+
+  const lines = body.split("\n");
+  const elements: React.ReactNode[] = [];
+  let inMathBlock = false;
+  let mathBuffer: string[] = [];
+
+  const renderInlineContent = (text: string, keyPrefix: string) => {
+    const pattern = /(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$|\\\(.*?\\\))/g;
+    const parts = text.split(pattern);
+
+    return parts.map((part, idx) => {
+      if (!part) return null;
+      const key = `${keyPrefix}-${idx}`;
+
+      if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+        return <strong key={key} className="font-bold text-[#141413]">{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+        return <em key={key} className="italic">{part.slice(1, -1)}</em>;
+      }
+      if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+        return (
+          <code key={key} className="font-mono text-xs px-1 py-0.5 rounded bg-[#F5F0E8] border border-[#E6DFD8] text-[#141413]">
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      if ((part.startsWith("$") && part.endsWith("$") && part.length >= 2) || (part.startsWith("\\(") && part.endsWith("\\)"))) {
+        const mathStr = part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2);
+        return (
+          <span key={key} className="inline-flex mx-0.5 select-text text-[#141413]">
+            <InlineMath math={mathStr} errorColor="#cc785c" />
+          </span>
+        );
+      }
+      return <span key={key}>{part}</span>;
+    });
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // Single-line display equation $$ ... $$
+    if (line.startsWith("$$") && line.endsWith("$$") && line.length >= 4) {
+      const mathStr = line.slice(2, -2).trim();
+      elements.push(
+        <div key={`math-${i}`} className="my-2.5 py-1 flex justify-center overflow-x-auto select-text text-[#141413]">
+          <BlockMath math={mathStr} errorColor="#cc785c" />
+        </div>
+      );
+      continue;
+    }
+
+    // Single-line display equation \[ ... \]
+    if (line.startsWith("\\[") && line.endsWith("\\]")) {
+      const mathStr = line.slice(2, -2).trim();
+      elements.push(
+        <div key={`math-${i}`} className="my-2.5 py-1 flex justify-center overflow-x-auto select-text text-[#141413]">
+          <BlockMath math={mathStr} errorColor="#cc785c" />
+        </div>
+      );
+      continue;
+    }
+
+    // Multi-line display equation start
+    if (line.startsWith("$$")) {
+      inMathBlock = true;
+      mathBuffer = [line.replace(/^\$\$/, "")];
+      continue;
+    }
+    if (line.endsWith("$$") && inMathBlock) {
+      mathBuffer.push(line.replace(/\$\$$/, ""));
+      const mathStr = mathBuffer.join(" ").trim();
+      elements.push(
+        <div key={`math-multi-${i}`} className="my-2.5 py-1 flex justify-center overflow-x-auto select-text text-[#141413]">
+          <BlockMath math={mathStr} errorColor="#cc785c" />
+        </div>
+      );
+      inMathBlock = false;
+      mathBuffer = [];
+      continue;
+    }
+    if (inMathBlock) {
+      mathBuffer.push(line);
+      continue;
+    }
+
+    // Bullet list
+    if (line.startsWith("•") || line.startsWith("- ") || line.startsWith("* ")) {
+      const cleanLine = line.replace(/^[•\-\*]\s*/, "");
+      elements.push(
+        <div key={`bullet-${i}`} className="flex items-start gap-2 text-[13.5px] leading-relaxed text-[#3D3D3A] ml-2">
+          <span className="text-[#6C6A64] select-none mt-0.5">•</span>
+          <div className="flex-1">{renderInlineContent(cleanLine, `bullet-${i}`)}</div>
+        </div>
+      );
+      continue;
+    }
+
+    // Numbered list
+    const numMatch = line.match(/^(\d+[\.\)])\s+(.*)/);
+    if (numMatch) {
+      elements.push(
+        <div key={`num-${i}`} className="flex items-start gap-2 text-[13.5px] leading-relaxed text-[#3D3D3A] ml-2">
+          <span className="font-mono text-xs text-[#6C6A64] select-none mt-0.5">{numMatch[1]}</span>
+          <div className="flex-1">{renderInlineContent(numMatch[2], `num-${i}`)}</div>
+        </div>
+      );
+      continue;
+    }
+
+    // Blockquote / Callout
+    if (line.startsWith(">")) {
+      const cleanLine = line.replace(/^>\s*/, "");
+      elements.push(
+        <div
+          key={`quote-${i}`}
+          style={{ borderLeftColor: secondaryColor }}
+          className="pl-3 py-1.5 my-2 border-l-2 bg-[#F5F0E8]/50 text-[13px] italic text-[#4A5568] rounded-r-md"
+        >
+          {renderInlineContent(cleanLine, `quote-${i}`)}
+        </div>
+      );
+      continue;
+    }
+
+    // Regular paragraph
+    elements.push(
+      <p key={`p-${i}`} className="text-[13.5px] leading-relaxed text-[#3D3D3A]">
+        {renderInlineContent(line, `p-${i}`)}
+      </p>
+    );
+  }
+
+  return <div className="space-y-2">{elements}</div>;
+}
 
 export default function WordDocumentViewer({
   fileName,
@@ -138,21 +298,21 @@ export default function WordDocumentViewer({
       console.warn("Could not parse direct JSON word doc, constructing structural state...");
     }
 
-    // Baseline structure if given HTML / Markdown text
+    // Baseline structure if given plain text
     const fallbackState: WordDocState = {
       version: 1,
       doc_id: fileName.replace(/\.[^/.]+$/, ""),
       title: fileName.replace(/\.[^/.]+$/, "").replace(/_/g, " "),
-      author: "VoxKage AI",
-      header_text: "VoxKage Document",
+      author: undefined,
+      header_text: undefined,
       footer_text: "Page {page} of {pages}",
       sections: [
         {
           heading: "Document Overview",
           level: 1,
-          body: code.replace(/<[^>]*>/g, "")
-        }
-      ]
+          body: code.replace(/<[^>]*>/g, ""),
+        },
+      ],
     };
     setDocData(fallbackState);
     setSelectedVersion(1);
@@ -200,18 +360,16 @@ export default function WordDocumentViewer({
 
   const primaryColor = activeDoc.style?.primary_color || "#1F497D";
   const secondaryColor = activeDoc.style?.secondary_color || "#4A5568";
+  const fontFamily = activeDoc.style?.font_family || "Calibri, sans-serif";
   const tableHdrBg = activeDoc.style?.table_header_bg || primaryColor;
   const tableHdrColor = activeDoc.style?.table_header_color || "#FFFFFF";
   const tableAltBg = activeDoc.style?.table_alternate_bg || "#F5F0E8";
 
-  // â”€â”€ Auto-scale calculation â”€â”€
-  // Padding: 16px total horizontal padding on small screens (<640px), 48px on desktop
+  // Auto-scale calculation
   const isMobile = containerWidth < 640;
   const horizontalPadding = isMobile ? 16 : 48;
   const availableWidth = Math.max(100, containerWidth - horizontalPadding);
-  // Natural fit scale ensures the 794px card fits 100% inside the viewport on mobile
   const naturalScale = Math.min(1, availableWidth / A4_W);
-  // User zoom scale (multiplied by natural fit scale)
   const finalScale = naturalScale * (zoomScale / 100);
 
   const scaledW = Math.round(A4_W * finalScale);
@@ -219,11 +377,9 @@ export default function WordDocumentViewer({
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d11] [.light_&]:bg-[#efe9de] border-l border-zinc-800/80 [.light_&]:border-[#e6dfd8] w-full relative z-20 overflow-hidden">
-
-      {/* â”€â”€ Top Header â€” mirrors FileInspectorPanel header exactly â”€â”€ */}
+      {/* Top Header */}
       <div className="flex items-center justify-between px-2.5 sm:px-5 py-2 min-h-[56px] border-b border-zinc-800/80 [.light_&]:border-[#e6dfd8] bg-[#0d0d11] [.light_&]:bg-[#efe9de] select-none flex-shrink-0 gap-1.5 sm:gap-3 w-full max-w-full overflow-hidden">
-
-        {/* Left Side: Back Button + W Icon + Filename + Version Pill + Edit */}
+        {/* Left Side: Back + W Icon + Filename + Version Pill + Edit */}
         <div className="min-w-0 flex items-center gap-1 sm:gap-2 flex-shrink overflow-hidden">
           {onBack && (
             <button
@@ -295,7 +451,7 @@ export default function WordDocumentViewer({
           </button>
         </div>
 
-        {/* Right Side: Zoom Controls (Visible on Desktop & Mobile) + Download + Close */}
+        {/* Right Side: Zoom + Download + Close */}
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <div className="flex items-center gap-0.5 bg-zinc-900/60 [.light_&]:bg-[#e6dfd8] p-0.5 rounded-lg border border-zinc-800/50 [.light_&]:border-[#d9d2c9]">
             <button
@@ -340,7 +496,7 @@ export default function WordDocumentViewer({
         </div>
       </div>
 
-      {/* â”€â”€ Main A4 Document Workspace Viewport (Multi-Page Stack with Pinch-Zoom Support) â”€â”€ */}
+      {/* Main A4 Document Viewport */}
       <div
         ref={scrollContainerRef}
         onTouchStart={handleTouchStart}
@@ -354,7 +510,7 @@ export default function WordDocumentViewer({
         }}
       >
         {(() => {
-          // â”€â”€ A4 Page Pagination Calculation â”€â”€
+          // Pagination Calculation
           const normalizedSections: WordSection[] = [];
           (activeDoc.sections || []).forEach((sec) => {
             if (sec.body && sec.body.length > 800) {
@@ -380,23 +536,27 @@ export default function WordDocumentViewer({
           const pages: Array<{ pageNumber: number; isFirstPage: boolean; sections: WordSection[] }> = [];
           let currentPageSections: WordSection[] = [];
           let currentHeight = 0;
-          const page1Budget = 648; // Height allowance for Page 1
-          const otherPageBudget = 680; // Height allowance for Page 2+
+          const page1Budget = 660;
+          const otherPageBudget = 690;
           let activeBudget = page1Budget;
 
           const estimateSectionHeight = (sec: WordSection): number => {
             let h = 0;
-            if (sec.heading) h += 40;
+            if (sec.heading) h += 38;
             if (sec.body) {
               const lines = sec.body.split("\n").filter((l) => l.trim().length > 0);
               lines.forEach((line) => {
-                const estLineCount = Math.max(1, Math.ceil(line.length / 95));
-                h += estLineCount * 18 + 4;
+                if (line.startsWith("$$") || line.startsWith("\\[")) {
+                  h += 48; // Display equation height
+                } else {
+                  const estLineCount = Math.max(1, Math.ceil(line.length / 90));
+                  h += estLineCount * 18 + 4;
+                }
               });
             }
             if (sec.table) {
               const rowCount = (sec.table.headers ? 1 : 0) + (sec.table.rows?.length || 0);
-              h += 30 + rowCount * 24 + 12;
+              h += 28 + rowCount * 24 + 10;
             }
             return Math.max(h, 20);
           };
@@ -436,7 +596,6 @@ export default function WordDocumentViewer({
               .replace("{pages}", String(totalPages));
 
             return (
-              // Outer wrapper: sized to scaledW and scaledH â€” centers nicely
               <div
                 key={pIdx}
                 style={{
@@ -447,7 +606,7 @@ export default function WordDocumentViewer({
                   margin: "0 auto",
                 }}
               >
-                {/* Inner A4 card â€” fixed 794Ã—1123px, scaled smoothly via CSS transform */}
+                {/* Inner A4 card */}
                 <div
                   style={{
                     width: A4_W,
@@ -458,48 +617,48 @@ export default function WordDocumentViewer({
                     top: 0,
                     left: 0,
                     overflow: "hidden",
+                    fontFamily,
                   }}
                   className="bg-white text-[#141413] shadow-2xl border border-[#E6DFD8] rounded-sm p-8 sm:p-10 flex flex-col justify-between select-text"
                 >
-                  {/* Top Header Area (matches MS Word â€” right-aligned header_text ONLY) */}
                   <div>
-                    <div className="flex justify-end items-center pb-3 mb-6 border-b border-[#E6DFD8] text-xs text-[#6C6A64] font-medium tracking-wide">
-                      <span className="truncate max-w-[80%] text-right text-[#6C6A64]">
-                        {activeDoc.header_text || "VoxKage Document"}
-                      </span>
-                    </div>
+                    {/* Running Header: ONLY on Page 2+ and ONLY if explicitly provided */}
+                    {!page.isFirstPage && Boolean(activeDoc.header_text?.trim()) ? (
+                      <div className="flex justify-end items-center pb-2 mb-5 border-b border-[#E6DFD8] text-xs text-[#6C6A64] font-medium tracking-wide">
+                        <span className="truncate max-w-[80%] text-right text-[#6C6A64]">
+                          {activeDoc.header_text}
+                        </span>
+                      </div>
+                    ) : null}
 
-                    {/* Page 1 Document Title Banner */}
+                    {/* Page 1 Document Title Banner (Clean, no fabricated subtitle underneath) */}
                     {page.isFirstPage && (
                       <div className="mb-6">
                         <h1
                           style={{ color: primaryColor }}
-                          className="text-3xl font-serif font-bold tracking-tight mb-1.5"
+                          className="text-3xl font-serif font-bold tracking-tight mb-2"
                         >
                           {activeDoc.title}
                         </h1>
-                        <p className="text-xs text-[#6C6A64] pb-3 border-b border-[#EBE6DF]">
-                          Version {activeDoc.version} â€¢ Authored by {activeDoc.author || "VoxKage AI"}
-                        </p>
                       </div>
                     )}
 
                     {/* Page Sections */}
-                    <div className="space-y-5">
+                    <div className="space-y-4">
                       {page.sections.map((sec, sIdx) => (
-                        <div key={sIdx} className="space-y-2.5">
+                        <div key={sIdx} className="space-y-2">
                           {sec.heading && (
                             <h2
                               style={{
                                 color: sec.level === 1 ? primaryColor : secondaryColor,
-                                borderColor: sec.level === 1 ? `${primaryColor}33` : "#EBE6DF"
+                                borderColor: sec.level === 1 ? `${primaryColor}33` : "#EBE6DF",
                               }}
                               className={`font-serif font-semibold ${
                                 sec.level === 2
-                                  ? "text-xl border-b pb-1"
+                                  ? "text-lg border-b pb-0.5"
                                   : sec.level === 3
-                                  ? "text-lg"
-                                  : "text-2xl border-b pb-1"
+                                  ? "text-base"
+                                  : "text-xl border-b pb-0.5"
                               }`}
                             >
                               {sec.heading}
@@ -507,12 +666,15 @@ export default function WordDocumentViewer({
                           )}
 
                           {sec.body && (
-                            <div className="text-sm leading-relaxed text-[#3D3D3A] whitespace-pre-wrap font-sans">
-                              {sec.body}
-                            </div>
+                            <WordBodyRenderer
+                              body={sec.body}
+                              fontFamily={fontFamily}
+                              primaryColor={primaryColor}
+                              secondaryColor={secondaryColor}
+                            />
                           )}
 
-                          {/* Styled Table */}
+                          {/* Styled Table (only rendered if table data exists) */}
                           {sec.table && (
                             <div className="my-3 overflow-x-auto rounded-md border border-[#E6DFD8]">
                               <table className="w-full text-left border-collapse text-xs">
@@ -555,12 +717,14 @@ export default function WordDocumentViewer({
                     </div>
                   </div>
 
-                  {/* Bottom Footer Area (matches MS Word centered layout) */}
-                  <div className="pt-4 mt-8 border-t border-[#E6DFD8] flex justify-center items-center text-xs text-[#6C6A64]">
-                    <span className="font-mono font-medium text-[#3D3D3A]">
-                      {footerTextFormatted}
-                    </span>
-                  </div>
+                  {/* Bottom Footer Area */}
+                  {Boolean(activeDoc.footer_text?.trim()) && (
+                    <div className="pt-3 mt-6 border-t border-[#E6DFD8] flex justify-center items-center text-xs text-[#6C6A64]">
+                      <span className="font-sans font-medium text-[#6C6A64]">
+                        {footerTextFormatted}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -570,4 +734,3 @@ export default function WordDocumentViewer({
     </div>
   );
 }
-

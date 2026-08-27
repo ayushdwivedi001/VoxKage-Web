@@ -1,13 +1,15 @@
 """
 VoxKage Microsoft Word Custom MCP Server Module
 Handles creation, incremental section-based editing (v1 -> v2 versioning),
-structured HTML/page preview rendering, and native .docx binary export.
+native LaTeX math formula compilation (MathML -> OMML via MML2OMML.XSL),
+rich typography, and native .docx binary export.
 """
 
 import os
 import re
 import json
 import io
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 import docx
 from docx.shared import Inches, Pt, RGBColor
@@ -15,6 +17,74 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import qn, nsdecls
+
+import lxml.etree as ET
+import latex2mathml.converter
+
+# --- XSLT MATHML TO OMML TRANSFORM INITIALIZATION ---
+XSL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "MML2OMML.XSL")
+_xslt_transform = None
+
+def get_xslt_transform():
+    global _xslt_transform
+    if _xslt_transform is None:
+        if os.path.exists(XSL_PATH):
+            try:
+                xslt_doc = ET.parse(XSL_PATH)
+                _xslt_transform = ET.XSLT(xslt_doc)
+            except Exception as e:
+                print(f"[-] Failed to load local MML2OMML.XSL: {e}")
+        
+        if _xslt_transform is None:
+            # Fallback to standard Office paths on Windows
+            office_paths = [
+                r'C:\Program Files\Microsoft Office\root\Office16\MML2OMML.XSL',
+                r'C:\Program Files (x86)\Microsoft Office\root\Office16\MML2OMML.XSL',
+                r'C:\Program Files\Microsoft Office\Office16\MML2OMML.XSL',
+                r'C:\Program Files (x86)\Microsoft Office\Office16\MML2OMML.XSL'
+            ]
+            for p in office_paths:
+                if os.path.exists(p):
+                    try:
+                        xslt_doc = ET.parse(p)
+                        _xslt_transform = ET.XSLT(xslt_doc)
+                        break
+                    except Exception:
+                        pass
+    return _xslt_transform
+
+
+def latex_to_omml_element(latex_str: str, is_display: bool = True) -> Optional[Any]:
+    """
+    Converts LaTeX formulas into true native Microsoft Word OMML XML elements (<m:oMath>).
+    """
+    clean_eq = latex_str.strip()
+    if is_display:
+        clean_eq = re.sub(r'^\$\$|\$\$$', '', clean_eq).strip()
+        clean_eq = re.sub(r'^\\\[|\\\]$', '', clean_eq).strip()
+    else:
+        clean_eq = re.sub(r'^\$|\$$', '', clean_eq).strip()
+        clean_eq = re.sub(r'^\\\(|\\\)$', '', clean_eq).strip()
+
+    if not clean_eq:
+        return None
+
+    try:
+        # 1. Convert LaTeX to standard MathML
+        mathml_str = latex2mathml.converter.convert(clean_eq)
+
+        # 2. Transform MathML to OMML using XSLT
+        transform = get_xslt_transform()
+        if transform is not None:
+            dom = ET.fromstring(mathml_str.encode('utf-8'))
+            omml_tree = transform(dom)
+            omml_bytes = ET.tostring(omml_tree, encoding='utf-8')
+            return parse_xml(omml_bytes)
+    except Exception as e:
+        print(f"[-] LaTeX to OMML transform failed for '{clean_eq[:35]}': {e}")
+
+    return None
+
 
 class WordDocumentEngine:
     def __init__(self):
@@ -25,13 +95,13 @@ class WordDocumentEngine:
         doc_id: str,
         title: str,
         sections: List[Dict[str, Any]],
-        author: str = "VoxKage AI",
-        header_text: str = "VoxKage Document",
-        footer_text: str = "Page {page} of {pages}",
+        author: Optional[str] = None,
+        header_text: Optional[str] = None,
+        footer_text: Optional[str] = "Page {page} of {pages}",
         style: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Creates a new version 1 (v1) Word Document structure with dynamic theme styling.
+        Creates a new version 1 (v1) Word Document structure with dynamic theme styling and optional headers.
         """
         style = style or {}
         doc_state = {
@@ -50,7 +120,7 @@ class WordDocumentEngine:
                 "table_header_color": style.get("table_header_color", "#FFFFFF"),
                 "table_alternate_bg": style.get("table_alternate_bg", "#F5F0E8")
             },
-            "created_at": "2026-07-28",
+            "created_at": datetime.now().strftime("%Y-%m-%d"),
             "sections": sections
         }
         
@@ -77,8 +147,8 @@ class WordDocumentEngine:
                 "version": 1,
                 "doc_id": doc_id,
                 "title": "Untitled Word Document",
-                "author": "VoxKage AI",
-                "header_text": "VoxKage Document",
+                "author": None,
+                "header_text": None,
                 "footer_text": "Page {page} of {pages}",
                 "style": {
                     "primary_color": "#1F497D",
@@ -92,7 +162,7 @@ class WordDocumentEngine:
                 "sections": []
             }
         else:
-            latest = json.loads(json.dumps(history[-1]))  # Deep copy previous version
+            latest = json.loads(json.dumps(history[-1]))
 
         next_version = latest["version"] + 1
         latest["version"] = next_version
@@ -142,10 +212,79 @@ class WordDocumentEngine:
             return default.lstrip("#").upper()
         return clean.upper()
 
+    def _add_math_equation(self, doc, eq_text: str):
+        """
+        Inserts a centered mathematical equation paragraph using native OpenXML Math (OMML) in Cambria Math.
+        """
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(8)
+        p.paragraph_format.space_after = Pt(8)
+
+        omml_elem = latex_to_omml_element(eq_text, is_display=True)
+        if omml_elem is not None:
+            p._p.append(omml_elem)
+        else:
+            clean_eq = re.sub(r'^\$\$|\$\$$|^\\\[|\\\]$', '', eq_text.strip())
+            r = p.add_run(clean_eq)
+            r.font.name = "Cambria Math"
+            r.font.size = Pt(11)
+            r.font.italic = True
+
+    def _add_formatted_text_runs(self, paragraph, text: str, font_name: str, base_size: int, secondary_rgb: Optional[RGBColor] = None):
+        """
+        Tokenizes inline markdown: **bold**, *italic*, `code`, and $math$ into styled OpenXML runs / OMML elements.
+        """
+        pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$|\\\(.*?\\\))'
+        tokens = re.split(pattern, text)
+
+        for token in tokens:
+            if not token:
+                continue
+
+            if token.startswith("**") and token.endswith("**") and len(token) >= 4:
+                r = paragraph.add_run(token[2:-2])
+                r.font.name = font_name
+                r.font.size = Pt(base_size)
+                r.font.bold = True
+                if secondary_rgb:
+                    r.font.color.rgb = secondary_rgb
+
+            elif token.startswith("*") and token.endswith("*") and len(token) >= 2:
+                r = paragraph.add_run(token[1:-1])
+                r.font.name = font_name
+                r.font.size = Pt(base_size)
+                r.font.italic = True
+                if secondary_rgb:
+                    r.font.color.rgb = secondary_rgb
+
+            elif token.startswith("`") and token.endswith("`") and len(token) >= 2:
+                r = paragraph.add_run(token[1:-1])
+                r.font.name = "Consolas"
+                r.font.size = Pt(max(8, base_size - 1))
+
+            elif (token.startswith("$") and token.endswith("$") and len(token) >= 2) or (token.startswith(r"\(") and token.endswith(r"\)")):
+                omml_inline = latex_to_omml_element(token, is_display=False)
+                if omml_inline is not None:
+                    paragraph._p.append(omml_inline)
+                else:
+                    math_txt = token[1:-1] if token.startswith("$") else token[2:-2]
+                    r = paragraph.add_run(math_txt)
+                    r.font.name = "Cambria Math"
+                    r.font.size = Pt(base_size)
+                    r.font.italic = True
+
+            else:
+                r = paragraph.add_run(token)
+                r.font.name = font_name
+                r.font.size = Pt(base_size)
+                if secondary_rgb:
+                    r.font.color.rgb = secondary_rgb
+
     def export_to_docx_bytes(self, doc_state: Any) -> bytes:
         """
         Generates binary .docx file bytes using python-docx with native OpenXML headers/footers,
-        dynamic color themes, and custom styled tables.
+        dynamic color themes, OMML math equations, and custom styled tables.
         """
         if isinstance(doc_state, str):
             try:
@@ -160,6 +299,7 @@ class WordDocumentEngine:
         primary_hex = style_opts.get("primary_color", "#1F497D")
         secondary_hex = style_opts.get("secondary_color", "#4A5568")
         font_name = style_opts.get("font_family", "Calibri")
+        base_size = style_opts.get("font_size_body", 11)
         table_hdr_bg = style_opts.get("table_header_bg", primary_hex)
         table_hdr_fg = style_opts.get("table_header_color", "#FFFFFF")
         table_alt_bg = style_opts.get("table_alternate_bg", "#F5F0E8")
@@ -177,24 +317,28 @@ class WordDocumentEngine:
             sec.left_margin = Inches(1.0)
             sec.right_margin = Inches(1.0)
 
-            # Header — right aligned header_text ONLY (matches MS Word screenshot layout)
-            if doc_state.get("header_text"):
+            # Header — ONLY if header_text is explicitly provided
+            header_text = doc_state.get("header_text")
+            if header_text and str(header_text).strip():
+                sec.different_first_page_header_footer = True
                 header_para = sec.header.paragraphs[0]
                 header_para.text = ""
                 header_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                h_run = header_para.add_run(str(doc_state["header_text"]))
+                h_run = header_para.add_run(str(header_text).strip())
                 h_run.font.name = font_name
                 h_run.font.size = Pt(9)
                 h_run.font.color.rgb = secondary_rgb
+            else:
+                sec.header.paragraphs[0].text = ""
 
             # Footer — parse {page} and {pages} into native OpenXML fields
-            if doc_state.get("footer_text"):
+            footer_text = doc_state.get("footer_text")
+            if footer_text and str(footer_text).strip():
                 footer_para = sec.footer.paragraphs[0]
                 footer_para.text = ""
                 footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                footer_str = str(doc_state["footer_text"])
+                footer_str = str(footer_text).strip()
 
-                # Tokenize by {page} and {pages}
                 tokens = re.split(r'(\{page\}|\{pages\})', footer_str)
                 for tok in tokens:
                     if tok == "{page}":
@@ -209,15 +353,16 @@ class WordDocumentEngine:
                         f_run.font.size = Pt(9)
                         f_run.font.color.rgb = secondary_rgb
 
-        # Document Title
+        # Document Title (Clean, no fabricated subtitle underneath)
         title_para = doc.add_paragraph()
+        title_para.paragraph_format.space_before = Pt(0)
+        title_para.paragraph_format.space_after = Pt(14)
         title_run = title_para.add_run(str(doc_state.get("title", "Document")))
         title_run.font.name = font_name
         title_run.font.size = Pt(24)
         title_run.font.bold = True
         title_run.font.color.rgb = primary_rgb
         title_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        doc.add_paragraph()  # Spacing
 
         # Render Sections
         sections = doc_state.get("sections") or []
@@ -242,7 +387,7 @@ class WordDocumentEngine:
                 level_int = max(1, min(level_int, 3))
 
                 h_para = doc.add_heading(level=level_int)
-                h_para.paragraph_format.keep_with_next = True  # Prevent orphaned subheadings
+                h_para.paragraph_format.keep_with_next = True
                 h_para.paragraph_format.space_before = Pt(14 if level_int == 1 else 10)
                 h_para.paragraph_format.space_after = Pt(4)
 
@@ -259,26 +404,68 @@ class WordDocumentEngine:
                     hrun.font.size = Pt(12)
                     hrun.font.color.rgb = secondary_rgb
 
-            # Paragraphs / Body text
+            # Paragraphs / Body text / Math formulas
             body = sec.get("body", "")
             if body:
-                lines = str(body).split("\n")
-                for line in lines:
-                    line_str = line.strip()
-                    if not line_str:
+                blocks = str(body).split("\n")
+                in_math_block = False
+                math_buffer = []
+
+                for line in blocks:
+                    stripped = line.strip()
+                    if not stripped:
                         continue
-                    if line_str.startswith("•") or line_str.startswith("-"):
-                        bp = doc.add_paragraph(style='List Bullet')
-                        r = bp.add_run(line_str.lstrip("•- "))
-                        r.font.name = font_name
-                        r.font.size = Pt(11)
+
+                    # Single-line display math
+                    if stripped.startswith("$$") and stripped.endswith("$$") and len(stripped) >= 4:
+                        self._add_math_equation(doc, stripped)
+                        continue
+                    elif stripped.startswith(r"\[") and stripped.endswith(r"\]"):
+                        self._add_math_equation(doc, stripped)
+                        continue
+                    elif stripped.startswith("$$"):
+                        in_math_block = True
+                        math_buffer = [stripped.lstrip("$")]
+                        continue
+                    elif stripped.endswith("$$") and in_math_block:
+                        math_buffer.append(stripped.rstrip("$"))
+                        self._add_math_equation(doc, " ".join(math_buffer))
+                        in_math_block = False
+                        math_buffer = []
+                        continue
+                    elif in_math_block:
+                        math_buffer.append(stripped)
+                        continue
+
+                    # Bullet lists
+                    if stripped.startswith("•") or stripped.startswith("- ") or stripped.startswith("* "):
+                        clean_line = re.sub(r'^[•\-\*]\s*', '', stripped)
+                        p = doc.add_paragraph(style='List Bullet')
+                        p.paragraph_format.space_after = Pt(3)
+                        p.paragraph_format.line_spacing = 1.15
+                        self._add_formatted_text_runs(p, clean_line, font_name, base_size)
+                    # Numbered lists
+                    elif re.match(r'^\d+[\.\)]\s+', stripped):
+                        clean_line = re.sub(r'^\d+[\.\)]\s+', '', stripped)
+                        p = doc.add_paragraph(style='List Number')
+                        p.paragraph_format.space_after = Pt(3)
+                        p.paragraph_format.line_spacing = 1.15
+                        self._add_formatted_text_runs(p, clean_line, font_name, base_size)
+                    # Quotes / Callouts
+                    elif stripped.startswith(">"):
+                        clean_line = stripped.lstrip("> ").strip()
+                        p = doc.add_paragraph()
+                        p.paragraph_format.left_indent = Inches(0.4)
+                        p.paragraph_format.space_before = Pt(4)
+                        p.paragraph_format.space_after = Pt(6)
+                        p.paragraph_format.line_spacing = 1.15
+                        self._add_formatted_text_runs(p, clean_line, font_name, base_size, secondary_rgb=secondary_rgb)
+                    # Regular paragraph with inline math support
                     else:
                         p = doc.add_paragraph()
                         p.paragraph_format.space_after = Pt(6)
                         p.paragraph_format.line_spacing = 1.15
-                        r = p.add_run(line_str)
-                        r.font.name = font_name
-                        r.font.size = Pt(11)
+                        self._add_formatted_text_runs(p, stripped, font_name, base_size)
 
             # Table (if present)
             table_data = sec.get("table")
@@ -295,7 +482,6 @@ class WordDocumentEngine:
                         table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
                         tblPr = table._tbl.tblPr
-                        # Cell Margins (padding)
                         try:
                             tblCellMar = parse_xml(
                                 r'<w:tblCellMar %s>'
@@ -309,7 +495,6 @@ class WordDocumentEngine:
                         except Exception:
                             pass
 
-                        # Table Borders
                         try:
                             tblBorders = parse_xml(
                                 r'<w:tblBorders %s>'
@@ -364,7 +549,7 @@ class WordDocumentEngine:
                                                 r.font.size = Pt(10)
                                 row_idx += 1
 
-            doc.add_paragraph()  # Spacing between sections
+            doc.add_paragraph()
 
         target_stream = io.BytesIO()
         doc.save(target_stream)
@@ -380,24 +565,25 @@ word_engine = WordDocumentEngine()
 WORD_TOOLS = [
     {
         "name": "create_word_document",
-        "description": "Create a formatted Microsoft Word document (.docx) artifact with custom color themes, typography, headings, body text, and styled tables.",
+        "description": "Create a beautifully styled Microsoft Word document (.docx) artifact. Supports LaTeX math formulas ($$ ... $$ and $ ... $), markdown formatting (bold, italics, bullet/numbered lists, quotes), custom typography, color themes, and optional tables.",
         "inputSchema": {
             "type": "object",
             "properties": {
-                "doc_id": {"type": "string", "description": "Unique document ID or filename slug (e.g. 'intro_report')"},
-                "title": {"type": "string", "description": "Title of the Word document"},
+                "doc_id": {"type": "string", "description": "Unique document ID or filename slug without extension (e.g. 'math_compendium')"},
+                "title": {"type": "string", "description": "Title of the Word document (e.g. 'Complex Mathematical Formula Compendium')"},
                 "sections": {
                     "type": "array",
-                    "description": "List of document sections with heading, level, body text, table, or page_break",
+                    "description": "List of document sections with heading, level (1, 2, or 3), body text with optional LaTeX math, optional table, or page_break",
                     "items": {
                         "type": "object",
                         "properties": {
                             "heading": {"type": "string", "description": "Section heading text"},
                             "level": {"type": "integer", "description": "Heading level 1, 2, or 3"},
-                            "body": {"type": "string", "description": "Paragraph text / body content"},
+                            "body": {"type": "string", "description": "Body text with markdown formatting and LaTeX math formulas ($$ equation $$ for display, $ equation $ for inline)"},
                             "page_break": {"type": "boolean", "description": "Set to true to insert an explicit page break before this section"},
                             "table": {
                                 "type": "object",
+                                "description": "Optional table. Only include when tabular data is relevant.",
                                 "properties": {
                                     "headers": {"type": "array", "items": {"type": "string"}},
                                     "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
@@ -406,15 +592,15 @@ WORD_TOOLS = [
                         }
                     }
                 },
-                "header_text": {"type": "string", "description": "Optional top header text (right-aligned)"},
-                "footer_text": {"type": "string", "description": "Optional footer text format (e.g. 'Page {page} of {pages}')"},
+                "header_text": {"type": "string", "description": "Optional top running header for pages 2+. Leave empty or omit if no running header is needed."},
+                "footer_text": {"type": "string", "description": "Optional footer text format (e.g. 'Page {page} of {pages}'). Default is 'Page {page} of {pages}'."},
                 "style": {
                     "type": "object",
-                    "description": "Optional document theme & styling parameters",
+                    "description": "Optional document theme & styling parameters tailored to document type",
                     "properties": {
-                        "primary_color": {"type": "string", "description": "Primary accent / heading color (hex string e.g. '#1F497D')"},
-                        "secondary_color": {"type": "string", "description": "Secondary accent color (hex string e.g. '#4A5568')"},
-                        "font_family": {"type": "string", "description": "Body and heading font family (e.g. 'Calibri', 'Arial', 'Georgia')"},
+                        "primary_color": {"type": "string", "description": "Primary accent / heading color (hex string e.g. '#1F497D', '#2D3748', '#8C1D40')"},
+                        "secondary_color": {"type": "string", "description": "Secondary accent color (hex string e.g. '#4A5568', '#718096')"},
+                        "font_family": {"type": "string", "description": "Font family e.g. 'Georgia', 'Calibri', 'Arial', 'Times New Roman', 'Garamond', 'Segoe UI'"},
                         "font_size_body": {"type": "integer", "description": "Body font size in Pt (default: 11)"},
                         "table_header_bg": {"type": "string", "description": "Table header row background color (hex string)"},
                         "table_header_color": {"type": "string", "description": "Table header text color (hex string)"},
@@ -484,8 +670,8 @@ async def execute_word_tool(tool_name: str, args: dict) -> str:
         doc_id = args.get("doc_id") or "word_doc_" + str(int(datetime.now().timestamp()))
         title = args.get("title", "Untitled Document")
         sections = args.get("sections", [])
-        author = args.get("author", "VoxKage AI")
-        header_text = args.get("header_text", "VoxKage Document")
+        author = args.get("author")
+        header_text = args.get("header_text")
         footer_text = args.get("footer_text", "Page {page} of {pages}")
         style = args.get("style", {})
         
@@ -553,4 +739,3 @@ async def execute_word_tool(tool_name: str, args: dict) -> str:
         })
 
     return json.dumps({"status": "error", "message": f"Unknown Word tool '{clean_tool}'"})
-
