@@ -103,7 +103,7 @@ export default function PromptInput({
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
@@ -234,7 +234,7 @@ export default function PromptInput({
           stream.getTracks().forEach((track) => track.stop());
           setTimeout(() => {
             window.focus();
-            textareaRef.current?.focus();
+            editorRef.current?.focus();
           }, 150);
 
           canvas.toBlob((blob) => {
@@ -260,27 +260,66 @@ export default function PromptInput({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const items = e.clipboardData.items;
-    let fileFound = false;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      if (item.kind === "file") {
-        const file = item.getAsFile();
-        if (file && onUpload) {
-          fileFound = true;
-          onUpload(file);
+
+  // --- / Commands Popup States ---
+  const commands = ["/goal", "/drill", "/schedule"];
+  const COMMAND_NAMES: Record<string, string> = {
+    "/goal": "Goal",
+    "/drill": "Drill",
+    "/schedule": "Schedule",
+  };
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
+  // --- Selection helpers for ContentEditable ---
+  const saveSelection = (containerEl: HTMLElement) => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const range = selection.getRangeAt(0);
+    const preSelectionRange = range.cloneRange();
+    preSelectionRange.selectNodeContents(containerEl);
+    preSelectionRange.setEnd(range.startContainer, range.startOffset);
+    const start = preSelectionRange.toString().length;
+    return {
+      start: start,
+      end: start + range.toString().length,
+    };
+  };
+
+  const restoreSelection = (containerEl: HTMLElement, savedSel: { start: number; end: number }) => {
+    const selection = window.getSelection();
+    if (!selection) return;
+    let charIndex = 0;
+    const range = document.createRange();
+    range.setStart(containerEl, 0);
+    range.collapse(true);
+    const nodeStack: Node[] = [containerEl];
+    let node: Node | undefined;
+    let foundStart = false;
+    let stop = false;
+
+    while (!stop && (node = nodeStack.pop())) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nextCharIndex = charIndex + (node.textContent?.length || 0);
+        if (!foundStart && savedSel.start >= charIndex && savedSel.start <= nextCharIndex) {
+          range.setStart(node, savedSel.start - charIndex);
+          foundStart = true;
+        }
+        if (foundStart && savedSel.end >= charIndex && savedSel.end <= nextCharIndex) {
+          range.setEnd(node, savedSel.end - charIndex);
+          stop = true;
+        }
+        charIndex = nextCharIndex;
+      } else {
+        let i = node.childNodes.length;
+        while (i--) {
+          nodeStack.push(node.childNodes[i]);
         }
       }
     }
-    if (fileFound) {
-      e.preventDefault();
-    }
-  };
 
-  // --- / Commands Popup States ---
-  const commands = ["/agents", "/drill", "/schedule"];
-  const [selectedIndex, setSelectedIndex] = useState(0);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
 
   const getActiveCommandQuery = (text: string) => {
     if (!text) return null;
@@ -293,7 +332,7 @@ export default function PromptInput({
   };
 
   const query = getActiveCommandQuery(value);
-  const filtered = query ? commands.filter((c) => c.startsWith(query)) : [];
+  const filtered = query ? commands.filter((c) => c.toLowerCase().startsWith(query.toLowerCase())) : [];
   const showPopup = query !== null && filtered.length > 0;
 
   // Reset selection index when filtered list changes
@@ -387,15 +426,15 @@ export default function PromptInput({
       cancelAnimationFrame(resizeRafRef.current);
     }
     resizeRafRef.current = requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (textarea) {
-        textarea.style.height = "auto";
-        const scrollHeight = textarea.scrollHeight;
+      const editor = editorRef.current;
+      if (editor) {
+        editor.style.height = "auto";
+        const scrollHeight = editor.scrollHeight;
         const maxHeight = 220; // Maximum height in pixels before showing scrollbar
         const newHeight = scrollHeight > maxHeight ? maxHeight : Math.max(28, scrollHeight);
         
-        textarea.style.height = `${newHeight}px`;
-        textarea.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+        editor.style.height = `${newHeight}px`;
+        editor.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
       }
     });
   };
@@ -416,50 +455,139 @@ export default function PromptInput({
     };
   }, []);
 
-  // Auto-focus on load and place cursor at the end of the text
+  // Auto-focus on load
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.focus();
-      textarea.setSelectionRange(value.length, value.length);
+    const editor = editorRef.current;
+    if (editor) {
+      editor.focus();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = () => {
-    if (value.trim().length > 0) {
-      let finalValue = value;
+    const el = editorRef.current;
+    const rawText = el ? (el.innerText || "") : value;
+    if (rawText.trim().length > 0) {
+      let finalValue = rawText.trim();
+      // If it starts with Goal, Schedule, or Drill, prefix with slash for the backend
+      finalValue = finalValue.replace(/^(Goal|Schedule|Drill)\b/i, (m, cmd) => `/${cmd.toLowerCase()}`);
       if (buildMode === "Plan" && !finalValue.startsWith("/plan") && !finalValue.startsWith("[PLAN MODE]")) {
         finalValue = `[PLAN MODE] ${finalValue}`;
       }
       if (onSubmit) {
         onSubmit(finalValue);
       }
+      if (el) {
+        el.innerHTML = "";
+      }
       setValue("");
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setValue(e.target.value);
+  const handleInput = () => {
+    const el = editorRef.current;
+    if (!el) return;
+
+    const text = el.innerText || "";
+    setValue(text);
+
+    // Format typed commands like /goal, /schedule, /drill ONLY when followed by space or newline in-place
+    const rawHtml = el.innerHTML;
+    const commandRegex = /(^|>|\s)(\/(?:goal|drill|schedule))(\s|&nbsp;|<br>)/gi;
+
+    if (commandRegex.test(rawHtml)) {
+      const savedSel = saveSelection(el);
+      const newHtml = rawHtml.replace(commandRegex, (match, p1, p2, p3) => {
+        const rawCmd = p2.replace(/^\//, "").toLowerCase();
+        const displayName = COMMAND_NAMES[`/${rawCmd}`] || (rawCmd.charAt(0).toUpperCase() + rawCmd.slice(1));
+        const space = p3 === "&nbsp;" || p3 === " " ? "&nbsp;" : p3;
+        return `${p1}<span contenteditable="false" style="color: #4A99EE; font-family: serif; font-weight: normal; user-select: none;" class="font-serif select-none">${displayName}</span>${space}`;
+      });
+      el.innerHTML = newHtml;
+      if (savedSel) {
+        const adjusted = Math.max(0, savedSel.start - 1);
+        restoreSelection(el, { start: adjusted, end: adjusted });
+      }
+      setValue(el.innerText || "");
+    }
+    adjustHeight();
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData.items;
+    let fileFound = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file && onUpload) {
+          fileFound = true;
+          onUpload(file);
+        }
+      }
+    }
+    if (fileFound) {
+      e.preventDefault();
+      return;
+    }
+
+    // Insert plain text to prevent foreign HTML styles
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertText", false, text);
+    if (editorRef.current) {
+      setValue(editorRef.current.innerText || "");
+    }
+    adjustHeight();
   };
 
   const handleSelectCommand = (command: string) => {
-    const words = value.split(/\s+/);
-    // Replace the last word (which was the query) with the selected command
-    words[words.length - 1] = command;
-    const newValue = words.join(" ") + " ";
-    setValue(newValue);
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        const len = newValue.length;
-        textareaRef.current.setSelectionRange(len, len);
+    const el = editorRef.current;
+    if (!el) return;
+
+    const rawCmd = command.replace(/^\//, "").toLowerCase();
+    const displayName = COMMAND_NAMES[`/${rawCmd}`] || (rawCmd.charAt(0).toUpperCase() + rawCmd.slice(1));
+    const spanHtml = `<span contenteditable="false" style="color: #4A99EE; font-family: serif; font-weight: normal; user-select: none;" class="font-serif select-none">${displayName}</span>&nbsp;`;
+
+    // Replace the /query from selection
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const textNode = range.startContainer;
+      if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+        const textVal = textNode.textContent || "";
+        const lastSlashIdx = textVal.lastIndexOf("/");
+        if (lastSlashIdx !== -1) {
+          range.setStart(textNode, lastSlashIdx);
+          range.setEnd(textNode, range.endOffset);
+          range.deleteContents();
+
+          const tempDiv = document.createElement("div");
+          tempDiv.innerHTML = spanHtml;
+          const frag = document.createDocumentFragment();
+          let child: Node | null;
+          let lastNode: Node | null = null;
+          while ((child = tempDiv.firstChild)) {
+            lastNode = frag.appendChild(child);
+          }
+          range.insertNode(frag);
+          if (lastNode) {
+            range.setStartAfter(lastNode);
+            range.setEndAfter(lastNode);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }
       }
-      adjustHeight();
-    }, 0);
+    } else {
+      el.innerHTML = el.innerHTML + spanHtml;
+    }
+
+    const currentText = el.innerText || "";
+    setValue(currentText);
+    adjustHeight();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (showPopup) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -471,18 +599,13 @@ export default function PromptInput({
         setSelectedIndex((prev) => (prev - 1 + filtered.length) % filtered.length);
         return;
       }
-      if (e.key === "Enter") {
+      if (e.key === "Enter" || e.key === "Tab") {
         e.preventDefault();
         handleSelectCommand(filtered[selectedIndex]);
         return;
       }
       if (e.key === "Escape") {
         e.preventDefault();
-        const words = value.split(/\s+/);
-        if (words[words.length - 1].startsWith("/")) {
-          words[words.length - 1] = "";
-          setValue(words.join(" ").trim());
-        }
         return;
       }
     }
@@ -667,29 +790,29 @@ export default function PromptInput({
         </div>
       )}
 
-      {/* Input Field */}
+      {/* Input Field with ContentEditable for Rich Inline Commands */}
       <div className="relative w-full min-h-[28px]">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={handleChange}
+        {value.length === 0 && (
+          <div className="absolute top-0 left-0 text-zinc-400/60 [.light_&]:text-[#8e8b82] font-sans text-[16px] md:text-[17px] leading-[1.55] pointer-events-none select-none">
+            Ask VoxKage, type / for commands
+          </div>
+        )}
+
+        <div
+          ref={editorRef}
+          contentEditable
+          role="textbox"
+          aria-multiline="true"
+          data-gramm="false"
+          onInput={handleInput}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           onPaste={handlePaste}
-          inputMode="text"
-          autoCapitalize="sentences"
-          autoComplete="off"
-          autoCorrect="on"
-          spellCheck="true"
-          rows={1}
-          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-zinc-100 [.light_&]:text-[#141413] caret-blue-400 [.light_&]:caret-[#141413] placeholder-zinc-400/60 [.light_&]:placeholder-[#8e8b82] font-sans text-[16px] md:text-[17px] leading-[1.55] resize-none p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea"
-          placeholder={value ? "" : "Ask VoxKage, type / for commands"}
+          className="w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 text-zinc-100 [.light_&]:text-[#141413] caret-blue-400 [.light_&]:caret-[#141413] font-sans text-[16px] md:text-[17px] leading-[1.55] p-0 m-0 border-0 custom-scrollbar relative z-10 prompt-textarea min-h-[28px] max-h-[220px] overflow-y-auto whitespace-pre-wrap break-words"
           style={{
-            minHeight: "28px",
             wordBreak: "break-word",
             overflowWrap: "break-word",
-            letterSpacing: "normal",
             boxSizing: "border-box",
             touchAction: "manipulation",
           }}

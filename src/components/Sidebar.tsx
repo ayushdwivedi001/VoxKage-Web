@@ -9,8 +9,8 @@ import {
   Search,
   Plus,
   MessageSquare,
-  Layers,
   Box,
+  Brain,
   SlidersHorizontal,
   MoreHorizontal,
   Star,
@@ -313,29 +313,8 @@ export default function Sidebar({
               )}
             </div>
 
-            {/* Navigation Links Section */}
+            {/* Navigation Links Section (Artifacts, Memory, Connect) */}
             <nav className="flex flex-col gap-1 px-[6px] w-full">
-              {/* Projects Link */}
-              <SidebarTooltip text="Projects" show={!isExpanded}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                  className={`flex items-center rounded-xl text-zinc-400 hover:text-zinc-100 transition-colors duration-150 group text-left relative cursor-pointer ${
-                    isExpanded ? "w-full h-[36px] pl-[9px] hover:bg-white/5" : "w-[36px] h-[36px] justify-center hover:bg-white/10"
-                  }`}
-                  aria-label="Projects"
-                >
-                  <Layers className="w-[18px] h-[18px] flex-shrink-0 transition-colors duration-150 group-hover:text-white" />
-                  {isExpanded && (
-                    <span className="ml-3.5 text-[14.5px] font-medium whitespace-nowrap">
-                      Projects
-                    </span>
-                  )}
-                </button>
-              </SidebarTooltip>
-
               {/* Artifacts Link */}
               <SidebarTooltip text="Artifacts" show={!isExpanded}>
                 <button
@@ -357,8 +336,8 @@ export default function Sidebar({
                 </button>
               </SidebarTooltip>
 
-              {/* Skills Link */}
-              <SidebarTooltip text="Skills" show={!isExpanded}>
+              {/* Memory Link */}
+              <SidebarTooltip text="Memory" show={!isExpanded}>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -367,25 +346,12 @@ export default function Sidebar({
                   className={`flex items-center rounded-xl text-zinc-400 hover:text-zinc-100 transition-colors duration-150 group text-left relative cursor-pointer ${
                     isExpanded ? "w-full h-[36px] pl-[9px] hover:bg-white/5" : "w-[36px] h-[36px] justify-center hover:bg-white/10"
                   }`}
-                  aria-label="Skills"
+                  aria-label="Memory"
                 >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="flex-shrink-0 transition-colors duration-150 group-hover:text-white"
-                  >
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                    <path d="m9 12 2 2 4-4" />
-                  </svg>
+                  <Brain className="w-[18px] h-[18px] flex-shrink-0 transition-colors duration-150 group-hover:text-white" />
                   {isExpanded && (
                     <span className="ml-3.5 text-[14.5px] font-medium whitespace-nowrap">
-                      Skills
+                      Memory
                     </span>
                   )}
                 </button>
