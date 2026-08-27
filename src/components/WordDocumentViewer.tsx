@@ -66,6 +66,87 @@ interface WordBodyRendererProps {
   secondaryColor: string;
 }
 
+const LATEX_KEYWORDS = /\\(?:frac|partial|nabla|hbar|int|sum|prod|sqrt|hat|bar|vec|dot|ddot|alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|infty|times|cdot|pm|mp|leq|geq|neq|approx|equiv|sim|propto|in|notin|subset|subseteq|cup|cap|to|leftarrow|rightarrow|Rightarrow|Leftrightarrow|mathbf|mathrm|mathit|mathcal|mathbb|text|left|right|begin|end|det|exp|ln|log|sin|cos|tan)/;
+
+const KNOWN_MATH_WORDS = new Set([
+  'frac', 'partial', 'nabla', 'hbar', 'int', 'sum', 'prod', 'sqrt', 'hat', 'bar', 'vec', 'dot', 'ddot',
+  'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa',
+  'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega',
+  'det', 'exp', 'sin', 'cos', 'tan', 'text', 'left', 'right', 'mathbf', 'mathrm', 'mathbb', 'mathcal',
+  'sim', 'geq', 'leq', 'neq', 'approx', 'equiv', 'times', 'cdot', 'infty', 'lim'
+]);
+
+function isMathSegment(seg: string): boolean {
+  const clean = seg.trim();
+  if (!clean || clean.startsWith('$')) return false;
+  if (!LATEX_KEYWORDS.test(clean) && !/[_\^]\{[^}]+\}/.test(clean)) return false;
+  const words = clean.match(/\b[a-zA-Z]{3,}\b/g) || [];
+  const nonMathWords = words.filter((w) => !KNOWN_MATH_WORDS.has(w.toLowerCase()));
+  return nonMathWords.length === 0;
+}
+
+function normalizeMathText(text: string): string {
+  if (!text) return text;
+  const s = text.trim();
+  if ((s.startsWith('$$') && s.endsWith('$$')) || (s.startsWith('$') && s.endsWith('$'))) {
+    return text;
+  }
+  if (isMathSegment(text)) {
+    return `$${s}$`;
+  }
+  const chunks = text.split(/(,\s+|\.\s+|;\s+)/);
+  for (let i = 0; i < chunks.length; i += 2) {
+    const chunk = chunks[i];
+    if (isMathSegment(chunk)) {
+      chunks[i] = `$${chunk.trim()}$`;
+    } else {
+      const subPattern = /(\b(?:is|are|was|were|gives|states|describes|where|with|and)\s+)([^,;.]*?\\[a-zA-Z]+[^,;.]*?)(\s+(?:is|are|was|were|gives|states|describes|where|with|and|,|\.|\;|\:)|$)/g;
+      chunks[i] = chunk.replace(subPattern, (match, prefix, formula, suffix) => {
+        if (isMathSegment(formula)) {
+          return `${prefix}$${formula.trim()}$${suffix}`;
+        }
+        return match;
+      });
+    }
+  }
+  return chunks.join('');
+}
+
+function renderInlineRichContent(text: string, keyPrefix: string) {
+  if (!text) return null;
+  const normalized = normalizeMathText(text);
+  const pattern = /(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$|\\\(.*?\\\))/g;
+  const parts = normalized.split(pattern);
+
+  return parts.map((part, idx) => {
+    if (!part) return null;
+    const key = `${keyPrefix}-${idx}`;
+
+    if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+      return <strong key={key} className="font-bold text-[#141413]">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+      return <em key={key} className="italic">{part.slice(1, -1)}</em>;
+    }
+    if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
+      return (
+        <code key={key} className="font-mono text-xs px-1 py-0.5 rounded bg-[#F5F0E8] border border-[#E6DFD8] text-[#141413]">
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+    if ((part.startsWith("$") && part.endsWith("$") && part.length >= 2) || (part.startsWith("\\(") && part.endsWith("\\)"))) {
+      const mathStr = part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2);
+      return (
+        <span key={key} className="inline-flex mx-0.5 select-text text-[#141413] align-baseline">
+          <InlineMath math={mathStr} errorColor="#cc785c" />
+        </span>
+      );
+    }
+    return <span key={key}>{part}</span>;
+  });
+}
+
 function WordBodyRenderer({ body, secondaryColor }: WordBodyRendererProps) {
   if (!body) return null;
 
@@ -74,38 +155,7 @@ function WordBodyRenderer({ body, secondaryColor }: WordBodyRendererProps) {
   let inMathBlock = false;
   let mathBuffer: string[] = [];
 
-  const renderInlineContent = (text: string, keyPrefix: string) => {
-    const pattern = /(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$|\\\(.*?\\\))/g;
-    const parts = text.split(pattern);
-
-    return parts.map((part, idx) => {
-      if (!part) return null;
-      const key = `${keyPrefix}-${idx}`;
-
-      if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
-        return <strong key={key} className="font-bold text-[#141413]">{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
-        return <em key={key} className="italic">{part.slice(1, -1)}</em>;
-      }
-      if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-        return (
-          <code key={key} className="font-mono text-xs px-1 py-0.5 rounded bg-[#F5F0E8] border border-[#E6DFD8] text-[#141413]">
-            {part.slice(1, -1)}
-          </code>
-        );
-      }
-      if ((part.startsWith("$") && part.endsWith("$") && part.length >= 2) || (part.startsWith("\\(") && part.endsWith("\\)"))) {
-        const mathStr = part.startsWith("$") ? part.slice(1, -1) : part.slice(2, -2);
-        return (
-          <span key={key} className="inline-flex mx-0.5 select-text text-[#141413]">
-            <InlineMath math={mathStr} errorColor="#cc785c" />
-          </span>
-        );
-      }
-      return <span key={key}>{part}</span>;
-    });
-  };
+  const renderInlineContent = (text: string, keyPrefix: string) => renderInlineRichContent(text, keyPrefix);
 
   for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
@@ -686,7 +736,7 @@ export default function WordDocumentViewer({
                                     >
                                       {sec.table.headers.map((hdr, hIdx) => (
                                         <th key={hIdx} className="px-3 py-2 border-r border-white/20 last:border-r-0">
-                                          {hdr}
+                                          {renderInlineRichContent(hdr, `th-${sIdx}-${hIdx}`)}
                                         </th>
                                       ))}
                                     </tr>
@@ -701,9 +751,9 @@ export default function WordDocumentViewer({
                                       {row.map((cell, cIdx) => (
                                         <td
                                           key={cIdx}
-                                          className="px-3 py-2 border-t border-[#E6DFD8] border-r border-[#E6DFD8] last:border-r-0 text-[#3D3D3A]"
+                                          className="px-3 py-2 border-t border-[#E6DFD8] border-r border-[#E6DFD8] last:border-r-0 text-[#3D3D3A] align-middle"
                                         >
-                                          {cell}
+                                          {renderInlineRichContent(cell, `td-${sIdx}-${rIdx}-${cIdx}`)}
                                         </td>
                                       ))}
                                     </tr>

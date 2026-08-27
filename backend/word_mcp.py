@@ -25,6 +25,73 @@ import latex2mathml.converter
 XSL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "MML2OMML.XSL")
 _xslt_transform = None
 
+LATEX_KEYWORDS = (
+    r'\\(?:frac|partial|nabla|hbar|int|sum|prod|sqrt|hat|bar|vec|dot|ddot|'
+    r'alpha|beta|gamma|delta|epsilon|varepsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|'
+    r'Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|'
+    r'infty|times|cdot|pm|mp|leq|geq|neq|approx|equiv|sim|propto|in|notin|subset|subseteq|cup|cap|to|leftarrow|rightarrow|Rightarrow|Leftrightarrow|'
+    r'mathbf|mathrm|mathit|mathcal|mathbb|text|left|right|begin|end|det|exp|ln|log|sin|cos|tan)'
+)
+
+KNOWN_MATH_WORDS = {
+    'frac', 'partial', 'nabla', 'hbar', 'int', 'sum', 'prod', 'sqrt', 'hat', 'bar', 'vec', 'dot', 'ddot',
+    'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'varepsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa',
+    'lambda', 'mu', 'nu', 'xi', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega',
+    'det', 'exp', 'sin', 'cos', 'tan', 'text', 'left', 'right', 'mathbf', 'mathrm', 'mathbb', 'mathcal',
+    'sim', 'geq', 'leq', 'neq', 'approx', 'equiv', 'times', 'cdot', 'infty', 'lim'
+}
+
+def is_math_segment(seg: str) -> bool:
+    clean = seg.strip()
+    if not clean or clean.startswith('$'):
+        return False
+    if not re.search(LATEX_KEYWORDS, clean) and not re.search(r'[\_\^]\{[^\}]+\}', clean):
+        return False
+    words = re.findall(r'\b[a-zA-Z]{3,}\b', clean)
+    non_latex_words = [w for w in words if w.lower() not in KNOWN_MATH_WORDS]
+    return len(non_latex_words) == 0
+
+def normalize_math_text(text: str) -> str:
+    """
+    Auto-detects unwrapped LaTeX formulas (in table cells and embedded in sentences)
+    and ensures they are wrapped in $ ... $ so they parse into native OMML equations.
+    """
+    if not text:
+        return text
+
+    s = text.strip()
+    if (s.startswith('$$') and s.endswith('$$')) or (s.startswith('$') and s.endswith('$')):
+        return text
+
+    # Standalone equation chunk (e.g. table cell value)
+    if is_math_segment(text):
+        return f"${s}$"
+
+    # Embedded equation inside sentences
+    chunks = re.split(r'(,\s+|\.\s+|;\s+)', text)
+    for i in range(0, len(chunks), 2):
+        chunk = chunks[i]
+        if is_math_segment(chunk):
+            chunks[i] = f"${chunk.strip()}$"
+        else:
+            sub_pattern = re.compile(
+                r'(\b(?:is|are|was|were|gives|states|describes|where|with|and)\s+)'
+                r'([^,;.]*?\\[a-zA-Z]+[^,;.]*?)'
+                r'(\s+(?:is|are|was|were|gives|states|describes|where|with|and|,|\.|\;|\:)|$)'
+            )
+            def sub_repl(m):
+                prefix = m.group(1)
+                formula = m.group(2).strip()
+                suffix = m.group(3)
+                if is_math_segment(formula):
+                    return f"{prefix}${formula}${suffix}"
+                return m.group(0)
+
+            chunks[i] = sub_pattern.sub(sub_repl, chunks[i])
+
+    return ''.join(chunks)
+
+
 def get_xslt_transform():
     global _xslt_transform
     if _xslt_transform is None:
@@ -36,7 +103,6 @@ def get_xslt_transform():
                 print(f"[-] Failed to load local MML2OMML.XSL: {e}")
         
         if _xslt_transform is None:
-            # Fallback to standard Office paths on Windows
             office_paths = [
                 r'C:\Program Files\Microsoft Office\root\Office16\MML2OMML.XSL',
                 r'C:\Program Files (x86)\Microsoft Office\root\Office16\MML2OMML.XSL',
@@ -90,6 +156,27 @@ class WordDocumentEngine:
     def __init__(self):
         self.documents: Dict[str, List[Dict[str, Any]]] = {}
 
+    def _normalize_sections(self, sections: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        normalized = []
+        for sec in sections:
+            if not isinstance(sec, dict):
+                continue
+            s_copy = dict(sec)
+            if "body" in s_copy and isinstance(s_copy["body"], str):
+                s_copy["body"] = normalize_math_text(s_copy["body"])
+            if "table" in s_copy and isinstance(s_copy["table"], dict):
+                t_copy = dict(s_copy["table"])
+                if "headers" in t_copy and isinstance(t_copy["headers"], list):
+                    t_copy["headers"] = [normalize_math_text(str(h)) for h in t_copy["headers"]]
+                if "rows" in t_copy and isinstance(t_copy["rows"], list):
+                    t_copy["rows"] = [
+                        [normalize_math_text(str(c)) for c in row] if isinstance(row, list) else row
+                        for row in t_copy["rows"]
+                    ]
+                s_copy["table"] = t_copy
+            normalized.append(s_copy)
+        return normalized
+
     def create_document(
         self,
         doc_id: str,
@@ -104,6 +191,7 @@ class WordDocumentEngine:
         Creates a new version 1 (v1) Word Document structure with dynamic theme styling and optional headers.
         """
         style = style or {}
+        norm_sections = self._normalize_sections(sections)
         doc_state = {
             "version": 1,
             "doc_id": doc_id,
@@ -121,7 +209,7 @@ class WordDocumentEngine:
                 "table_alternate_bg": style.get("table_alternate_bg", "#F5F0E8")
             },
             "created_at": datetime.now().strftime("%Y-%m-%d"),
-            "sections": sections
+            "sections": norm_sections
         }
         
         if doc_id not in self.documents:
@@ -167,6 +255,7 @@ class WordDocumentEngine:
         next_version = latest["version"] + 1
         latest["version"] = next_version
 
+        norm_content = self._normalize_sections([new_content])[0] if isinstance(new_content, dict) else new_content
         sections = latest.get("sections", [])
         modified = False
 
@@ -174,16 +263,16 @@ class WordDocumentEngine:
             heading = sec.get("heading", "").strip().lower()
             if target_heading_or_index.strip().lower() in heading or str(idx) == target_heading_or_index.strip():
                 if action == "replace":
-                    sections[idx] = new_content
+                    sections[idx] = norm_content
                 elif action in ("append", "insert_after"):
-                    sections.insert(idx + 1, new_content)
+                    sections.insert(idx + 1, norm_content)
                 elif action == "delete":
                     sections.pop(idx)
                 modified = True
                 break
 
         if not modified:
-            sections.append(new_content)
+            sections.append(norm_content)
 
         latest["sections"] = sections
         history.append(latest)
@@ -235,8 +324,9 @@ class WordDocumentEngine:
         """
         Tokenizes inline markdown: **bold**, *italic*, `code`, and $math$ into styled OpenXML runs / OMML elements.
         """
+        normalized = normalize_math_text(text)
         pattern = r'(\*\*.*?\*\*|\*.*?\*|`.*?`|\$.*?\$|\\\(.*?\\\))'
-        tokens = re.split(pattern, text)
+        tokens = re.split(pattern, normalized)
 
         for token in tokens:
             if not token:
@@ -516,17 +606,17 @@ class WordDocumentEngine:
                             for c_idx, h_text in enumerate(headers):
                                 if c_idx < len(hdr_cells):
                                     cell = hdr_cells[c_idx]
-                                    cell.text = str(h_text)
                                     try:
                                         shd = parse_xml(r'<w:shd %s w:fill="%s"/>' % (nsdecls('w'), self._clean_hex(table_hdr_bg)))
                                         cell._tc.get_or_add_tcPr().append(shd)
-                                        for p in cell.paragraphs:
-                                            for r in p.runs:
-                                                r.font.name = font_name
-                                                r.font.bold = True
-                                                r.font.color.rgb = table_hdr_fg_rgb
                                     except Exception:
                                         pass
+                                    p = cell.paragraphs[0]
+                                    p.text = ""
+                                    self._add_formatted_text_runs(p, str(h_text), font_name, 10)
+                                    for r in p.runs:
+                                        r.font.bold = True
+                                        r.font.color.rgb = table_hdr_fg_rgb
                             row_idx = 1
 
                         for r_data_idx, r_data in enumerate(rows):
@@ -536,17 +626,15 @@ class WordDocumentEngine:
                                 for c_idx, cell_value in enumerate(r_data):
                                     if c_idx < len(row_cells):
                                         cell = row_cells[c_idx]
-                                        cell.text = str(cell_value)
                                         if is_alt and table_alt_bg:
                                             try:
                                                 shd = parse_xml(r'<w:shd %s w:fill="%s"/>' % (nsdecls('w'), self._clean_hex(table_alt_bg)))
                                                 cell._tc.get_or_add_tcPr().append(shd)
                                             except Exception:
                                                 pass
-                                        for p in cell.paragraphs:
-                                            for r in p.runs:
-                                                r.font.name = font_name
-                                                r.font.size = Pt(10)
+                                        p = cell.paragraphs[0]
+                                        p.text = ""
+                                        self._add_formatted_text_runs(p, str(cell_value), font_name, 10)
                                 row_idx += 1
 
             doc.add_paragraph()
@@ -565,7 +653,7 @@ word_engine = WordDocumentEngine()
 WORD_TOOLS = [
     {
         "name": "create_word_document",
-        "description": "Create a beautifully styled Microsoft Word document (.docx) artifact. Supports LaTeX math formulas ($$ ... $$ and $ ... $), markdown formatting (bold, italics, bullet/numbered lists, quotes), custom typography, color themes, and optional tables.",
+        "description": "Create a beautifully styled Microsoft Word document (.docx) artifact. Supports LaTeX math formulas ($$ equation $$ for display, $ equation $ for inline math/table cells), markdown formatting (bold, italics, bullet/numbered lists, quotes), custom typography, color themes, and optional tables.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -579,11 +667,11 @@ WORD_TOOLS = [
                         "properties": {
                             "heading": {"type": "string", "description": "Section heading text"},
                             "level": {"type": "integer", "description": "Heading level 1, 2, or 3"},
-                            "body": {"type": "string", "description": "Body text with markdown formatting and LaTeX math formulas ($$ equation $$ for display, $ equation $ for inline)"},
+                            "body": {"type": "string", "description": "Body text with markdown formatting and LaTeX math formulas ($$ equation $$ for display, $ equation $ for inline). In table cells and text, ALWAYS wrap formulas in $...$ e.g. '$c$', '$\\hbar$', '$i\\hbar\\frac{\\partial}{\\partial t}\\Psi=\\hat{H}\\Psi$'"},
                             "page_break": {"type": "boolean", "description": "Set to true to insert an explicit page break before this section"},
                             "table": {
                                 "type": "object",
-                                "description": "Optional table. Only include when tabular data is relevant.",
+                                "description": "Optional table. Only include when tabular data is relevant. Format any formulas inside table cells using LaTeX with $...$ e.g. '$E=mc^2$'",
                                 "properties": {
                                     "headers": {"type": "array", "items": {"type": "string"}},
                                     "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
