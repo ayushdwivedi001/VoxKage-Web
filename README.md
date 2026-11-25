@@ -2,7 +2,7 @@
 
 VoxKage Web is a full-stack agentic AI workspace for the browser, pairing a Next.js client with a FastAPI tool-execution backend. It runs multi-step tool calls, live frontend code sandboxing, formatted `.docx` document authoring, OAuth-connected productivity integrations, persistent memory, and scheduled background tasks—engineered on a **Zero-OpEx architecture** that eliminates recurring server, vector-database, and token-billing costs.
 
-Live application: [voxkage.vercel.app](https://voxkage.vercel.app)
+Live application: [voxkage.vercel.app](https://voxkage-ai.vercel.app)
 
 ---
 
