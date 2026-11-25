@@ -1,216 +1,141 @@
-<h1 align="center">VoxKage Web</h1>
+# VoxKage Web
 
-<p align="center">
-  <b>Your agentic AI workspace in the browser.</b><br/>
-  A full-stack, open-source platform that pairs a rich, streaming chat interface with a real agentic backend —
-  live tool execution, MCP integrations, RAG memory, web search, image search and more — all under your own keys.
-</p>
+VoxKage Web is a full-stack agentic AI workspace for the browser, pairing a Next.js client with a FastAPI tool-execution backend. It runs multi-step tool calls, live frontend code sandboxing, formatted `.docx` document authoring, OAuth-connected productivity integrations, persistent memory, and scheduled background tasks—engineered on a **Zero-OpEx architecture** that eliminates recurring server, vector-database, and token-billing costs.
 
-<p align="center">
-  <a href="https://voxkage.vercel.app"><img src="https://img.shields.io/badge/🌐%20Live%20Demo-voxkage.vercel.app-cc785c?style=flat-square" /></a>
-  <a href="https://github.com/ayushdwivedi001/VoxKage-Web"><img src="https://img.shields.io/github/stars/ayushdwivedi001/VoxKage-Web?style=flat-square&color=141413" /></a>
-  <a href="https://github.com/ayushdwivedi001/VoxKage-Web/fork"><img src="https://img.shields.io/github/forks/ayushdwivedi001/VoxKage-Web?style=flat-square&color=141413" /></a>
-  <a href="https://github.com/ayushdwivedi001/VoxKage-Web/issues"><img src="https://img.shields.io/github/issues/ayushdwivedi001/VoxKage-Web?style=flat-square&color=141413" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-cc785c?style=flat-square&labelColor=141413" /></a>
-</p>
-
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api/pin/?username=ayushdwivedi001&repo=VoxKage-Web&theme=gruvbox_light&hide_border=true&border_radius=8" alt="VoxKage-Web repo card" />
-</p>
+Live application: [voxkage.vercel.app](https://voxkage.vercel.app)
 
 ---
 
-## 📖 What is VoxKage Web?
+## Zero-OpEx Architecture
 
-**VoxKage Web is a web-based AI assistant platform** — the browser home of the VoxKage AI family. It is *not* a static site: it is a complete, production-grade application where you chat with an AI that can actually **do things** — search the web, query your connected Google accounts, generate documents, draw charts and maps, run scheduled tasks, and persist long-term memory.
+Most hosted AI applications fail financially or hit hard quota walls because the server pays for LLM inference, holds long-lived streaming connections open, runs heavy embedding models in RAM, and rents managed vector databases. VoxKage Web removes those bottlenecks by shifting state, keys, and orchestration to free-tier boundaries:
 
-Built with a **modern Next.js frontend** and a **Python FastAPI agentic backend**, VoxKage Web streams responses live over WebSockets, executes tools through a modular MCP (Model Context Protocol) pool, and stays cheap by routing through free and affordable model gateways.
+1. **BYOK with Client-Side AES-GCM Encryption**
+   - Users supply their own **OpenCode Zen** (`opencode.ai/zen/v1`) and/or **Kilo Code Gateway** (`api.kilo.ai/api/gateway`) API keys during onboarding (`src/components/OnboardingView.tsx`), unlocking free-tier frontier models (`deepseek-v4-flash-free`, `mimo-v2.5-free`, `stepfun/step-3.7-flash:free`) alongside Gemini 3.5 Flash and Claude Sonnet 4.
+   - Keys are encrypted in the browser with **Web Crypto AES-GCM** (`src/lib/secureStorage.ts`) using a device-scoped seed before storage in `localStorage`. The platform operator incurs zero LLM token billing.
 
-> 🎯 **The goal:** a fast, beautiful, private, and extendable AI workspace that anyone can self-host, fork, and make their own.
+2. **Client-Orchestrated Agent Loop & Stateless Backend Turns**
+   - In the primary web execution path (`src/hooks/useAgentCompletion.ts`), the browser orchestrates the multi-turn agent loop (up to 12 tool iterations) and streams completions through a stateless Next.js Route Handler (`src/app/api/completions/proxy/route.ts`) or an optional user-hosted Cloudflare Worker (`voxkage_custom_proxy_url`).
+   - FastAPI executes only short, stateless bursts:
+     - `POST /sessions/{id}/prepare` — loads history, Soul memories, active MCP schemas, and parsed attachments.
+     - `POST /sessions/{id}/execute-tools` — runs requested tool calls concurrently and returns structured widget/source metadata.
+     - `POST /sessions/{id}/log` — persists the assistant response and virtual workspace files.
+   - Keeping long-running LLM streams off the Python backend avoids free-tier worker timeouts and memory saturation. A full-backend WebSocket loop (`/ws/chat/{session_id}`) remains available for legacy/socket sessions and background cron execution.
 
----
+3. **Zero-Cost RAG, Search, Media, and Email Relays**
+   - **SQLite FTS5 instead of Vector Databases**: `backend/rag_engine.py` and `backend/sqlite_db.py` use in-process SQLite FTS5 (`bm25` ranking with `LIKE` fallback) instead of `pgvector` or external vector stores. No embedding model is loaded into memory, keeping RAM usage minimal on free-tier CPU containers.
+   - **Web Search & Extraction**: `backend/websearch_engine.py` uses concurrent DuckDuckGo queries (`ddgs`) and `trafilatura` extraction backed by a 15-minute in-memory TTL cache—requiring no paid search APIs.
+   - **Image Retrieval**: `backend/image_engine.py` and `backend/image_search_engine.py` resolve images via optional Pexels, DuckDuckGo Image Search, and Pinterest scraping, served through `/api/image-proxy`.
+   - **Resilient OTP Delivery**: `backend/auth.py` cascades email verification across Brevo HTTP API, Resend HTTP API, and Gmail SMTP SSL/TLS over cloud-safe ports.
 
-## ✨ Features
+4. **Free-Tier Hosting & Automated Keep-Alive**
+   - **Frontend**: Next.js 16 on Vercel.
+   - **Backend**: FastAPI Docker container on Hugging Face Spaces (`port 7860`, `backend/Dockerfile`).
+   - **Primary Database**: Supabase Postgres free tier for auth profiles, sessions, messages, schedules, and `user_memories`.
+   - **Automated Heartbeat**: `.github/workflows/keep_alive.yml` runs every 12 hours (~3% of GitHub Actions' free monthly quota) to ping the HF Space `/health` endpoint (preventing 48-hour sleep), query Supabase REST (preventing 7-day project pauses), and refresh a repository timestamp every 45 days (preventing GitHub's 60-day schedule deactivation).
 
-| Area | What it does |
-|------|--------------|
-| 💬 **Streaming chat** | Real-time token streaming over WebSockets, session history, message editing, feedback |
-| 🧠 **Agentic tool execution** | Live tool calls rendered as rich interactive cards (charts, maps, mermaid diagrams, file trees) |
-| 🔍 **Web search & fetch** | DuckDuckGo search, parallel deep research, article fetching via trafilatura |
-| 🧩 **MCP integrations** | OAuth-connected **Gmail, Google Drive, Google Calendar, Notion** + connect your own custom MCP servers |
-| 🖼️ **Image engine** | Search & download verified images (Unsplash / Pexels / Pixabay / **Pinterest** / Bing fallback) |
-| 🗂️ **RAG memory** | Index documents & codebases, then query them with semantic vector search |
-| 👤 **Persistent user memory** | Remembers preferences, habits, and facts about you across sessions |
-| 📄 **Document tools** | Create / edit / export **Word** documents, view PDFs and images inline |
-| 📅 **Schedules** | Cron-based scheduled tasks with a full setup + management UI |
-| 🗺️ **Rich widgets** | Charts (Recharts), maps (Leaflet + MapLibre), Mermaid flowcharts, KaTeX math, timelines, weather |
-| 🔐 **Full auth** | Email OTP (multi-relay), password, Google OAuth, JWT refresh, rate limiting, CSRF origin validation |
-| 🧑‍💻 **Multiple models** | Switch between **DeepSeek V4 Flash**, **Gemini**, **Claude Sonnet**, **Mimo** and Kilo-powered models |
-
----
-
-## 🧰 Tech Stack
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Next.js%2016-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" />
-  <img src="https://img.shields.io/badge/React%2019-61DAFB?style=for-the-badge&logo=react&logoColor=black" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
-  <img src="https://img.shields.io/badge/Tailwind%20CSS%204-38B2AC?style=for-the-badge&logo=tailwindcss&logoColor=white" />
-  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
-  <img src="https://img.shields.io/badge/Python%203.11-3776AB?style=for-the-badge&logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" />
-  <img src="https://img.shields.io/badge/WebSocket-000000?style=for-the-badge&logo=websocket&logoColor=white" />
-  <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" />
-  <img src="https://img.shields.io/badge/HuggingFace-FFD21E?style=for-the-badge&logo=huggingface&logoColor=black" />
-</p>
-
-| Layer | Technology |
-|-------|-----------|
-| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Recharts, Leaflet, MapLibre, Mermaid, KaTeX |
-| **Backend** | Python 3.11, FastAPI, Uvicorn, WebSockets, SQLite (RAG/memory), Supabase (Postgres) |
-| **AI gateways** | OpenCode AI (`opencode.ai/zen/v1`) + Kilo AI (`api.kilo.ai`) — DeepSeek V4 Flash, Gemini, Claude, Mimo, Kilo |
-| **MCP servers** | Gmail, Google Drive, Google Calendar, Notion + arbitrary custom MCP |
-| **Infra** | Vercel (frontend), Hugging Face Spaces with Docker (backend) |
-
----
-
-## 🏗️ Architecture
-
-VoxKage Web is split into **two independently deployable halves** connected over HTTP + WebSockets.
+5. **Optional Residential IP & Local Bridge (`laptop_bridge.py`)**
+   - Running `laptop_bridge.py` connects a local machine to `/ws/laptop`, optionally proxying OpenCode/Kilo streams through a residential IP to avoid cloud datacenter rate limits and enabling local desktop tools (`open_application`, `close_application`, `laptop_command`).
 
 ```mermaid
 flowchart TB
-    subgraph Client["🖥️ Frontend — Next.js (Vercel)"]
-        UI[Chat Workspace<br/>47 components]
-        WID[Widgets: Charts · Maps · Mermaid<br/>PDF · Word · Image · Weather]
-        AUTHUI[Login · Onboarding · Plan Mode]
+    subgraph Client["Browser Client (Next.js 16 on Vercel)"]
+        UI["Workspace UI + Live Sandbox"]
+        VAULT["AES-GCM Key Vault (localStorage)"]
+        LOOP["Client Agent Loop (useAgentCompletion)"]
+        EDGE["Next.js SSE Proxy (/api/completions/proxy)"]
     end
 
-    subgraph API["🔌 REST + WebSocket"]
-        REST[FastAPI Routes]
-        WS["/ws/chat/{session}"]
-        LAPTOP["/ws/laptop"]
+    subgraph Gateways["External Model Gateways"]
+        LLM["OpenCode Zen / Kilo Gateway (or Custom CF Worker)"]
     end
 
-    subgraph Backend["⚙️ Backend — FastAPI (HF Space)"]
-        LOOP[Agentic Loop<br/>tool execution · streaming]
-        ENG[Engines<br/>websearch · RAG · image · memory]
-        MCP[MCP Pool<br/>Gmail · Drive · Calendar · Notion · Word]
-        DB[(Supabase + SQLite)]
-        AUTH[Auth · OTP · OAuth · JWT]
+    subgraph Backend["FastAPI Backend (HF Spaces Docker :7860)"]
+        ROUTERS["9 Modular Routers (/sessions, /auth, /mcp, /ws...)"]
+        TOOLS["Engines: DuckDuckGo + Trafilatura · Word MCP · CronAgent"]
+        MCP["MCP OAuth Pool (Gmail · Drive · Calendar · Notion · Custom)"]
+        SQLITE[("In-Process SQLite FTS5 (RAG + Problem Memory)")]
     end
 
-    subgraph External["☁️ External Services"]
-        LLM[OpenCode / Kilo<br/>model gateways]
-        GOOG[Google OAuth APIs]
-        WEB[Web · DuckDuckGo · Bing · Pinterest]
+    subgraph Persistence["Free-Tier Cloud & Automation"]
+        SUPA[("Supabase Postgres (Users · Sessions · Soul Memory · Schedules)")]
+        KEEP["GitHub Actions Keep-Alive (12h Heartbeat)"]
+        LAPTOP["Optional laptop_bridge.py (/ws/laptop)"]
     end
 
-    UI --> REST
-    UI --> WS
-    UI --> LAPTOP
-    REST --> LOOP
-    WS --> LOOP
-    LAPTOP --> LOOP
-    LOOP --> ENG
-    LOOP --> MCP
-    LOOP --> AUTH
-    ENG --> DB
-    MCP --> GOOG
-    MCP --> DB
-    LOOP --> LLM
-    ENG --> WEB
+    UI --> LOOP
+    VAULT --> LOOP
+    LOOP -->|SSE Stream| EDGE
+    EDGE --> LLM
+    LOOP -->|"/prepare · /execute-tools · /log"| ROUTERS
+    ROUTERS --> TOOLS
+    ROUTERS --> MCP
+    TOOLS --> SQLITE
+    ROUTERS --> SUPA
+    KEEP -->|"/health & REST ping"| ROUTERS
+    KEEP --> SUPA
+    ROUTERS <-->|"Optional WS"| LAPTOP
 ```
-
-### How the pieces talk to each other
-
-1. **You chat** in the Next.js UI → requests go to the FastAPI backend via **REST** (sessions, auth, files) and **WebSockets** (live streaming).
-2. The **agentic loop** (`backend/agent_loop.py`) takes your prompt, history, and the chosen model, then streams the model's response *and* executes any **tool calls** it makes — using a real **MCP tool pool**.
-3. Tools are rendered back in the UI as **rich interactive cards** — a mermaid diagram renders, a map drops a pin, a Word doc gets created, a schedule gets saved.
-4. The backend keeps **long-term state**: Supabase for users/sessions, SQLite for RAG + memory. Everything is auth-scoped to your account.
 
 ---
 
-## ⚙️ Backend Deep-Dive
+## Core Capabilities
 
-The backend (`backend/`) is the heart of VoxKage Web:
+### Execution Modes & Context Control
+- **Plan Mode & Work Mode**: Plan Mode (`src/components/PlanOutputCard.tsx`) generates structured `<plan>` specifications without mutating files or executing search loops. Users can attach inline review comments to a plan and click **Proceed** to execute it in Work Mode with live `<task_list>` tracking.
+- **Model & Reasoning Variants**: Supports OpenCode Zen and Kilo models with five presets (`Low`, `Medium`, `High`, `XHigh`, `Max`) that tune temperature, `max_tokens` (`2048` to `32768`), and penalties (`backend/agent_loop.py`).
+- **Context Compaction (`/compact`)**: Summarizes long conversation histories into a dense technical brief (`backend/compaction.py`), prunes older messages, and updates the live context window percentage indicator.
 
-```
-backend/
-├── main.py                 # FastAPI app — all REST + WebSocket routes (~2.2k lines)
-├── agent_loop.py           # Agentic streaming loop + tool execution (~1.6k lines)
-├── auth.py                 # JWT tokens, password hashing, current-user dependency
-├── database.py             # Supabase client + session/schedule persistence
-├── sqlite_db.py            # Local SQLite for runtime state
-├── crypto.py               # Encryption helpers
-├── websearch_engine.py     # DuckDuckGo search + fetch (trafilatura)
-├── rag_engine.py           # Vector RAG + scoped search over indexed docs
-├── rag_parser.py           # Document parser (PDF/DOCX/XLSX/PPTX → chunks)
-├── image_engine.py         # Verified image search & download
-├── image_search_engine.py  # Pinterest + Bing image search adapters
-├── memory_engine.py        # Persistent user memory (preferences, habits)
-├── opencode_client.py      # OpenCode model gateway client
-├── opencode_proxy.py       # Proxy adapter for the OpenCode endpoint
-├── kilo_client.py          # Kilo AI gateway client
-├── mcp_client.py           # Generic MCP client
-├── mcp_pool.py             # Pooled MCP connections per user/provider
-├── tool_schemas.py         # Tool JSON-schemas exposed to the agent
-├── scheduler.py            # Cron scheduler for scheduled tasks
-├── cron_agent.py           # Agentic cron runner
-├── compaction.py           # Session context compaction
-├── word_mcp.py             # Word document MCP (create/edit/export)
-├── google_tools.py         # Google OAuth helper for MCP providers
-├── mcp_servers/            # Bundled MCP servers
-│   ├── gmail/              # Gmail MCP
-│   ├── google_calendar/    # Google Calendar MCP
-│   ├── google_drive/       # Google Drive MCP
-│   └── notion/             # Notion MCP
-└── requirements.txt        # Python dependencies
-```
+### Virtual Coding Workspace & Live Sandbox
+- **5-Stage Agentic Coding Pipeline**: `create_code_file`, `read_code_file`, `update_code_file` (supporting `SEARCH/REPLACE` diff blocks), and `verify_code_file`.
+- **Automated Syntax Verification**: `verify_code_file` checks bracket and quote balance, HTML tag nesting, JSON validity, Python `compile()`, and runs `node --check` on JavaScript files and `<script>` blocks extracted from HTML with accurate line offsets.
+- **Split-Pane File Inspector (`src/components/FileInspectorPanel.tsx`)**: Displays Prism syntax-highlighted code, version switching across edits, line-level comments sent back as targeted context, a multi-file artifact tree, and a live `HTML/CSS/JS/JSX/TSX` iframe preview with a resizable console log terminal.
 
-### API surface (highlights)
+### OAuth MCP Integrations & Microsoft Word Authoring
+- **Connected Apps (`src/components/ConnectModal.tsx`, `backend/mcp_client.py`)**: PKCE OAuth 2.1 with AES-encrypted token persistence (`backend/crypto.py`) and automatic token refresh for **Gmail**, **Google Drive**, **Google Calendar**, and **Notion**, plus custom remote MCP servers over SSE or Streamable HTTP (`backend/mcp_pool.py`).
+- **Built-in Microsoft Word MCP (`backend/word_mcp.py`, `src/components/WordDocumentViewer.tsx`)**: Creates and version-edits structured documents (`v1`, `v2`), renders a paginated A4 preview with KaTeX math in the inspector, and exports native `.docx` binaries with LaTeX equations compiled to Word OMML via `backend/MML2OMML.XSL`.
 
-| Method | Route | Purpose |
-|--------|-------|---------|
-| `POST` | `/auth/send-otp` · `/verify-otp` | Email OTP login |
-| `POST` | `/auth/google` · `/auth/oauth/callback` | Google OAuth login |
-| `POST` | `/auth/signup` · `/login-password` · `/reset-password` | Password auth |
-| `POST` | `/auth/refresh` | JWT refresh |
-| `GET` | `/models` · `/models/kilo` | List available models |
-| `POST` | `/completions/proxy` | Streams completions through OpenCode / Kilo |
-| `POST` | `/sessions/{id}/prepare` · `/execute-tools` | Agent payload prep + tool execution |
-| `POST` | `/sessions/{id}/log` · `/compact` | Response logging + context compaction |
-| `GET` | `/api/search/images` · `/pinterest` | Image search |
-| `POST` | `/api/mcp/word/create` · `/edit` · `/export-docx` | Word document tools |
-| `GET` | `/mcp/registry` · `/auth/oauth/authorize-url` | MCP provider registry + OAuth |
-| `WS` | `/ws/chat/{session_id}` | Live streaming chat |
-| `WS` | `/ws/laptop` | Laptop bridge channel |
-| `GET` | `/health` | Health check |
+### Dual-Track Memory & Document Parsing
+- **User Soul Profile**: Stores persistent user preferences, identity facts, habits, and pre-approved trusted actions in Supabase `user_memories` (`backend/memory_engine.py`).
+- **Self-Learning Problem Memory**: Logs encountered bugs, fixes, and prevention rules into SQLite FTS5 (`log_problem`, `log_solution`, `search_memory`).
+- **Document Parsing & RAG (`backend/rag_parser.py`, `backend/rag_engine.py`)**: Parses uploaded files up to 50 MB (`PDF`, `DOCX`, `XLSX`, `PPTX`, and plain text/code) and indexes chunks into SQLite FTS5 for scoped or cross-session retrieval.
 
-### 🔌 MCP integrations
+### Background Cron Scheduler (`/schedule`)
+- Typing `/schedule <timing and task>` parses local time (defaulting to IST `+05:30` when unspecified) into a UTC cron expression and presents a confirmation card (`src/components/ScheduleSetupWidget.tsx`).
+- `backend/scheduler.py` evaluates active schedules in the background and spawns isolated `CronTaskAgent` loops (`backend/cron_agent.py`) with access to web search, memory, and connected MCP tools.
 
-Connect your own Google & Notion accounts (OAuth), or plug in any custom MCP server:
-
-- ✉️ **Gmail** — read, send, reply, manage email
-- 🗓️ **Google Calendar** — events & scheduling
-- 📁 **Google Drive** — files & folders
-- 📝 **Notion** — pages, databases, blocks
-- ➕ **Custom MCP** — bring any MCP server via `POST /api/mcp/connect-custom`
+### Rich Inline Widgets & Security
+- **Interactive Response Widgets**: Maps (`Leaflet` / `MapLibre`), analytics charts (`Recharts`), collapsible timelines, weather cards, Mermaid diagrams, KaTeX math, live image search grids, and a consulted-sources drawer.
+- **Authentication & Hardening (`backend/auth.py`, `backend/config.py`)**: Email OTP (signup, login, password reset), `bcrypt` password login, Google OAuth, 365-day JWT with hashed refresh-token rotation, CSRF `Origin`/`Referer` validation on `/auth/*`, and per-endpoint rate limiting.
 
 ---
 
-## 🚀 Getting Started
+## Tech Stack
 
-### 1️⃣ Clone the repo
+| Layer | Technologies |
+|---|---|
+| **Frontend** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, PrismJS, Recharts, Leaflet, MapLibre GL, Mermaid, KaTeX |
+| **Backend** | Python 3.11, FastAPI, Uvicorn, WebSockets, `httpx`, `ddgs`, `trafilatura`, `python-docx`, `pypdf`, `openpyxl`, `python-pptx`, `latex2mathml`, `lxml`, `mcp` |
+| **Storage** | Supabase (Postgres) + In-process SQLite FTS5 (`backend/voxkage_memory.db`) |
+| **Model Gateways** | OpenCode Zen (`opencode.ai/zen/v1`) & Kilo Code Gateway (`api.kilo.ai/api/gateway`) |
+| **Deployment** | Vercel (frontend), Hugging Face Spaces Docker SDK (backend), GitHub Actions (12h keep-alive) |
+
+---
+
+## Running Locally
+
+### Prerequisites
+- Node.js 20+ and npm
+- Python 3.11+
+- A Supabase project (tables: `sessions`, `messages`, `user_settings`, `user_memories`, `schedules`, `oauth_sessions`, `message_feedback`)
+- An API key from [opencode.ai](https://opencode.ai) or [kilo.ai](https://kilo.ai)
+
+### 1. Clone and Install Dependencies
 
 ```bash
 git clone https://github.com/ayushdwivedi001/VoxKage-Web.git
 cd VoxKage-Web
-```
 
-### 2️⃣ Install dependencies
-
-```bash
 # Frontend
 npm install
 
@@ -219,126 +144,130 @@ cd backend
 pip install -r requirements.txt
 ```
 
-### 3️⃣ Configure environment
+### 2. Configure Environment Variables
 
-Create a `.env.local` (frontend) and a `backend/.env` (backend):
+Create `.env.local` in the repository root:
 
 ```env
-# Frontend (.env.local)
 NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id   # optional, for Google sign-in
-
-# Backend (backend/.env)
-# Supabase (for sessions & users)
-SUPABASE_URL=...
-SUPABASE_KEY=...
-# Model gateway keys
-OPENCODE_API_KEY=...
-KILO_API_KEY=...
-# Email OTP relays (any one works)
-BREVO_API_KEY=...
-RESEND_API_KEY=...
-SMTP_HOST=...
-SMTP_USER=...
-SMTP_PASSWORD=...
+# Optional: enables Google Sign-In button on login screen
+NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_oauth_client_id
 ```
 
-### 4️⃣ Run locally
+Create `backend/.env`:
+
+```env
+# Required — backend will not start without these
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_supabase_service_or_anon_key
+JWT_SECRET_KEY=generate_a_strong_random_secret
+
+# Optional — CORS & token encryption
+ALLOWED_ORIGINS=http://localhost:3000,https://voxkage.vercel.app
+TOKEN_ENCRYPTION_KEY=generate_a_fernet_or_32byte_secret
+
+# Optional — server-side fallback keys (used by cron jobs, compaction, or WS loop)
+OPENCODE_API_KEY=your_opencode_key
+KILO_API_KEY=your_kilo_key
+
+# Optional — OAuth & MCP integrations
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+NOTION_CLIENT_ID=your_notion_client_id
+NOTION_CLIENT_SECRET=your_notion_client_secret
+
+# Optional — Email OTP relays (configure any one for signup/reset emails)
+BREVO_API_KEY=
+RESEND_API_KEY=
+SMTP_SERVER=smtp.gmail.com
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_SENDER=
+
+# Optional — stock image search before DuckDuckGo fallback
+PEXELS_API_KEY=
+```
+
+### 3. Start the Application
 
 ```bash
-# Terminal 1 — backend (FastAPI on :8000)
+# Terminal 1 — FastAPI backend (port 8000)
 cd backend
 uvicorn main:app --reload --port 8000
 
-# Terminal 2 — frontend (Next.js on :3000)
+# Terminal 2 — Next.js frontend (port 3000)
 npm run dev
 ```
 
-Open **[http://localhost:3000](http://localhost:3000)** — sign up or log in, and start chatting. 🎉
-
----
-
-## ☁️ Deployment
-
-VoxKage Web is designed to be **cheap to host**:
-
-| Piece | Where | How |
-|-------|-------|-----|
-| **Frontend** | [Vercel](https://vercel.com) | `vercel deploy` — or push to `main` with a Vercel project linked |
-| **Backend** | [Hugging Face Spaces](https://huggingface.co/spaces) | Docker SDK space — use the included [`deploy.py`](deploy.py) or the `backend/Dockerfile` directly |
-| **Database** | Supabase + SQLite | Free tier is plenty |
-
-The live deployment runs the frontend on **Vercel** and the backend on **HF Spaces** at `shinayush-voxkage-web-backend.hf.space`.
-
----
-
-## 🤝 Contributing
-
-Contributions of all kinds are welcome — features, bug fixes, docs, and ideas! 🚀
-
-### Fork & clone
-
-1. **Fork** the repo (top-right ✳️ button on GitHub).
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/<your-username>/VoxKage-Web.git
-   cd VoxKage-Web
-   ```
-3. Add the upstream remote:
-   ```bash
-   git remote add upstream https://github.com/ayushdwivedi001/VoxKage-Web.git
-   ```
-
-### Branch & commit
+Optional — connect the local laptop bridge to your local backend:
 
 ```bash
-git checkout -b feat/your-awesome-feature
-# ...make your changes...
-git add .
-git commit -m "feat: add your awesome feature"
+python laptop_bridge.py --local
 ```
 
-### Open a Pull Request
-
-1. Push your branch: `git push origin feat/your-awesome-feature`
-2. Open a PR from your fork to `main` on GitHub.
-3. Describe what you changed and why — include screenshots for UI changes.
-
-### Guidelines
-
-- 🧪 **Backend:** keep routes in `main.py` or a router, add type hints, and verify with `python -m py_compile <file>`.
-- 🎨 **Frontend:** run `npm run lint`, keep components under `src/components/`, and match the existing design tokens.
-- 🔐 **Never** commit real secrets — use env vars only.
-- 💬 Be kind — we're building this in the open.
+### 4. Using VoxKage
+1. Open [http://localhost:3000](http://localhost:3000) and sign in via Email OTP, Password, or Google OAuth.
+2. On first login, enter your OpenCode Zen or Kilo Code API key in the onboarding prompt (keys are encrypted locally with AES-GCM).
+3. Choose a model and reasoning variant (`Low`–`Max`), toggle between **Work** and **Plan** mode in the prompt bar, attach documents up to 50 MB, or connect Gmail, Google Drive, Google Calendar, Notion, and Microsoft Word from the connectors menu.
+4. Use `/schedule <when> <task>` to create recurring cron automations and `/compact` to compress long conversation histories.
 
 ---
 
-## 🗂️ Project Structure
+## Deployment
 
-```
+| Component | Platform | Setup |
+|---|---|---|
+| **Frontend** | Vercel | Link the repo to Vercel with `NEXT_PUBLIC_BACKEND_URL` pointing to your backend URL and deploy. |
+| **Backend** | Hugging Face Spaces (Docker) | Configure `HF_TOKEN` in `backend/.env` and run `python deploy.py` (syncs secrets and pushes `backend/` to a Docker Space on port `7860`), or deploy `backend/Dockerfile` directly. |
+| **Keep-Alive** | GitHub Actions | Add `VOXKAGE_WEB_SPACE_URL`, `SUPABASE_URL`, and `SUPABASE_KEY` to repository secrets to enable the 12-hour heartbeat in `.github/workflows/keep_alive.yml`. |
+
+---
+
+## Project Structure
+
+```text
 VoxKage-Web/
-├── src/                     # Next.js frontend
-│   ├── app/                 # App Router pages, API routes, OAuth callback
-│   ├── components/          # 47 UI components (chat, widgets, modals, creatures)
-│   ├── hooks/               # useAuth, useChatSessions, useAgentCompletion, ...
-│   └── lib/                 # api client, models, helpers, secure storage
-├── backend/                 # Python FastAPI backend
-│   ├── main.py              # App + routes
-│   ├── agent_loop.py        # Agentic streaming loop
-│   ├── mcp_servers/         # Bundled MCP servers
-│   ├── ...engines & clients
-│   └── requirements.txt
-├── deploy.py                # HF Space + dataset deployment script
-├── laptop_bridge.py         # Laptop ↔ backend bridge (WebSocket)
-└── package.json
+├── .github/workflows/
+│   └── keep_alive.yml              # 12h HF Space + Supabase heartbeat & 45d repo keep-alive
+├── src/
+│   ├── app/
+│   │   ├── api/completions/proxy/  # Stateless Next.js SSE streaming proxy (OpenCode / Kilo)
+│   │   ├── oauth/callback/         # OAuth callback handler
+│   │   ├── [sessionId]/            # Direct session route
+│   │   ├── layout.tsx              # Root layout, theme boot script, KaTeX styles
+│   │   └── page.tsx                # Main application shell
+│   ├── components/                 # Chat workspace, FileInspectorPanel, WordDocumentViewer, widgets, modals
+│   ├── hooks/                      # useAgentCompletion, useAttachments, useAuth, useChatSessions, usePanelResizer
+│   └── lib/                        # api.ts, secureStorage.ts (AES-GCM), modelsHelper.ts, chatHelpers.tsx
+├── backend/
+│   ├── main.py                     # FastAPI entry point, CORS/CSRF middleware, router registration
+│   ├── routers/                    # auth, health, mcp, media, models, schedules, sessions, user, websocket
+│   ├── mcp_servers/                # Bundled Gmail, Google Calendar, Google Drive, and Notion MCP handlers
+│   ├── agent_loop.py               # Tool execution, virtual file verification, WebSocket agent loop
+│   ├── auth.py                     # JWT, refresh tokens, bcrypt, multi-relay OTP delivery
+│   ├── compaction.py               # /compact session summarization
+│   ├── config.py                   # CORS, CSRF middleware, ConnectionManager, rate limiting
+│   ├── cron_agent.py               # Isolated background agent for scheduled tasks
+│   ├── crypto.py                   # Encrypted OAuth token helpers
+│   ├── database.py                 # Supabase Postgres persistence
+│   ├── image_engine.py             # Pexels / DDG image search + verification
+│   ├── image_search_engine.py      # Pinterest + research-chip image search
+│   ├── kilo_client.py              # Kilo AI gateway client
+│   ├── mcp_client.py               # OAuth PKCE & MCP server introspection
+│   ├── mcp_pool.py                 # Pooled SSE / Streamable HTTP MCP client connections
+│   ├── memory_engine.py            # Soul Profile (Supabase) + Problem/Solution memory (SQLite FTS5)
+│   ├── opencode_client.py          # OpenCode Zen client & system instructions
+│   ├── opencode_proxy.py           # Laptop WS proxy with direct API fallback
+│   ├── rag_engine.py               # SQLite FTS5 document indexing & BM25 querying
+│   ├── rag_parser.py               # PDF, DOCX, XLSX, PPTX, and text extraction + chunking
+│   ├── scheduler.py                # Cron expression parser & background loop
+│   ├── sqlite_db.py                # SQLite FTS5 schema initialization
+│   ├── tool_schemas.py             # Function-calling schemas exposed to models
+│   ├── websearch_engine.py         # Concurrent DuckDuckGo search + trafilatura fetcher + TTL cache
+│   ├── word_mcp.py                 # Microsoft Word MCP + LaTeX-to-OMML .docx exporter
+│   ├── Dockerfile                  # Python 3.11 Docker build for port 7860
+│   └── requirements.txt            # Backend Python dependencies
+├── deploy.py                       # Hugging Face Space & Dataset deployment script
+├── laptop_bridge.py                # Optional local WebSocket daemon for residential proxy & OS tools
+└── package.json                    # Next.js 16 / React 19 frontend dependencies
 ```
-
----
-
-## 📜 License
-
-This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
-
-<p align="center">
-  <sub>Built with ❤️ by <a href="https://github.com/ayushdwivedi001">Ayush Dwivedi</a> · VoxKage AI</sub>
-</p>
